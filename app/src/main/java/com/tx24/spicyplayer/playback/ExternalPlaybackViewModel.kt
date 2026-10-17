@@ -1940,6 +1940,11 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         }
     }
 
+    /** Runs [apply], which sets the stage art to Spotify Canvas, once its disclosure is agreed to. */
+    fun chooseCanvas(apply: () -> Unit) {
+        if (askFirst(SourceDisclosures.forId(SourceDisclosures.SPOTIFY_CANVAS_ID))) pendingSourceSwitch = apply else apply()
+    }
+
     /** The canvas at [url] wouldn't play: it's forgotten, and the stage falls back. */
     fun canvasFailed(url: String) {
         if (mutableState.value.canvasUrl != url) return

@@ -602,7 +602,7 @@ internal fun BackgroundContent(settings: AppSettings) {
 }
 
 @Composable
-internal fun NowPlayingContent(settings: AppSettings) {
+internal fun NowPlayingContent(settings: AppSettings, viewModel: ExternalPlaybackViewModel) {
     ToggleRow(
         label = "Hide the song header",
         checked = settings.hideHeader,
@@ -673,7 +673,11 @@ internal fun NowPlayingContent(settings: AppSettings) {
             value = settings.stageArt.name,
             options = StageArt.entries.map { it.name },
             labels = StageArt.entries.map { it.label },
-            onChange = { settings.stageArt = StageArt.valueOf(it) },
+            onChange = {
+                val art = StageArt.valueOf(it)
+                // Canvas asks a third-party service, so it says what it sends first.
+                if (art == StageArt.Canvas) viewModel.chooseCanvas { settings.stageArt = art } else settings.stageArt = art
+            },
         )
     }
     SettingsSection("Credits") {

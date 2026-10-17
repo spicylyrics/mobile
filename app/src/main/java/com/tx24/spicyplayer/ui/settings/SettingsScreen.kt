@@ -502,7 +502,7 @@ private fun PageContent(
         SettingsPage.Translation -> RomanizationTranslationContent(state, viewModel, settings)
         SettingsPage.ScrollSync -> ScrollSyncContent(state, viewModel, settings)
         SettingsPage.Background -> BackgroundContent(settings)
-        SettingsPage.NowPlaying -> NowPlayingContent(settings)
+        SettingsPage.NowPlaying -> NowPlayingContent(settings, viewModel)
         SettingsPage.Controls -> ControlsContent(settings)
         SettingsPage.Theme -> ThemeContent(settings)
         SettingsPage.Sources -> SourcesContent(state, viewModel)
