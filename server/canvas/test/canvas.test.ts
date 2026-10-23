@@ -134,8 +134,16 @@ test("a canvaslist null entry is a miss", async () => {
   assert.deepEqual(await response.json(), { canvasesList: [] });
 });
 
+test("falls back to the old service when canvaslist refuses", async () => {
+  const d = deps(status(403), ok(FOUND));
+  const response = await ask({}, d);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), FOUND);
+  assert.match(d.asked[1], /spotify-canva\.vercel\.app/);
+});
+
 test("a canvaslist rate limit is a failure", async () => {
-  const response = await ask({}, deps(status(429), status(503)));
+  const response = await ask({ UPSTREAMS: "https://regional.canvasstore.slnode.spicylyrics.org/provider/canvaslist" }, deps(status(429), status(503)));
   assert.equal(response.status, 502);
 });
 

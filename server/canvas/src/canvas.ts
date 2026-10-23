@@ -31,7 +31,11 @@ export interface Deps {
   waitUntil: (promise: Promise<unknown>) => void;
 }
 
-export const DEFAULT_UPSTREAMS = ["https://regional.canvasstore.slnode.spicylyrics.org/provider/canvaslist"];
+export const DEFAULT_UPSTREAMS = [
+  "https://regional.canvasstore.slnode.spicylyrics.org/provider/canvaslist",
+  // Until Spicy Lyrics' service lets this Worker through (it answers it 403), the old service stands in.
+  "https://spotify-canva.vercel.app/api/canvas",
+];
 export const EDGE_TTL_S = 24 * 60 * 60;
 export const KV_TTL_S = 30 * 24 * 60 * 60;
 /** How long one lookup may spend upstream in all, inside the app's 6-second timeout. */
