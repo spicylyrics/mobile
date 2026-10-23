@@ -39,11 +39,19 @@ class StageArtChoiceTest {
     }
 
     @Test
-    fun `the default is the animated cover, else the still one`() {
+    fun `the default is the canvas, else the animated cover, else the still one`() {
         val default = StageArt.DEFAULT
-        assertEquals(StagePicture.Animated(motion), pick(default, true, false, found, motion))
-        assertEquals(StagePicture.Animated(motion), pick(default, true, false, CanvasLookup.Pending, motion))
+        assertEquals(StagePicture.Canvas(canvas), pick(default, true, false, found, motion))
+        assertEquals(StagePicture.Animated(motion), pick(default, true, false, CanvasLookup.None, motion))
         assertEquals(StagePicture.Still, pick(default, true, false, CanvasLookup.None, null))
+    }
+
+    @Test
+    fun `the old cover stage switch is the animated cover, else the still one`() {
+        val old = StageArt.COVER_STAGE_ON
+        assertEquals(StagePicture.Animated(motion), pick(old, true, false, found, motion))
+        assertEquals(StagePicture.Animated(motion), pick(old, true, false, CanvasLookup.Pending, motion))
+        assertEquals(StagePicture.Still, pick(old, true, false, CanvasLookup.None, null))
     }
 
     @Test
