@@ -16,7 +16,7 @@ No Spotify account or secret is involved. The Worker sees only track IDs.
 cd server/canvas
 npm install
 npx wrangler login
-npx wrangler kv namespace create CANVAS   # paste the id into wrangler.toml, uncomment the block
+npx wrangler kv namespace create CANVAS   # only on a new account: put the id in wrangler.toml
 npx wrangler deploy
 ```
 
