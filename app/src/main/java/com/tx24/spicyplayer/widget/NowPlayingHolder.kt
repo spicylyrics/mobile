@@ -6,9 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
+import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Shader
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
@@ -19,7 +21,6 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.ColorUtils
 import com.tx24.spicyplayer.lyrics.LocalLyricsStore
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
@@ -61,10 +62,11 @@ internal object NowPlayingHolder {
     private const val NO_SONG_INFO = "The player doesn't say what's playing"
     /** The longest the widget sleeps while playing, so a missed report can't leave a line up for long. */
     private const val MAX_SLEEP_MS = 10_000L
-    private const val BACKDROP_SAMPLE_PX = 8
-    private const val BACKDROP_PX = 96
-    /** How much of the cover's darkest shade lies over the blurred cover, so white text reads. */
-    private const val VEIL_ALPHA = 160
+    /** How often the widget wakes while playing when a placed one shows the progress bar. */
+    private const val PROGRESS_STEP_MS = 3_000L
+    private const val SAMPLE_PX = 8
+    private const val COVER_PX = 96
+    private const val COVER_RADIUS_PX = 14f
     /** How long the followed session may stay stopped before another playing one takes over, as on the lyrics screen. */
     private const val SESSION_SWITCH_GRACE_MS = 2_000L
 
@@ -85,14 +87,26 @@ internal object NowPlayingHolder {
 
     private var songKey: String? = null
     private var request: LyricsLookupRequest? = null
-    private var songLine = ""
+    private var title = ""
+    private var artist = ""
+    private var durationMs = 0L
+    private var provider: String? = null
     private var leads: List<WidgetLines.Lead> = emptyList()
     private var synced = false
     /** Shown in place of lyrics while there are none. */
     private var notice: String? = WAITING
     private var art: Bitmap? = null
-    private var backdrop: Bitmap? = null
-    private var accent: Int = LyricsWidget.DEFAULT_ACCENT
+    private var sample: Bitmap? = null
+    private var cover: Bitmap? = null
+    private var colors: CoverColors? = null
+    /** Whether any placed widget shows romanization, and any the progress bar ([LyricsWidget.wants]). */
+    private var wantsRomanization = true
+    private var wantsProgress = true
+    /** The song's lyrics came from this holder's own lookup without romanization. */
+    private var lookedUpPlain = false
+    /** What the widget was last sent, for the settings screen's preview. */
+    var last: LyricsWidget.Content? = null
+        private set
     private var lookupJob: Job? = null
     /** The lyrics screen is up and picks the lyrics itself. */
     private var appShowing = false
@@ -120,15 +134,20 @@ internal object NowPlayingHolder {
 
     val running: Boolean get() = scope != null
 
-    /** Starts following the music if a widget is placed. Again while running, it redraws the widget. */
+    /**
+     * Starts following the music if a widget is placed. Again while running, it takes up any
+     * changed widget settings and redraws every widget.
+     */
     fun start(context: Context) {
         val app = context.applicationContext
         if (running) {
+            readWants(app)
             show(full = true)
             return
         }
         if (!LyricsWidget.placed(app)) return
         this.context = app
+        readWants(app)
         scope = MainScope()
         lookup = BackgroundLyrics(app)
         outputProfiles = AudioOutputProfiles(app)
@@ -192,6 +211,26 @@ internal object NowPlayingHolder {
         else session.transportControls.play()
     }
 
+    fun skipPrevious() {
+        controller?.transportControls?.skipToPrevious()
+    }
+
+    fun skipNext() {
+        controller?.transportControls?.skipToNext()
+    }
+
+    private fun readWants(context: Context) {
+        val (romanization, progress) = LyricsWidget.wants(context)
+        wantsProgress = progress
+        val romanizationOn = romanization && !wantsRomanization
+        wantsRomanization = romanization
+        // Looked up without it: again, from the cache, now that a widget shows it.
+        if (romanizationOn && lookedUpPlain && !appShowing) {
+            leads = emptyList()
+            lookUpSong()
+        }
+    }
+
     private fun refreshSessions() {
         val app = context ?: return
         runCatching { sessionManager?.getActiveSessions(ComponentName(app, SessionAccessService::class.java)) }
@@ -226,7 +265,7 @@ internal object NowPlayingHolder {
         }
         val newSong = key != songKey
         if (newSong) startSong(key, metadata)
-        val coverChanged = refreshBackdrop(metadata)
+        val coverChanged = refreshCover(metadata)
         val wasPlaying = clock.isPlaying
         report(session, newSong)
         show(full = newSong || coverChanged || wasPlaying != clock.isPlaying)
@@ -239,7 +278,11 @@ internal object NowPlayingHolder {
         val manual = metadata.overrideKey()?.let { app.getSharedPreferences("spotify_id_overrides", 0).getString(it, null) }
         val request = metadata.lookupRequest(manual ?: metadata.sessionSpotifyId())
         this.request = request
-        songLine = listOf(request.title, request.artist).filter(String::isNotBlank).joinToString(" · ")
+        title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE)
+            ?: metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE).orEmpty()
+        artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST)
+            ?: metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST).orEmpty()
+        durationMs = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION).coerceAtLeast(0L)
         if (request.title.isBlank() || request.artist.isBlank()) {
             notice = NO_SONG_INFO
             return
@@ -256,15 +299,19 @@ internal object NowPlayingHolder {
         val request = request?.takeIf { it.title.isNotBlank() && it.artist.isNotBlank() } ?: return
         val key = songKey ?: return
         val lookup = lookup ?: return
+        val romanize = wantsRomanization
         lookupJob?.cancel()
         lookupJob = scope?.launch {
-            val result = runCatching { lookup.lookUp(request) }.getOrElse { error ->
+            val result = runCatching { lookup.lookUp(request, romanize) }.getOrElse { error ->
                 if (error is kotlinx.coroutines.CancellationException) throw error
                 BackgroundLyrics.Result.Failed
             }
             if (songKey != key || leads.isNotEmpty()) return@launch
             when (result) {
-                is BackgroundLyrics.Result.Found -> take(result.lyrics)
+                is BackgroundLyrics.Result.Found -> {
+                    take(result.lyrics)
+                    lookedUpPlain = !romanize
+                }
                 BackgroundLyrics.Result.None -> notice = NO_LYRICS
                 BackgroundLyrics.Result.Failed -> notice = LOOKUP_FAILED
             }
@@ -278,6 +325,8 @@ internal object NowPlayingHolder {
                 lookupJob?.cancel()
                 leads = WidgetLines.leads(lyrics.lines)
                 synced = lyrics.lyricsType != LyricsType.Static
+                provider = lyrics.provider
+                lookedUpPlain = false
                 notice = if (leads.isEmpty()) NO_LYRICS else null
             }
             is LyricsState.Error -> if (leads.isEmpty()) notice = NO_LYRICS
@@ -289,7 +338,11 @@ internal object NowPlayingHolder {
     private fun clearSong(notice: String) {
         lookupJob?.cancel()
         request = null
-        songLine = ""
+        title = ""
+        artist = ""
+        durationMs = 0L
+        provider = null
+        lookedUpPlain = false
         leads = emptyList()
         synced = false
         this.notice = notice
@@ -319,37 +372,40 @@ internal object NowPlayingHolder {
         awaitingReport = false
     }
 
-    /** Rebuilds the backdrop when the player's cover changes; true when it did. */
-    private fun refreshBackdrop(metadata: MediaMetadata): Boolean {
-        val cover = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
+    /** Rebuilds the cover's pictures and colours when the player's cover changes; true when it did. */
+    private fun refreshCover(metadata: MediaMetadata): Boolean {
+        val picture = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
             ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ART)
             ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-        if (cover === art) return false
-        art = cover
-        val built = cover?.let { runCatching { backdropOf(it) }.getOrNull() }
-        backdrop = built?.first
-        accent = built?.second?.higherContrast ?: LyricsWidget.DEFAULT_ACCENT
+        if (picture === art) return false
+        art = picture
+        sample = null
+        cover = null
+        colors = null
+        if (picture != null) runCatching { readCover(picture) }
         return true
     }
 
-    /**
-     * The cover shrunk to a few pixels and drawn back up smoothed, which reads as a heavy blur,
-     * under a veil of its darkest shade ([CoverColors.higherContrast]).
-     */
-    private fun backdropOf(cover: Bitmap): Pair<Bitmap, CoverColors> {
-        val hardware = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && cover.config == Bitmap.Config.HARDWARE
-        val readable = if (hardware) cover.copy(Bitmap.Config.ARGB_8888, false) else cover
-        val small = Bitmap.createScaledBitmap(readable, BACKDROP_SAMPLE_PX, BACKDROP_SAMPLE_PX, true)
-        val pixels = IntArray(BACKDROP_SAMPLE_PX * BACKDROP_SAMPLE_PX)
-        small.getPixels(pixels, 0, BACKDROP_SAMPLE_PX, 0, 0, BACKDROP_SAMPLE_PX, BACKDROP_SAMPLE_PX)
-        val colors = CoverColors.of(pixels)
-        val out = Bitmap.createBitmap(BACKDROP_PX, BACKDROP_PX, Bitmap.Config.ARGB_8888)
-        Canvas(out).apply {
-            drawBitmap(small, null, Rect(0, 0, BACKDROP_PX, BACKDROP_PX), Paint(Paint.FILTER_BITMAP_FLAG))
-            drawColor(ColorUtils.setAlphaComponent(colors.higherContrast, VEIL_ALPHA))
+    /** The cover shrunk to [SAMPLE_PX] (for the colours and the blurred background) and to a rounded thumbnail. */
+    private fun readCover(picture: Bitmap) {
+        val hardware = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && picture.config == Bitmap.Config.HARDWARE
+        val readable = if (hardware) picture.copy(Bitmap.Config.ARGB_8888, false) else picture
+        val small = Bitmap.createScaledBitmap(readable, SAMPLE_PX, SAMPLE_PX, true)
+        val pixels = IntArray(SAMPLE_PX * SAMPLE_PX)
+        small.getPixels(pixels, 0, SAMPLE_PX, 0, 0, SAMPLE_PX, SAMPLE_PX)
+        colors = CoverColors.of(pixels)
+        sample = small
+        val thumb = Bitmap.createBitmap(COVER_PX, COVER_PX, Bitmap.Config.ARGB_8888)
+        Canvas(thumb).apply {
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+            paint.shader = BitmapShader(
+                Bitmap.createScaledBitmap(readable, COVER_PX, COVER_PX, true),
+                Shader.TileMode.CLAMP,
+                Shader.TileMode.CLAMP,
+            )
+            drawRoundRect(RectF(0f, 0f, COVER_PX.toFloat(), COVER_PX.toFloat()), COVER_RADIUS_PX, COVER_RADIUS_PX, paint)
         }
-        if (small !== readable) small.recycle()
-        return out to colors
+        cover = thumb
     }
 
     private fun positionMs(): Long {
@@ -359,25 +415,38 @@ internal object NowPlayingHolder {
         return lyricPositionMs(clock.positionAt(now), outputDelay, songDelay)
     }
 
-    /** Draws the widget if its lines changed ([full]: everything, cover and buttons too), then sleeps until they next do. */
+    /**
+     * Sends the widget its lines if they changed, and the progress bar's step ([full]:
+     * everything, cover and buttons too), then sleeps until the next line or step.
+     */
     private fun show(full: Boolean = false) {
         main.removeCallbacks(tick)
         val app = context ?: return
         val position = positionMs()
-        val lines = notice?.let { WidgetLines(it, "", null) }
+        val lines = notice?.let { WidgetLines.notice(it) }
             ?: if (synced) WidgetLines.at(leads, position) else WidgetLines.unsynced(leads)
-        if (full || lines != shown) {
+        val playing = clock.isPlaying
+        if (full || lines != shown || (wantsProgress && playing)) {
             shown = lines
-            LyricsWidget.show(
-                app,
-                LyricsWidget.Content(songLine, lines, clock.isPlaying, backdrop, accent),
-                full,
+            val content = LyricsWidget.Content(
+                title = title,
+                artist = artist,
+                lines = lines,
+                playing = playing,
+                positionMs = clock.positionAt(SystemClock.elapsedRealtime()),
+                durationMs = durationMs,
+                provider = provider.takeIf { notice == null },
+                cover = cover,
+                sample = sample,
+                colors = colors,
             )
+            last = content
+            LyricsWidget.show(app, content, full)
         }
-        val changesAt = lines.changesAtMs ?: return
-        if (!screenOn || !clock.isPlaying) return
+        if (!screenOn || !playing) return
         val speed = clock.anchor.speed.takeIf { it > 0f } ?: 1f
-        val wait = ((changesAt - position) / speed).toLong().coerceIn(16L, MAX_SLEEP_MS)
-        main.postDelayed(tick, wait)
+        val toLine = lines.changesAtMs?.let { ((it - position) / speed).toLong() }
+        val wait = listOfNotNull(toLine, PROGRESS_STEP_MS.takeIf { wantsProgress }).minOrNull() ?: return
+        main.postDelayed(tick, wait.coerceIn(16L, MAX_SLEEP_MS))
     }
 }

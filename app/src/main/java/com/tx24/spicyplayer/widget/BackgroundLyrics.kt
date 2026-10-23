@@ -39,32 +39,33 @@ internal class BackgroundLyrics(context: Context) {
     /** The backend, with the Spicy Lyrics key it was built for: rebuilt when the key changes. */
     private var backend: Pair<String, NextLyricsBackend>? = null
 
-    suspend fun lookUp(request: LyricsLookupRequest): Result = withContext(Dispatchers.IO) {
+    /** [romanize]: romanize on the device too (only when a widget shows it: it loads a large dictionary for Japanese). */
+    suspend fun lookUp(request: LyricsLookupRequest, romanize: Boolean): Result = withContext(Dispatchers.IO) {
         val folder = LyricsFolder(context, File(context.filesDir, "lyrics-folder-index.json"))
         val store = LocalLyricsStore(File(context.filesDir, "local-lyrics"))
-        savedLyricsFor(request, store, folder)?.let { return@withContext rendered(it, request, splitBackgroundVocals = true) }
+        savedLyricsFor(request, store, folder)?.let { return@withContext rendered(it, request, splitBackgroundVocals = true, romanize = romanize) }
         val backend = backend()
         val known = ConcurrentHashMap<String, ProviderResult>()
         context.getSharedPreferences("source_overrides", 0)
             .getString(LocalLyricsStore.keyOf(request.title, request.artist), null)
             ?.let { chosen ->
                 val found = backend.resolveFrom(request, chosen, known) as? RemoteLyricsResolution.Found
-                if (found?.selection?.source?.id == chosen) return@withContext rendered(found.selection, request, backend.splitBackgroundVocals)
+                if (found?.selection?.source?.id == chosen) return@withContext rendered(found.selection, request, backend.splitBackgroundVocals, romanize)
             }
         backend.cachedResolution(request)?.takeIf { it.settled }?.let { cached ->
             val selection = (cached.resolution as? RemoteLyricsResolution.Found)?.selection ?: return@withContext Result.None
-            return@withContext rendered(selection, request, backend.splitBackgroundVocals)
+            return@withContext rendered(selection, request, backend.splitBackgroundVocals, romanize)
         }
         delay(gate.waitBeforeNetwork(SystemClock.elapsedRealtime()))
         val resolution = backend.resolve(request, known)
         backend.store(request, resolution)
         val selection = (resolution as? RemoteLyricsResolution.Found)?.selection
             ?: return@withContext if (resolution is RemoteLyricsResolution.NotFound) Result.None else Result.Failed
-        rendered(selection, request, backend.splitBackgroundVocals)
+        rendered(selection, request, backend.splitBackgroundVocals, romanize)
     }
 
-    private fun rendered(selection: RemoteLyricsSelection, request: LyricsLookupRequest, splitBackgroundVocals: Boolean): Result =
-        runCatching<Result> { Result.Found(RemoteLyricsAdapter.render(selection, request.durationSeconds * 1_000L, splitBackgroundVocals, romanize = false)) }
+    private fun rendered(selection: RemoteLyricsSelection, request: LyricsLookupRequest, splitBackgroundVocals: Boolean, romanize: Boolean): Result =
+        runCatching<Result> { Result.Found(RemoteLyricsAdapter.render(selection, request.durationSeconds * 1_000L, splitBackgroundVocals, romanize)) }
             .getOrElse { Result.Failed }
 
     private fun backend(): NextLyricsBackend {

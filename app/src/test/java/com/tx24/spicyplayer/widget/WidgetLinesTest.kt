@@ -4,6 +4,7 @@ import com.tx24.spicyplayer.lyrics.TimedLine
 import com.tx24.spicyplayer.lyrics.TimedWord
 import com.tx24.spicyplayer.lyrics.spicy.models.LineRole
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class WidgetLinesTest {
@@ -12,41 +13,80 @@ class WidgetLinesTest {
 
     private val leads = WidgetLines.leads(
         listOf(
-            line(1_000, 3_000, "Hello ", "world "),
+            line(1_000, 3_000, "Hello", "world"),
             line(2_000, 3_000, "(echo)", role = LineRole.BACKGROUND),
             line(3_000, 5_000, "Second"),
-            line(12_000, 14_000, "After  ", " the break"),
+            line(5_000, 6_000, "Third"),
+            line(12_000, 14_000, "After", "the", "break"),
         ),
     )
 
+    private fun WidgetLines.texts() = Triple(before.map { it.text }, current.text, after.map { it.text })
+
     @Test
-    fun `background vocals are left out and words keep their own spacing`() {
-        assertEquals(listOf("Hello world", "Second", "After the break"), leads.map { it.text })
+    fun `background vocals are left out and words are spaced`() {
+        assertEquals(listOf("Hello world", "Second", "Third", "After the break"), leads.map { it.text })
     }
 
     @Test
-    fun `before the first line the break shows with the first line next`() {
-        assertEquals(WidgetLines(WidgetLines.BREAK, "Hello world", 1_000), WidgetLines.at(leads, 0))
+    fun `syllables of one word stay together`() {
+        val words = listOf(
+            TimedWord("What's", 0, 300, attached = false),
+            TimedWord("your", 300, 600, attached = false),
+            TimedWord("al", 600, 800, attached = false),
+            TimedWord("i", 800, 900, attached = true),
+            TimedWord("bi?", 900, 1_200, attached = true),
+        )
+        assertEquals("What's your alibi?", WidgetLines.leads(listOf(TimedLine(0, 1_200, words))).single().text)
     }
 
     @Test
-    fun `a line shows until the next one starts`() {
-        assertEquals(WidgetLines("Hello world", "Second", 3_000), WidgetLines.at(leads, 2_500))
+    fun `romanization and translation come with their line`() {
+        val words = listOf(
+            TimedWord("毎", 0, 250, false, romanized = "mai"),
+            TimedWord("日", 250, 500, true, romanized = "nichi"),
+            TimedWord("同", 500, 750, true, romanized = " ona"),
+            TimedWord("じ", 750, 1_000, true, romanized = "ji"),
+        )
+        val lead = WidgetLines.leads(listOf(TimedLine(0, 1_000, words, translation = " Every  day "))).single()
+        assertEquals("毎日同じ", lead.text)
+        assertEquals("mainichi onaji", lead.romanized)
+        assertEquals("Every day", lead.translation)
+        assertNull(leads.first().romanized)
+    }
+
+    @Test
+    fun `before the first line the break shows with the first lines after it`() {
+        val shown = WidgetLines.at(leads, 0)
+        assertEquals(Triple(emptyList<String>(), WidgetLines.BREAK, listOf("Hello world", "Second")), shown.texts())
+        assertEquals(1_000L, shown.changesAtMs)
+    }
+
+    @Test
+    fun `a line shows with the lines around it until the next one starts`() {
+        val shown = WidgetLines.at(leads, 3_500)
+        assertEquals(Triple(listOf("Hello world"), "Second", listOf("Third", "After the break")), shown.texts())
+        assertEquals(5_000L, shown.changesAtMs)
     }
 
     @Test
     fun `a long gap shows the break once the line ends`() {
-        assertEquals(WidgetLines("Second", "After the break", 5_000), WidgetLines.at(leads, 4_000))
-        assertEquals(WidgetLines(WidgetLines.BREAK, "After the break", 12_000), WidgetLines.at(leads, 6_000))
+        assertEquals(6_000L, WidgetLines.at(leads, 5_500).changesAtMs)
+        val shown = WidgetLines.at(leads, 7_000)
+        assertEquals(Triple(listOf("Second", "Third"), WidgetLines.BREAK, listOf("After the break")), shown.texts())
+        assertEquals(12_000L, shown.changesAtMs)
     }
 
     @Test
     fun `the last line stays with nothing after it`() {
-        assertEquals(WidgetLines("After the break", "", null), WidgetLines.at(leads, 20_000))
+        val shown = WidgetLines.at(leads, 20_000)
+        assertEquals(Triple(listOf("Second", "Third"), "After the break", emptyList<String>()), shown.texts())
+        assertNull(shown.changesAtMs)
     }
 
     @Test
-    fun `unsynced lyrics show their first two lines`() {
-        assertEquals(WidgetLines("Hello world", "Second", null), WidgetLines.unsynced(leads))
+    fun `unsynced lyrics start at the first line`() {
+        val shown = WidgetLines.unsynced(leads)
+        assertEquals(Triple(emptyList<String>(), "Hello world", listOf("Second", "Third", "After the break")), shown.texts())
     }
 }
