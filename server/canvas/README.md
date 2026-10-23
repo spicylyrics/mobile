@@ -20,7 +20,7 @@ npx wrangler kv namespace create CANVAS   # only on a new account: put the id in
 npx wrangler deploy
 ```
 
-`wrangler deploy` prints the URL (`https://spicy-lyrics-canvas.<account>.workers.dev`). The app calls `<that URL>/api/canvas`. Set it as the `SPOTIFY_CANVAS_URL` repository variable (Settings → Secrets and variables → Actions → Variables) so release builds use it, and in the root `.env` for local builds. If it's empty, the app asks spotify-canva.vercel.app directly, as before.
+It's served at `https://canvas.tx24.dev` (the `routes` entry in `wrangler.toml`; the domain's DNS must be on the same Cloudflare account), and `workers_dev = false` keeps the `workers.dev` URL off. The app calls `https://canvas.tx24.dev/api/canvas`. Set it as the `SPOTIFY_CANVAS_URL` repository variable (Settings → Secrets and variables → Actions → Variables) so release builds use it, and in the root `.env` for local builds. If it's empty, the app asks spotify-canva.vercel.app directly, as before.
 
 The free plan covers this: 100,000 requests a day, plus 100,000 KV reads and 1,000 KV writes a day. KV is written only for newly found canvases. If the writes run out, the Worker keeps answering and only stops remembering new ones until the next day. A rate-limiting rule on the route (Security → WAF → Rate limiting rules, one is free) keeps scrapers from eating the quota.
 

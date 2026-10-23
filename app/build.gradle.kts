@@ -42,7 +42,7 @@ android {
         // it fronts. Blank asks only the public service.
         val canvasUrl = localEnv("SPOTIFY_CANVAS_URL")
         require(canvasUrl.isBlank() || Regex("https://[A-Za-z0-9./_-]+").matches(canvasUrl)) {
-            "SPOTIFY_CANVAS_URL must be an https:// URL, such as https://spicy-lyrics-canvas.example.workers.dev/api/canvas"
+            "SPOTIFY_CANVAS_URL must be an https:// URL, such as https://canvas.tx24.dev/api/canvas"
         }
         buildConfigField("String", "SPOTIFY_CANVAS_URL", "\"$canvasUrl\"")
     }
