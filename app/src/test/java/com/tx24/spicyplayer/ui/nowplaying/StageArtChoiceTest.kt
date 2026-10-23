@@ -79,7 +79,8 @@ class StageArtChoiceTest {
     @Test
     fun `lookups run only for what's picked`() {
         assertTrue(wantsCanvas(setOf(StageArt.Canvas), false))
-        assertFalse(wantsCanvas(StageArt.DEFAULT, false))
+        assertTrue(wantsCanvas(StageArt.DEFAULT, false))
+        assertFalse(wantsCanvas(StageArt.COVER_STAGE_ON, false))
         assertTrue(wantsAnimated(setOf(StageArt.AnimatedCover), true, false))
         assertFalse(wantsAnimated(setOf(StageArt.Canvas, StageArt.CoverArt), true, false))
         assertFalse(wantsAnimated(setOf(StageArt.AnimatedCover), false, false))
