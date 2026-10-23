@@ -1,0 +1,13 @@
+name = "spicy-lyrics-canvas"
+main = "src/index.ts"
+compatibility_date = "2025-09-01"
+
+# Remembers found canvases globally so they keep working while the lookup services are down.
+# Create it with `npx wrangler kv namespace create CANVAS` and paste the id here. Without it the
+# Worker still runs, with only the per-data-centre cache.
+# [[kv_namespaces]]
+# binding = "CANVAS"
+# id = "<id>"
+
+# [vars]
+# UPSTREAMS = "https://spotify-canva.vercel.app/api/canvas"
