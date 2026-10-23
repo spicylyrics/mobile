@@ -38,6 +38,8 @@ export const KV_TTL_S = 30 * 24 * 60 * 60;
 const BUDGET_MS = 5000;
 const UPSTREAM_TIMEOUT_MS = 4000;
 const RETRY_DELAY_MS = 600;
+/** Names this Worker to the upstreams, so one can allow it past bot protection. */
+const USER_AGENT = "SpicyLyricsMobile-CanvasWorker/1 (+https://canvas.tx24.dev)";
 
 export interface Canvas {
   canvasUrl: string;
@@ -99,11 +101,16 @@ async function askOne(base: string, trackId: string, deps: Deps, timeoutMs: numb
   if (canvaslist) target.pathname = `${target.pathname.replace(/\/+$/, "")}/${trackId}`;
   else target.searchParams.set("trackId", trackId);
   const response = await deps.fetch(target.toString(), {
-    headers: { Accept: "application/json" },
+    headers: { Accept: "application/json", "User-Agent": USER_AGENT },
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (response.status === 400) return "invalid";
-  if (!response.ok) return null;
+  if (!response.ok) {
+    // Shows in `wrangler tail`: which upstream refused, how, and with what page.
+    const body = (await response.text().catch(() => "")).slice(0, 300);
+    console.log(`upstream ${target.host} answered ${response.status} ${response.headers.get("cf-mitigated") ?? ""} ${body}`);
+    return null;
+  }
   const body = await response.json();
   return canvaslist ? parseCanvaslist(body, trackId) : parse(body, trackId);
 }
