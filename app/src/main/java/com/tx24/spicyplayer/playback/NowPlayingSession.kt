@@ -19,19 +19,40 @@ import java.security.MessageDigest
  * song is called for lookup, and which of the user's own lyrics come before the sources.
  */
 
+/** Neither playing nor stopped: the player is loading, connecting or changing songs. */
+internal val IN_BETWEEN_STATES = setOf(
+    PlaybackState.STATE_BUFFERING,
+    PlaybackState.STATE_CONNECTING,
+    PlaybackState.STATE_SKIPPING_TO_NEXT,
+    PlaybackState.STATE_SKIPPING_TO_PREVIOUS,
+    PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM,
+)
+
 /**
- * The session to follow among [sessions]: a playing local player over a playing remote mirror,
- * else the one followed now ([currentToken]), else a local player, else any.
+ * The session to follow among [sessions]: the one followed now ([currentToken]) while [stickiness]
+ * keeps it, else a playing local player over a playing remote mirror, else the one followed now,
+ * else a local player, else any. The caller resets [stickiness] when the pick changes.
  */
-internal fun bestSession(sessions: List<MediaController>, currentToken: MediaSession.Token?): MediaController? =
-    sessions.firstOrNull {
+internal fun bestSession(
+    sessions: List<MediaController>,
+    currentToken: MediaSession.Token?,
+    stickiness: SessionStickiness,
+    nowMs: Long,
+): MediaController? {
+    val current = sessions.firstOrNull { it.sessionToken == currentToken }
+    val kept = current?.takeIf {
+        val state = it.playbackState?.state
+        stickiness.keep(state == PlaybackState.STATE_PLAYING || state in IN_BETWEEN_STATES, nowMs)
+    }
+    return kept ?: sessions.firstOrNull {
         it.playbackState?.state == PlaybackState.STATE_PLAYING &&
             it.playbackInfo?.playbackType == MediaController.PlaybackInfo.PLAYBACK_TYPE_LOCAL
     } ?: sessions.firstOrNull { it.playbackState?.state == PlaybackState.STATE_PLAYING }
-        ?: sessions.firstOrNull { it.sessionToken == currentToken }
+        ?: current
         ?: sessions.firstOrNull {
             it.playbackInfo?.playbackType == MediaController.PlaybackInfo.PLAYBACK_TYPE_LOCAL
         } ?: sessions.firstOrNull()
+}
 
 /** What lyrics are keyed on: title + artist only, because players fill metadata in across several updates. */
 internal fun MediaMetadata?.lyricsKey(): String? = this?.let {

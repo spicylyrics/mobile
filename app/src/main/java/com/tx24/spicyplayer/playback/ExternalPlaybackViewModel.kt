@@ -136,6 +136,8 @@ private const val LOADING_PAUSE_GRACE_MS = 3_000L
 private const val TRACK_REPORT_FRESH_MS = 1_000L
 /** A buffering report this close to the song's end is the player loading the next one, not a stall. */
 private const val END_BUFFERING_MS = 2_000L
+/** How long the followed session may stay stopped before another playing one takes over ([SessionStickiness]). */
+private const val SESSION_SWITCH_GRACE_MS = 2_000L
 /** Lyrics saved in the Lyrics Manager, and lyrics uploaded for one song "just once". */
 internal val LOCAL_SOURCE = LyricsSourceDescriptor("local", "Local Lyrics DB", 0, setOf(LyricsCapability.WORD_SYNC))
 internal val UPLOADED_SOURCE = LyricsSourceDescriptor("uploaded", "Uploaded TTML", 0, setOf(LyricsCapability.WORD_SYNC))
@@ -144,13 +146,6 @@ internal val FOLDER_SOURCE = LyricsSourceDescriptor("folder", "Lyrics folder", 0
 private const val FOLDER_RESCAN_MS = 30_000L
 /** How wide a saved song's cover is kept for the Lyrics Manager's list. */
 private const val COVER_THUMB_PX = 128
-private val IN_BETWEEN_STATES = setOf(
-    PlaybackState.STATE_BUFFERING,
-    PlaybackState.STATE_CONNECTING,
-    PlaybackState.STATE_SKIPPING_TO_NEXT,
-    PlaybackState.STATE_SKIPPING_TO_PREVIOUS,
-    PlaybackState.STATE_SKIPPING_TO_QUEUE_ITEM,
-)
 
 /**
  * Something Spotify Free doesn't allow, noticed when Spotify leaves a command out of its session
@@ -683,6 +678,9 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     private var skipCheckJob: Job? = null
     /** When the track last changed, for a pause some players report while they load the next one. */
     private var trackChangedAt = Long.MIN_VALUE / 2
+    private val sessionStickiness = SessionStickiness(SESSION_SWITCH_GRACE_MS)
+    /** Looks at the sessions again once the followed one has been stopped for its grace. */
+    private val sessionRecheck = Runnable { refreshSessionSelection() }
     /** Resync on a player that can't seek: the next fresh report re-anchors the clock outright. */
     private var resyncOnNextReport = false
     /** The player that last ignored a seek it lists (Spotify Free): its resyncs go by its reports. */
@@ -1816,11 +1814,18 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
                 session.registerCallback(callback, mainHandler)
             }
         }
-        val best = bestSession(sessions, controller?.sessionToken)
+        val now = SystemClock.elapsedRealtime()
+        val best = bestSession(sessions, controller?.sessionToken, sessionStickiness, now)
+        mainHandler.removeCallbacks(sessionRecheck)
         if (best?.sessionToken == controller?.sessionToken) {
+            // Kept through a stop: look again once its grace runs out.
+            sessionStickiness.remainingMs(now)?.takeIf { it > 0 }?.let { mainHandler.postDelayed(sessionRecheck, it + 50L) }
             updateFromController()
             return
         }
+        val remote = best?.playbackInfo?.playbackType == MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE
+        SyncTrace.add(now, "session: ${controller?.packageName ?: "none"} -> ${best?.packageName ?: "none"}" + if (remote) " (remote)" else "")
+        sessionStickiness.reset()
         detachController()
         controller = best
         refreshOutputRoute()
@@ -2329,6 +2334,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
 
     override fun onCleared() {
         runCatching { sessionManager.removeOnActiveSessionsChangedListener(activeSessionsListener) }
+        mainHandler.removeCallbacks(sessionRecheck)
         stopObservingSessions()
         detachController()
     }

@@ -27,6 +27,7 @@ import com.tx24.spicyplayer.network.data.LyricsLookupRequest
 import com.tx24.spicyplayer.playback.AudioOutputProfiles
 import com.tx24.spicyplayer.playback.LyricClock
 import com.tx24.spicyplayer.playback.SessionAccessService
+import com.tx24.spicyplayer.playback.SessionStickiness
 import com.tx24.spicyplayer.playback.SongDelays
 import com.tx24.spicyplayer.playback.bestSession
 import com.tx24.spicyplayer.playback.lookupRequest
@@ -64,6 +65,8 @@ internal object NowPlayingHolder {
     private const val BACKDROP_PX = 96
     /** How much of the cover's darkest shade lies over the blurred cover, so white text reads. */
     private const val VEIL_ALPHA = 160
+    /** How long the followed session may stay stopped before another playing one takes over, as on the lyrics screen. */
+    private const val SESSION_SWITCH_GRACE_MS = 2_000L
 
     private val main = Handler(Looper.getMainLooper())
     private var context: Context? = null
@@ -73,6 +76,9 @@ internal object NowPlayingHolder {
     private var songDelays: SongDelays? = null
     private var sessionManager: MediaSessionManager? = null
     private var controller: MediaController? = null
+    private val stickiness = SessionStickiness(SESSION_SWITCH_GRACE_MS)
+    /** Looks at the sessions again once the followed one has been stopped for its grace. */
+    private val sessionRecheck = Runnable { refreshSessions() }
     private val clock = LyricClock(SystemClock.elapsedRealtime())
     /** A new song whose first report hasn't come yet: the clock takes it outright. */
     private var awaitingReport = false
@@ -99,7 +105,7 @@ internal object NowPlayingHolder {
 
     private val controllerCallback = object : MediaController.Callback() {
         override fun onMetadataChanged(metadata: MediaMetadata?) = update()
-        override fun onPlaybackStateChanged(state: PlaybackState?) = update()
+        override fun onPlaybackStateChanged(state: PlaybackState?) = refreshSessions()
         override fun onSessionDestroyed() = refreshSessions()
     }
 
@@ -150,6 +156,8 @@ internal object NowPlayingHolder {
         runCatching { app.unregisterReceiver(screenReceiver) }
         runCatching { sessionManager?.removeOnActiveSessionsChangedListener(sessionsListener) }
         controller?.unregisterCallback(controllerCallback)
+        main.removeCallbacks(sessionRecheck)
+        stickiness.reset()
         scope?.cancel()
         scope = null
         sessionManager = null
@@ -191,8 +199,13 @@ internal object NowPlayingHolder {
     }
 
     private fun follow(sessions: List<MediaController>) {
-        val best = bestSession(sessions, controller?.sessionToken)
-        if (best?.sessionToken != controller?.sessionToken) {
+        val now = SystemClock.elapsedRealtime()
+        val best = bestSession(sessions, controller?.sessionToken, stickiness, now)
+        main.removeCallbacks(sessionRecheck)
+        if (best?.sessionToken == controller?.sessionToken) {
+            stickiness.remainingMs(now)?.takeIf { it > 0 }?.let { main.postDelayed(sessionRecheck, it + 50L) }
+        } else {
+            stickiness.reset()
             controller?.unregisterCallback(controllerCallback)
             controller = best
             best?.registerCallback(controllerCallback, main)
