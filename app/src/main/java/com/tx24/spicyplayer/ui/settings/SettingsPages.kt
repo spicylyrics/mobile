@@ -1030,9 +1030,23 @@ internal fun DeviceContent(settings: AppSettings) {
         label = "Ambient mode",
         checked = settings.ambientMode,
         onCheckedChange = { settings.ambientMode = it },
-        description = "Untouched for 30 seconds while music plays, dim to the lyrics alone on black.",
+        description = "Left untouched while music plays, dim to the lyrics and the song on black.",
+        searchDescription = "Untouched for 30 seconds while music plays, dim to the lyrics alone on black.",
         icon = Icons.Rounded.DarkMode,
     )
+    SettingRow(
+        label = "Dim After",
+        description = "How long ambient mode waits after the last touch.",
+        icon = Icons.Rounded.Timer,
+        enabled = settings.ambientMode,
+    ) {
+        SpicySelect(
+            value = settings.ambientDelay.name,
+            options = AmbientDelay.entries.map { it.name },
+            labels = AmbientDelay.entries.map { it.label },
+            onChange = { settings.ambientDelay = AmbientDelay.valueOf(it) },
+        )
+    }
     SubPageCard {
         val supported = PictureInPicture.supported(LocalContext.current)
         SubPageRow(

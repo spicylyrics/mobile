@@ -12,6 +12,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import com.tx24.spicyplayer.lyrics.NoticeKind
 import com.tx24.spicyplayer.ui.spotifysearch.SpotifySearchModal
 import androidx.compose.foundation.background
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.shape.CircleShape
@@ -847,14 +849,14 @@ private fun LyricsApp(
     // lyrics on it. Any touch or key brings it back (and does nothing else).
     var ambient by remember { mutableStateOf(false) }
     val ambientAllowed = settings.ambientMode && state.isPlaying && !inPip && !overlayOpen && !headerExpanded
-    LaunchedEffect(ambientAllowed) {
+    LaunchedEffect(ambientAllowed, settings.ambientDelay) {
         if (!ambientAllowed) {
             ambient = false
             return@LaunchedEffect
         }
         touches.collectLatest {
             ambient = false
-            delay(AMBIENT_AFTER_MS)
+            delay(settings.ambientDelay.millis)
             ambient = true
         }
     }
@@ -1199,21 +1201,31 @@ private fun LyricsApp(
                         )
                     }
                     if (ambientDrawn) Box(Modifier.fillMaxSize().graphicsLayer { alpha = ambientFade.value }.background(Color.Black))
+                    // Without the header (or in ambient mode, where it has faded), the lyrics start
+                    // just under the camera instead; in landscape they run the page's full height.
+                    val lyricsFullPage = hideHeader || ambient
+                    val lyricsTopPx = when {
+                        landscape -> topInsetPx
+                        lyricsFullPage -> headerMetrics.barTopPx
+                        else -> headerMetrics.lyricsTopPx
+                    }
+                    // The box moves at once; drawn where it was, it glides to its new top.
+                    val shownLyricsTopPx = animateFloatAsState(
+                        lyricsTopPx,
+                        tween(if (ambient) AMBIENT_IN_MS else AMBIENT_OUT_MS),
+                        label = "lyricsTop",
+                    )
                     Column(
                         Modifier
                             .padding(belowTop)
                             .inLyricsBox()
                             .fillMaxSize()
                             // Expanding, the lyrics fade out under the cover.
-                            .graphicsLayer { alpha = (1f - expansion) * swapFade() },
+                            .graphicsLayer {
+                                alpha = (1f - expansion) * swapFade()
+                                translationY = shownLyricsTopPx.value - lyricsTopPx
+                            },
                     ) {
-                        // Without the header, the lyrics start just under the camera instead; in
-                        // landscape they run the page's full height.
-                        val lyricsTopPx = when {
-                            landscape -> topInsetPx
-                            hideHeader -> headerMetrics.barTopPx
-                            else -> headerMetrics.lyricsTopPx
-                        }
                         Spacer(Modifier.height(with(LocalDensity.current) { lyricsTopPx.toDp() }))
                         // Landscape lyrics scroll like the full page: centred, 30px high against lyrics
                         // at their size here, on the whole page (the low bar comes and goes over it).
@@ -1237,7 +1249,7 @@ private fun LyricsApp(
                             // Compact scrolling keeps the active line near the top; without the
                             // header, full-page scrolling centres it, 30px high (`GetScrollType`), in the
                             // space above the controls (whether or not they are showing, so it holds still).
-                            activeLineTopPx = headerMetrics.activeLineTopPx.takeUnless { hideHeader || landscape },
+                            activeLineTopPx = headerMetrics.activeLineTopPx.takeUnless { lyricsFullPage || landscape },
                             centredLiftPx = centredLiftPx,
                             noticeBottomPx = { noticeBottomPx },
                             viewState = lyricsViewState,
@@ -1251,6 +1263,19 @@ private fun LyricsApp(
                             modifier = Modifier.weight(1f),
                         )
                     }
+                    // Ambient mode: the lyrics sink into the black under the song docked at the bottom.
+                    if (ambientDrawn && !landscape) Box(
+                        Modifier.fillMaxSize().graphicsLayer { alpha = ambientFade.value }.drawBehind {
+                            drawRect(
+                                Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    0.6f to Color.Transparent,
+                                    0.82f to Color.Black,
+                                    1f to Color.Black,
+                                ),
+                            )
+                        },
+                    )
                 // Hidden lyrics take no touches (no seeking through the cover view).
                 if (headerExpanded) {
                     Box(Modifier.fillMaxSize().pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent().changes.forEach { it.consume() } } })
@@ -1390,6 +1415,21 @@ private fun LyricsApp(
                         alpha = immersive,
                     )
                 }
+                // Ambient mode: the song and its timeline docked at the bottom, as over the Canvas.
+                if (!landscape && ambientDrawn) {
+                    val gutter = controlsContentStartPx(pageWidth, density)
+                    PortraitCanvasDock(
+                        info = stageInfo,
+                        sizes = expandedHeader,
+                        controls = playbackControls,
+                        controlsShown = { 0f },
+                        controlsHeightPx = controlsHeightPx,
+                        widthPx = pageWidth - gutter * 2f,
+                        gutterPx = gutter,
+                        bottomPx = gutter,
+                        alpha = { ambientFade.value },
+                    )
+                }
                 // The header sits in what the glass and the shade blur, so the shade blurs it
                 // rather than painting the blurred page over it.
                 }
@@ -1441,7 +1481,9 @@ private fun LyricsApp(
                         .graphicsLayer {
                             translationY = -pinnedGapPx
                             val underControls = if (bottomBar) controlsShown * barFade() else 0f
-                            alpha = (1f - expansion) * swapFade() * (1f - underControls)
+                            // In portrait ambient mode the docked song has the bottom.
+                            val underDock = if (landscape) 0f else ambientFade.value
+                            alpha = (1f - expansion) * swapFade() * (1f - underControls) * (1f - underDock)
                         },
                 )
                 CompositionLocalProvider(LocalBackdrop provides backdrop?.takeUnless { lowPerformance }) {
@@ -1749,7 +1791,6 @@ private const val STAGE_SWAP_IN_MS = 420
 private const val STAGE_SWAP_DRIFT = 0.025f
 private val StageEaseOut = CubicBezierEasing(0.23f, 1f, 0.32f, 1f)
 private const val CONTROLS_SHOW_MS = 350
-private const val AMBIENT_AFTER_MS = 30_000L
 private const val AMBIENT_IN_MS = 1_500
 private const val AMBIENT_OUT_MS = 300
 /** Ambient mode's screen brightness, as a window override (0-1). */
