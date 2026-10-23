@@ -11,8 +11,8 @@ enum class StageArt(val label: String) {
     CoverArt("Cover art");
 
     companion object {
-        /** Unpicked: the Canvas, else the animated cover, else the still one. */
-        val DEFAULT: Set<StageArt> = setOf(Canvas, AnimatedCover, CoverArt)
+        /** Unpicked: the Canvas, else the animated cover; a song with neither gets no stage. */
+        val DEFAULT: Set<StageArt> = setOf(Canvas, AnimatedCover)
 
         /** What the old `coverStage` switch meant when on: the animated cover, else the still one. */
         val COVER_STAGE_ON: Set<StageArt> = setOf(AnimatedCover, CoverArt)
