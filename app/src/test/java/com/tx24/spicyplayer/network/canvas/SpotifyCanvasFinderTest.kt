@@ -179,7 +179,8 @@ class SpotifyCanvasFinderTest {
         assertEquals(mp4, runBlocking { finder.find(id) })
         assertEquals(listOf("https://own.example/api/canvas"), asked)
         ownFails = true
-        assertEquals(mp4, runBlocking { finder.find("0VjIjW4GlUZAMYd2vXMi3b") })
+        runBlocking { finder.forget(id) }
+        assertEquals(mp4, runBlocking { finder.find(id) })
         assertEquals(listOf("https://own.example/api/canvas", "https://own.example/api/canvas", SpotifyCanvasFinder.FALLBACK_URL), asked)
     }
 
