@@ -53,6 +53,7 @@ import android.os.Bundle
 import android.util.Rational
 import android.os.SystemClock
 import android.view.Window
+import android.view.WindowManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
@@ -842,6 +843,36 @@ private fun LyricsApp(
             controlsVisible = false
         }
     }
+    // Ambient mode: left untouched while the music plays, the page goes dark and dim with only the
+    // lyrics on it. Any touch or key brings it back (and does nothing else).
+    var ambient by remember { mutableStateOf(false) }
+    val ambientAllowed = settings.ambientMode && state.isPlaying && !inPip && !overlayOpen && !headerExpanded
+    LaunchedEffect(ambientAllowed) {
+        if (!ambientAllowed) {
+            ambient = false
+            return@LaunchedEffect
+        }
+        touches.collectLatest {
+            ambient = false
+            delay(AMBIENT_AFTER_MS)
+            ambient = true
+        }
+    }
+    val ambientFade = animateFloatAsState(if (ambient) 1f else 0f, tween(if (ambient) AMBIENT_IN_MS else AMBIENT_OUT_MS), label = "ambient")
+    val ambientDrawn by remember { derivedStateOf { ambientFade.value > 0f } }
+    // Never brighter than the phone already is.
+    DisposableEffect(activity, ambient) {
+        val window = activity?.window
+        if (ambient && window != null) {
+            val system = runCatching {
+                Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS) / 255f
+            }.getOrDefault(1f)
+            window.attributes = window.attributes.apply { screenBrightness = minOf(system, AMBIENT_BRIGHTNESS) }
+        }
+        onDispose {
+            window?.let { it.attributes = it.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE } }
+        }
+    }
 
     LaunchedEffect(Unit) { viewModel.refresh() }
     val backgroundType = settings.backgroundType
@@ -1120,7 +1151,7 @@ private fun LyricsApp(
                         hasSession = state.sourcePackage != null,
                         modifier = Modifier.fillMaxSize(),
                         type = backgroundType,
-                        animate = !lowPerformance && !settings.staticBackground && ambientShown < 1f,
+                        animate = !lowPerformance && !settings.staticBackground && ambientShown < 1f && !ambient,
                         blurDp = settings.backgroundBlurFor(backgroundType),
                         artistHeaderUrl = state.artistHeaderUrl,
                         artistHeaderPending = state.artistHeaderPending,
@@ -1167,6 +1198,7 @@ private fun LyricsApp(
                             modifier = Modifier.fillMaxSize().graphicsLayer { alpha = immersive() },
                         )
                     }
+                    if (ambientDrawn) Box(Modifier.fillMaxSize().graphicsLayer { alpha = ambientFade.value }.background(Color.Black))
                     Column(
                         Modifier
                             .padding(belowTop)
@@ -1283,7 +1315,7 @@ private fun LyricsApp(
                     info = NowPlayingInfo(state.title, state.artist, state.album, state.artwork, state.artworkUri, state.trackDirection, hasSession = state.sourcePackage != null),
                     releaseYear = ReleaseYear(state.releaseYear, state.releaseYearPending, settings.releaseYearPosition),
                     metrics = headerMetrics,
-                    modifier = Modifier.padding(belowTop),
+                    modifier = Modifier.padding(belowTop).graphicsLayer { alpha = 1f - ambientFade.value },
                     expansion = { expansion },
                     expanded = expandedHeader,
                     isPlaying = state.isPlaying,
@@ -1384,7 +1416,7 @@ private fun LyricsApp(
                         expanded = headerExpanded,
                         onToggleExpanded = expandButtonTapped,
                         interactive = controlsVisible && !controlsOnCover,
-                        shown = { controlsShown * barFade() },
+                        shown = { controlsShown * barFade() * (1f - ambientFade.value) },
                         // No lyrics behind them when expanded, so no shade over the cover.
                         shade = { 1f - expansion.coerceIn(0f, 1f) },
                         onControlsHeight = { controlsHeightPx = it },
@@ -1425,6 +1457,20 @@ private fun LyricsApp(
                         },
                         bottomPx = { pinnedGapPx + maxOf(controlsBottomPx, if (pinnedHeightPx > 0) pinnedHeightPx + pinnedClearPx else 0f) },
                         modifier = Modifier.padding(belowTop).inLyricsBox(),
+                    )
+                }
+                // The touch that wakes ambient mode only wakes it: no seek, no button. It wakes it
+                // here too, since the page's own watcher lets some touches by.
+                if (ambient) {
+                    Box(
+                        Modifier.fillMaxSize().pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    awaitPointerEvent().changes.forEach { it.consume() }
+                                    touches.value = SystemClock.uptimeMillis()
+                                }
+                            }
+                        },
                     )
                 }
             }
@@ -1703,6 +1749,11 @@ private const val STAGE_SWAP_IN_MS = 420
 private const val STAGE_SWAP_DRIFT = 0.025f
 private val StageEaseOut = CubicBezierEasing(0.23f, 1f, 0.32f, 1f)
 private const val CONTROLS_SHOW_MS = 350
+private const val AMBIENT_AFTER_MS = 30_000L
+private const val AMBIENT_IN_MS = 1_500
+private const val AMBIENT_OUT_MS = 300
+/** Ambient mode's screen brightness, as a window override (0-1). */
+private const val AMBIENT_BRIGHTNESS = 0.1f
 private const val CONTROLS_HIDE_MS = 700
 private val CssEaseOut = CubicBezierEasing(0f, 0f, 0.58f, 1f)
 

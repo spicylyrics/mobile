@@ -161,6 +161,8 @@ class AppSettings(private val prefs: SharedPreferences) {
     var keepScreenOn by boolean("keepScreenOn", true)
     /** The lyrics screen shows over the lock screen; anything opened over the lyrics asks to unlock first. */
     var showOverLockScreen by boolean("showOverLockScreen", false)
+    /** Left untouched while the music plays, the lyrics screen dims to the lyrics alone on black. */
+    var ambientMode by boolean("ambientMode", false)
     /** Which of the phone's bars stay on screen. */
     var systemBars by enum("systemBars", SystemBarsMode.HideBoth)
     /** Leaving the app with a song playing shrinks the lyrics into a small floating window. */

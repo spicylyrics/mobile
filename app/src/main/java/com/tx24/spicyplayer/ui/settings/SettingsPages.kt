@@ -128,6 +128,7 @@ import androidx.compose.material.icons.rounded.AspectRatio
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Lyrics
 import java.util.Locale
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.ScreenLockPortrait
 import androidx.compose.material.icons.rounded.StayCurrentPortrait
 import androidx.compose.material.icons.rounded.Fullscreen
@@ -1024,6 +1025,13 @@ internal fun DeviceContent(settings: AppSettings) {
         onCheckedChange = { settings.showOverLockScreen = it },
         description = "The power button brings the lyrics back without unlocking. Settings still ask to unlock.",
         icon = Icons.Rounded.ScreenLockPortrait,
+    )
+    ToggleRow(
+        label = "Ambient mode",
+        checked = settings.ambientMode,
+        onCheckedChange = { settings.ambientMode = it },
+        description = "Untouched for 30 seconds while music plays, dim to the lyrics alone on black.",
+        icon = Icons.Rounded.DarkMode,
     )
     SubPageCard {
         val supported = PictureInPicture.supported(LocalContext.current)
