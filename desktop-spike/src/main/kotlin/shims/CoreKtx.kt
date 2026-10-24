@@ -5,4 +5,4 @@ package androidx.core.graphics.drawable
 import android.graphics.Bitmap
 import android.graphics.drawable.Drawable
 
-fun Drawable.toBitmap(): Bitmap? = null
+fun Drawable.toBitmap(): Bitmap = Bitmap()

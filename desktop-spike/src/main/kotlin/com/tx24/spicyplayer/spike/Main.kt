@@ -28,7 +28,9 @@ import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsView
-import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
+import com.tx24.spicyplayer.lyrics.spicy.models.LyricsCredit
+import com.tx24.spicyplayer.lyrics.spicy.models.LyricsFooter
+import com.tx24.spicyplayer.lyrics.spicy.models.LyricsProvenance
 import com.tx24.spicyplayer.lyrics.spicy.models.buildDisplayTimeline
 import com.tx24.spicyplayer.lyrics.spicy.parser.TtmlLyricsParser
 import java.awt.GraphicsEnvironment
@@ -40,6 +42,7 @@ import kotlin.system.exitProcess
 
 /**
  * Usage: run [--ttml file.ttml] [--seconds N] [--simple] [--apple] [--no-glow] [--maximized] [--no-vsync] [--no-kawarp]
+ *   [--credits] [--size WxH] [--start-ms MS]
  *   [--snap file.png --snap-at S]
  *
  * Plays the lyrics on a fake clock from 0, looping, and prints frame-time stats every five
@@ -58,6 +61,15 @@ fun main(args: Array<String>) {
     val type = parsed.type
     val lines = buildDisplayTimeline(parsed.lines, minimalMode = false)
     val songEndMs = lines.maxOf { it.endMs } + 4_000L
+    val startOffsetMs = value("--start-ms")?.toLong() ?: 0L
+    val (windowW, windowH) = value("--size")?.split("x")?.map(String::toInt) ?: listOf(1280, 800)
+    // Community credits with names long enough to wrap in a narrow window.
+    val footer = if (flag("--credits")) LyricsFooter(
+        songwriters = listOf("Placeholder Writer", "Another Writer"),
+        provenance = LyricsProvenance("Spicy Lyrics"),
+        maker = LyricsCredit("averyverylongsyncmakername", "https://example.com/a", "https://example.com/a.png"),
+        uploader = LyricsCredit("anotherlonguploadername", "https://example.com/b", "https://example.com/b.png"),
+    ) else parsed.footer
     val runSeconds = value("--seconds")?.toInt()
     val config = RenderConfig(
         simpleLyricsMode = flag("--simple"),
@@ -77,7 +89,7 @@ fun main(args: Array<String>) {
 
     application {
         val state = rememberWindowState(
-            size = DpSize(1280.dp, 800.dp),
+            size = DpSize(windowW.dp, windowH.dp),
             placement = if (flag("--maximized")) WindowPlacement.Maximized else WindowPlacement.Floating,
         )
         var hud by remember { mutableStateOf("") }
@@ -90,13 +102,13 @@ fun main(args: Array<String>) {
                     LyricsView(
                         lines = lines,
                         documentId = "spike",
-                        currentTimeMs = { ((System.nanoTime() - startNs) / 1_000_000L) % songEndMs },
+                        currentTimeMs = { ((System.nanoTime() - startNs) / 1_000_000L + startOffsetMs) % songEndMs },
                         onSeekWord = {},
                         config = config,
                         lyricsType = type,
                         focusAnchorFraction = 0.5f,
                         restTopFraction = 0.25f,
-                        footer = parsed.footer,
+                        footer = footer,
                         onFrameTick = { frameNs ->
                             stats.frame(frameNs)
                             val now = System.nanoTime()

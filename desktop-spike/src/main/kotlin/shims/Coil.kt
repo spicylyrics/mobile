@@ -1,4 +1,4 @@
-// No image loading in the spike: every request fails, so credits draw without avatars.
+// No image loading in the spike: every avatar comes back as the same placeholder disc.
 @file:Suppress("PackageDirectoryMismatch", "UNUSED_PARAMETER")
 
 package coil
@@ -12,5 +12,5 @@ object Coil {
 }
 
 object ImageLoader {
-    suspend fun execute(request: ImageRequest): ImageResult = ImageResult.Error
+    suspend fun execute(request: ImageRequest): ImageResult = coil.request.SuccessResult(android.graphics.drawable.Drawable())
 }
