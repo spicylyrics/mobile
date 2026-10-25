@@ -45,4 +45,10 @@ class WidgetFitTest {
             }
         }
     }
+
+    @Test
+    fun `a size bigger than the screen is read as pixels`() {
+        assertEquals(328 to 322, WidgetFit.reportedDp(328, 322, 392, 850, 2.75f))
+        assertEquals(328 to 322, WidgetFit.reportedDp(902, 886, 392, 850, 2.75f))
+    }
 }

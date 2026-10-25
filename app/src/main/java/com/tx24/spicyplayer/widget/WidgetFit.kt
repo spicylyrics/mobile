@@ -40,6 +40,20 @@ internal data class WidgetFit(val settings: WidgetSettings, val currentLines: In
             return WidgetFit(steps.last(), 1)
         }
 
+        /**
+         * A launcher's reported [widthDp] by [heightDp] in dp. Some report pixels instead: a widget
+         * bigger than the screen ([screenWidthDp] by [screenHeightDp]) is read as pixels and
+         * scaled by [density], or the lyrics would be drawn for that size and shrunk to fit.
+         */
+        fun reportedDp(widthDp: Int?, heightDp: Int?, screenWidthDp: Int, screenHeightDp: Int, density: Float): Pair<Int?, Int?> {
+            val tooBig = (widthDp ?: 0) > screenWidthDp + SCREEN_SLACK_DP || (heightDp ?: 0) > screenHeightDp + SCREEN_SLACK_DP
+            if (!tooBig || density <= 1f) return widthDp to heightDp
+            return widthDp?.let { (it / density).toInt() } to heightDp?.let { (it / density).toInt() }
+        }
+
+        /** How far past the screen a reported size may reach before it's taken for pixels. */
+        private const val SCREEN_SLACK_DP = 16
+
         /** Without a known height, the lyrics area is drawn this tall. */
         private const val DEFAULT_LINES_DP = 180f
 

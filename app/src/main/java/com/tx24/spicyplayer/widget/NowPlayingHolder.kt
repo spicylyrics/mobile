@@ -141,13 +141,16 @@ internal object NowPlayingHolder {
 
     private val tick = Runnable { refreshSessions() }
 
-    private var orientation = Configuration.ORIENTATION_UNDEFINED
+    /** Whether the screen was wide when the widgets were last drawn ([LyricsWidget.screenDp]). */
+    private var wide: Boolean? = null
 
     /** Turned: each widget is drawn again for its size this way round ([LyricsWidget.sizeDp]). */
     private val configCallbacks = object : ComponentCallbacks {
         override fun onConfigurationChanged(config: Configuration) {
-            if (config.orientation == orientation) return
-            orientation = config.orientation
+            val app = context ?: return
+            val now = LyricsWidget.screenDp(app).let { (width, height) -> width > height }
+            if (now == wide) return
+            wide = now
             show(full = true)
         }
 
@@ -179,7 +182,7 @@ internal object NowPlayingHolder {
         screenOn = app.getSystemService(PowerManager::class.java)?.isInteractive ?: true
         val screen = IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_SCREEN_OFF) }
         ContextCompat.registerReceiver(app, screenReceiver, screen, ContextCompat.RECEIVER_NOT_EXPORTED)
-        orientation = app.resources.configuration.orientation
+        wide = LyricsWidget.screenDp(app).let { (width, height) -> width > height }
         app.registerComponentCallbacks(configCallbacks)
         val manager = app.getSystemService(MediaSessionManager::class.java)
         val listener = ComponentName(app, SessionAccessService::class.java)

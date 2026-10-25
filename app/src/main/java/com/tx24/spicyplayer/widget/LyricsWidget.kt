@@ -6,11 +6,13 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.graphics.Point
+import android.hardware.display.DisplayManager
 import android.graphics.Color
 import android.os.Bundle
 import android.os.SystemClock
+import android.view.Display
 import android.view.View
 import android.widget.RemoteViews
 import androidx.core.graphics.ColorUtils
@@ -111,7 +113,7 @@ class LyricsWidget : AppWidgetProvider() {
          * A widget's width and height in dp (null: not reported) as the screen is turned now, from
          * its [options]: launchers report it in portrait as its narrowest width and largest height,
          * and in landscape as its widest width and smallest height. Drawn for the wrong one, the
-         * lyrics picture is shrunk to fit.
+         * lyrics picture is shrunk to fit. Sizes in pixels are taken back to dp ([WidgetFit.reportedDp]).
          */
         fun sizeDp(context: Context, options: Bundle): Pair<Int?, Int?> {
             fun read(key: String) = options.getInt(key).takeIf { it > 0 }
@@ -119,9 +121,39 @@ class LyricsWidget : AppWidgetProvider() {
             val maxWidth = read(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH)
             val minHeight = read(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)
             val maxHeight = read(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
-            val landscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-            return if (landscape) (maxWidth ?: minWidth) to (minHeight ?: maxHeight)
+            val (screenWidth, screenHeight) = screenDp(context)
+            val (width, height) = if (screenWidth > screenHeight) (maxWidth ?: minWidth) to (minHeight ?: maxHeight)
             else (minWidth ?: maxWidth) to (maxHeight ?: minHeight)
+            return WidgetFit.reportedDp(width, height, screenWidth, screenHeight, context.resources.displayMetrics.density)
+        }
+
+        /**
+         * The phone's screen in dp as it's turned now. Not the app's configuration: in the
+         * floating window that's the window's, small and wide.
+         */
+        fun screenDp(context: Context): Pair<Int, Int> {
+            val display = context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
+                ?: return context.resources.configuration.let { it.screenWidthDp to it.screenHeightDp }
+            val size = Point()
+            @Suppress("DEPRECATION")
+            display.getRealSize(size)
+            val density = context.resources.displayMetrics.density
+            return (size.x / density).toInt() to (size.y / density).toInt()
+        }
+
+        /** Each placed widget's size as its launcher reports it and as it's drawn, for the extra logs. */
+        fun sizeLines(context: Context): List<String> {
+            val manager = AppWidgetManager.getInstance(context)
+            val (screenWidth, screenHeight) = screenDp(context)
+            val stable = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) android.util.DisplayMetrics.DENSITY_DEVICE_STABLE else 0
+            val header = "Screen ${screenWidth}x$screenHeight dp, density ${context.resources.displayMetrics.densityDpi} dpi (device $stable)"
+            return listOf(header) + ids(context).map { id ->
+                val options = manager.getAppWidgetOptions(id)
+                fun read(key: String) = options.getInt(key)
+                val (width, height) = sizeDp(context, options)
+                "#$id reported min ${read(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)}x${read(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)}, " +
+                    "max ${read(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH)}x${read(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)}; drawn for ${width}x$height"
+            }
         }
 
         /**
