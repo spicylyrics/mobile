@@ -6,8 +6,10 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.os.Bundle
 import android.os.SystemClock
 import android.view.View
 import android.widget.RemoteViews
@@ -49,7 +51,7 @@ class LyricsWidget : AppWidgetProvider() {
     override fun onDeleted(context: Context, appWidgetIds: IntArray) = WidgetSettingsStore(context).forget(appWidgetIds)
 
     /** Resized: laid out again for its new height. */
-    override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, appWidgetId: Int, newOptions: android.os.Bundle) =
+    override fun onAppWidgetOptionsChanged(context: Context, manager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle) =
         NowPlayingHolder.start(context)
 
     override fun onDisabled(context: Context) = NowPlayingHolder.stop()
@@ -92,9 +94,8 @@ class LyricsWidget : AppWidgetProvider() {
             val manager = AppWidgetManager.getInstance(context)
             val store = WidgetSettingsStore(context)
             for (id in ids) {
-                val options = manager.getAppWidgetOptions(id)
-                val widthDp = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH).takeIf { it > 0 }
-                val views = views(context, content, store.read(id), full, heightDp(manager, id), widthDp, id)
+                val (widthDp, heightDp) = sizeDp(context, manager.getAppWidgetOptions(id))
+                val views = views(context, content, store.read(id), full, heightDp, widthDp, id)
                 if (full) manager.updateAppWidget(id, views) else manager.partiallyUpdateAppWidget(id, views)
             }
         }
@@ -106,10 +107,21 @@ class LyricsWidget : AppWidgetProvider() {
             return all.any { it.romanization } to all.any { it.progress }
         }
 
-        /** How tall widget [id] is in portrait, where launchers report it as the largest height. */
-        private fun heightDp(manager: AppWidgetManager, id: Int): Int? = manager.getAppWidgetOptions(id).let { options ->
-            options.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT).takeIf { it > 0 }
-                ?: options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT).takeIf { it > 0 }
+        /**
+         * A widget's width and height in dp (null: not reported) as the screen is turned now, from
+         * its [options]: launchers report it in portrait as its narrowest width and largest height,
+         * and in landscape as its widest width and smallest height. Drawn for the wrong one, the
+         * lyrics picture is shrunk to fit.
+         */
+        fun sizeDp(context: Context, options: Bundle): Pair<Int?, Int?> {
+            fun read(key: String) = options.getInt(key).takeIf { it > 0 }
+            val minWidth = read(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH)
+            val maxWidth = read(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH)
+            val minHeight = read(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)
+            val maxHeight = read(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
+            val landscape = context.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+            return if (landscape) (maxWidth ?: minWidth) to (minHeight ?: maxHeight)
+            else (minWidth ?: maxWidth) to (maxHeight ?: minHeight)
         }
 
         /**
@@ -126,11 +138,7 @@ class LyricsWidget : AppWidgetProvider() {
             widthDp: Int? = null,
             id: Int? = null,
         ): RemoteViews {
-            val lines = content.lines
-            val notes = (lines.before + lines.current + lines.after).any { lead ->
-                lead.background != null || (chosen.romanization && lead.romanized != null) || (chosen.translation && lead.translation != null)
-            }
-            val fit = WidgetFit.of(chosen, heightDp, notes)
+            val fit = WidgetFit.of(chosen, heightDp)
             val settings = fit.settings
             // By the chosen place, not the fitted one: a partial update must name the layout it updates.
             val layout = if (chosen.songInfo == WidgetSettings.SongInfo.TOP) R.layout.widget_lyrics_top else R.layout.widget_lyrics
@@ -173,7 +181,9 @@ class LyricsWidget : AppWidgetProvider() {
             if (content.cover != null) views.setImageViewBitmap(R.id.widget_cover, content.cover)
             else views.setImageViewResource(R.id.widget_cover, R.drawable.widget_cover_placeholder)
 
-            val open = Intent(context, LyricsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val open = Intent(context, LyricsActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            )
             views.setOnClickPendingIntent(
                 R.id.widget_root,
                 PendingIntent.getActivity(context, 0, open, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE),
@@ -205,7 +215,9 @@ class LyricsWidget : AppWidgetProvider() {
             if (!full && id != null && painted[id] == key) return
             val painter = painter ?: WidgetLyricsPainter(context.applicationContext).also { painter = it }
             views.setImageViewBitmap(R.id.widget_lyrics_image, painter.paint(content.lines, settings, style, areaWidthPx, areaHeightPx, density))
-            views.setContentDescription(R.id.widget_lyrics_image, content.lines.current.text.takeUnless { content.lines.current.interlude })
+            views.setContentDescription(R.id.widget_lyrics_image,
+                (listOf(content.lines.current) + content.lines.concurrent).joinToString("\n") { it.text }
+                    .takeUnless { content.lines.current.interlude })
             if (id != null) painted[id] = key
         }
 
