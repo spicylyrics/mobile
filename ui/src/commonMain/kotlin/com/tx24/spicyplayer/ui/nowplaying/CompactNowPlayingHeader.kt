@@ -1,6 +1,5 @@
 package com.tx24.spicyplayer.ui.nowplaying
 
-import android.os.Build
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -42,14 +41,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -71,7 +64,6 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.Spacer
 import com.tx24.spicyplayer.lyrics.spicy.models.MiniCredit
 import androidx.compose.foundation.shape.CircleShape
-import coil.compose.AsyncImage
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -158,9 +150,10 @@ fun CompactNowPlayingHeader(
         }
     }
     val density = LocalDensity.current
-    val artwork = rememberSessionArtwork(info.artwork?.asAndroidBitmap(), info.artworkUri, maxDimension = ARTWORK_MAX_PX, hasSession = info.hasSession)
+    val platform = LocalNowPlayingPlatform.current
+    val artwork = platform.rememberCover(info.artwork, info.artworkUri, ARTWORK_MAX_PX, info.hasSession)
     val motionQuery = MotionCoverQuery(info.artists, info.album, info.title)
-    val motion = rememberMotionCover(animatedCover, motionQuery)
+    val motion = platform.rememberMotionCover(animatedCover, motionQuery)
     // Everything moves in the layout and draw phases, so the transition doesn't recompose the header.
     fun p() = if (expanded == null) 0f else expansion()
     // Hidden, the layout stays expanded and only the opacity follows the transition.
@@ -576,7 +569,7 @@ internal fun MiniCreditLine(credit: MiniCredit, style: TextStyle, color: Color, 
                 if (credit.name != null) {
                     Spacer(Modifier.width(gap))
                     if (avatar != null) {
-                        AsyncImage(avatar, null, Modifier.size(avatarDp).clip(CircleShape), contentScale = ContentScale.Crop)
+                        LocalNowPlayingPlatform.current.Avatar(avatar, Modifier.size(avatarDp).clip(CircleShape))
                         Spacer(Modifier.width(gap))
                     }
                     Text("@${credit.name}", style = style, color = color, maxLines = 1, softWrap = false)
@@ -596,7 +589,7 @@ internal fun MiniCreditLine(credit: MiniCredit, style: TextStyle, color: Color, 
  */
 @Composable
 private fun HeaderArtwork(
-    artwork: SessionArtwork?,
+    artwork: CoverImage?,
     motionUrl: String?,
     /** False while the next song's loop is looked up: [motionUrl] is still the last song's, fading out. */
     motionSettled: Boolean,
@@ -608,15 +601,15 @@ private fun HeaderArtwork(
     overlay: (@Composable () -> Unit)? = null,
 ) {
     val latestDirection by rememberUpdatedState(direction)
-    var current by remember { mutableStateOf<SessionArtwork?>(null) }
-    var incoming by remember { mutableStateOf<SessionArtwork?>(null) }
+    var current by remember { mutableStateOf<CoverImage?>(null) }
+    var incoming by remember { mutableStateOf<CoverImage?>(null) }
     val slide = remember { Animatable(0f) }
     val blur = remember { Animatable(0f) }
     // +1 slides the new cover in from the right, -1 from the left.
     var enterFrom by remember { mutableFloatStateOf(1f) }
     var failedMotionUrl by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
+    val platform = LocalNowPlayingPlatform.current
 
     LaunchedEffect(artwork?.fingerprint) {
         // Keep the last cover when the player has none to show.
@@ -643,25 +636,16 @@ private fun HeaderArtwork(
     }
 
     val density = LocalDensity.current
-    val shadowColor = Color.Black.copy(alpha = 0.271f).toArgb()
     val shadowOffsetY = with(density) { metrics.artShadowOffsetYDp.dp.toPx() }
-    val shadowRadius = cssBlurToShadowRadius(with(density) { metrics.artShadowBlurDp.dp.toPx() })
+    val shadowBlur = with(density) { metrics.artShadowBlurDp.dp.toPx() }
     val incomingShadowX = with(density) { metrics.incomingShadowOffsetXDp.dp.toPx() }
     val incomingShadowBlur = with(density) { metrics.incomingShadowBlurDp.dp.toPx() }
     val blurRadius = with(density) { metrics.outgoingBlurDp.dp.toPx() }
 
     Box(
         modifier.drawBehind {
-            // Hardware canvases only draw shadow layers for shapes from API 28.
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P || current == null) return@drawBehind
-            drawIntoCanvas { canvas ->
-                val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-                    color = android.graphics.Color.TRANSPARENT
-                    setShadowLayer(shadowRadius, 0f, shadowOffsetY, shadowColor)
-                }
-                val radius = size.width * cornerFraction()
-                canvas.nativeCanvas.drawRoundRect(0f, 0f, size.width, size.height, radius, radius, paint)
-            }
+            if (current == null) return@drawBehind
+            platform.drawCoverShadow(this, size.width * cornerFraction(), shadowBlur, shadowOffsetY, CoverShadow)
         },
     ) {
         // `.MediaImageContainer { border-radius: 3cqh }` against the square cover (2cqh expanded).
@@ -679,10 +663,10 @@ private fun HeaderArtwork(
                 // A skeleton while no cover has loaded yet.
                 Box(Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.1f)))
             } else {
-                val bitmap = remember(resting) { resting.bitmap.asImageBitmap() }
+                val bitmap = resting.image
                 Box(Modifier.fillMaxSize()) {
                     Image(bitmap, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                    if (incoming != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (incoming != null && platform.blursLayers) {
                         Image(
                             bitmap,
                             null,
@@ -710,20 +694,20 @@ private fun HeaderArtwork(
                 }
             }
             if (motionUrl != null && motionUrl != failedMotionUrl) {
-                MotionCoverVideo(
+                platform.MotionCoverVideo(
                     url = motionUrl,
                     // Hidden while a cover change slides in, so the old record's loop never plays
                     // over the new cover.
                     visible = incoming == null && current != null && motionSettled,
                     onFailed = {
                         failedMotionUrl = motionUrl
-                        scope.launch { forgetMotionCover(context, motionQuery) }
+                        scope.launch { platform.forgetMotionCover(motionQuery) }
                     },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
             incoming?.let { next ->
-                val bitmap = remember(next) { next.bitmap.asImageBitmap() }
+                val bitmap = next.image
                 Image(
                     bitmap,
                     null,
@@ -763,12 +747,8 @@ private fun DrawScope.leadingShadowBand(offsetX: Float, blur: Float) {
     )
 }
 
-/**
- * A CSS shadow's blur length is twice the Gaussian sigma; Android's shadow radius maps to
- * sigma = radius * 0.57735 + 0.5 (Skia's conversion), so invert that.
- */
-private fun cssBlurToShadowRadius(cssBlurPx: Float): Float =
-    ((cssBlurPx / 2f - 0.5f) / 0.57735f).coerceAtLeast(0.1f)
+/** The resting cover's `box-shadow` colour. */
+private val CoverShadow = Color.Black.copy(alpha = 0.271f)
 
 private const val ARTWORK_MAX_PX = 1024
 private const val METADATA_FADE_MS = 240

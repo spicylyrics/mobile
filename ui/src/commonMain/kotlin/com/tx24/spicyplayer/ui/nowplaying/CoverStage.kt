@@ -26,12 +26,9 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.layout
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntOffset
@@ -70,13 +67,13 @@ fun CoverStage(
     centred: () -> Float,
     modifier: Modifier = Modifier,
 ) {
-    val artwork = rememberSessionArtwork(info.artwork?.asAndroidBitmap(), info.artworkUri, maxDimension = STAGE_ARTWORK_MAX_PX, hasSession = info.hasSession)
+    val platform = LocalNowPlayingPlatform.current
+    val artwork = platform.rememberCover(info.artwork, info.artworkUri, STAGE_ARTWORK_MAX_PX, info.hasSession)
     // The last cover stays up while the player has none to show.
-    var resting by remember { mutableStateOf<SessionArtwork?>(null) }
+    var resting by remember { mutableStateOf<CoverImage?>(null) }
     LaunchedEffect(artwork?.fingerprint) { if (artwork != null) resting = artwork }
     var failedMotionUrl by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val motionQuery = MotionCoverQuery(info.artists, info.album, info.title)
     val featherPx = metrics.stageFeatherPx
     Box(
@@ -130,8 +127,7 @@ fun CoverStage(
             Box(Modifier.fillMaxSize().clipToBounds().graphicsLayer { alpha = STAGE_OPACITY }) {
                 Crossfade(resting, animationSpec = tween(COVER_CHANGE_MS, easing = HalfCosine), label = "stageCover") { cover ->
                     if (cover != null) {
-                        val bitmap = remember(cover) { cover.bitmap.asImageBitmap() }
-                        Image(bitmap, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alignment = CropAlignment)
+                        Image(cover.image, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop, alignment = CropAlignment)
                     }
                 }
                 // Canvas or animated cover, crossfading from one to the next as songs change. Both
@@ -143,14 +139,14 @@ fun CoverStage(
                     is StagePicture.Animated -> picture.url.takeIf { it != failedMotionUrl }
                     StagePicture.Still -> null
                 }
-                CrossfadingMotionVideo(
+                platform.CrossfadingMotionVideo(
                     url = videoUrl,
                     onFailed = { failed ->
                         if (failed in canvasUrls) {
                             onCanvasFailed(failed)
                         } else {
                             failedMotionUrl = failed
-                            scope.launch { forgetMotionCover(context, motionQuery) }
+                            scope.launch { platform.forgetMotionCover(motionQuery) }
                         }
                     },
                     modifier = Modifier.fillMaxSize(),

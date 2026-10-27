@@ -1,7 +1,5 @@
 package com.tx24.spicyplayer.ui.nowplaying
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
@@ -31,13 +29,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.ContentCopy
-import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.Forum
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -53,7 +44,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
@@ -66,32 +57,47 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
-import com.tx24.spicyplayer.haptics.withHaptic
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.NoticeKind
-import com.tx24.spicyplayer.ui.components.LocalUiAnimations
-import com.tx24.spicyplayer.ui.settings.DISCORD_URL
-import com.tx24.spicyplayer.ui.settings.openUrl
 import com.tx24.spicyplayer.ui.theme.SpicyColors
 import com.tx24.spicyplayer.ui.theme.SpicyMotion
 import com.tx24.spicyplayer.ui.theme.SpicyType
 import kotlinx.coroutines.delay
 
-/** What the notice's buttons do. The floating window passes none and shows the notice without buttons. */
-internal class NoticeActions(
+/**
+ * What the notice's buttons do. The floating window passes none and shows the notice without buttons.
+ * The clipboard and the help link are the platform's, so they come in here too.
+ */
+class NoticeActions(
     val onRetry: () -> Unit,
     /** The debug report for this song, which "Copy details" puts on the clipboard with the notice's code. */
     val report: () -> String,
     val onSearchSpotify: () -> Unit,
+    /** Puts the text on the clipboard; false when that failed. */
+    val copyText: (String) -> Boolean,
+    /** Opens where to ask for help (the Discord server). */
+    val onOpenHelp: () -> Unit,
+    val icons: NoticeIcons,
+)
+
+/** The buttons' icons, from the platform's icon set. */
+class NoticeIcons(
+    val retry: ImageVector,
+    val copy: ImageVector,
+    val copied: ImageVector,
+    val copyFailed: ImageVector,
+    val help: ImageVector,
+    val search: ImageVector,
 )
 
 /** [error]'s notice; compact (title and a short detail, no buttons) without [actions]. */
 @Composable
-internal fun LyricsNotice(
+fun LyricsNotice(
     error: LyricsState.Error,
     actions: NoticeActions?,
     bottomPx: () -> Float,
     modifier: Modifier = Modifier,
+    animate: Boolean = true,
 ) = LyricsNotice(
     title = error.message,
     body = error.body,
@@ -102,6 +108,7 @@ internal fun LyricsNotice(
     actions = actions,
     bottomPx = bottomPx,
     compact = actions == null,
+    animate = animate,
 )
 
 /**
@@ -116,10 +123,11 @@ internal fun LyricsNotice(
  *
  * [compact], for the floating window: the title alone, stepped down until two lines fit the
  * window's height, and the detail's first sentence on one line if there's room under it.
+ * Without [animate] it shows at once rather than rising in.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun LyricsNotice(
+fun LyricsNotice(
     title: String,
     modifier: Modifier = Modifier,
     body: String? = null,
@@ -129,8 +137,8 @@ internal fun LyricsNotice(
     actions: NoticeActions? = null,
     bottomPx: () -> Float = { 0f },
     compact: Boolean = false,
+    animate: Boolean = true,
 ) {
-    val animate = LocalUiAnimations.current
     val entrance = remember(title) { Animatable(if (animate) 0f else 1f) }
     LaunchedEffect(entrance) { entrance.animateTo(1f, tween(350, easing = SpicyMotion.Modal)) }
     val density = LocalDensity.current
@@ -235,7 +243,6 @@ private fun NoticeButtons(
     em: androidx.compose.ui.unit.Dp,
     narrow: Boolean,
 ) {
-    val context = LocalContext.current
     var copy by remember { mutableStateOf(CopyState.Idle) }
     LaunchedEffect(copy) {
         if (copy != CopyState.Idle) {
@@ -251,13 +258,13 @@ private fun NoticeButtons(
         verticalArrangement = Arrangement.spacedBy(em * 0.6f),
     ) {
         if (kind.retry) {
-            NoticeButton("Try again", Icons.Rounded.Refresh, actions.onRetry, primary = true, bodySp)
+            NoticeButton("Try again", actions.icons.retry, actions.onRetry, primary = true, bodySp)
         }
         if (kind.report) {
             val (label, icon) = when (copy) {
-                CopyState.Idle -> "Copy details" to Icons.Rounded.ContentCopy
-                CopyState.Copied -> "Copied" to Icons.Rounded.Check
-                CopyState.Failed -> "Couldn't copy" to Icons.Rounded.ErrorOutline
+                CopyState.Idle -> "Copy details" to actions.icons.copy
+                CopyState.Copied -> "Copied" to actions.icons.copied
+                CopyState.Failed -> "Couldn't copy" to actions.icons.copyFailed
             }
             NoticeButton(label, icon, onClick = {
                 val text = buildString {
@@ -267,16 +274,13 @@ private fun NoticeButtons(
                     appendLine("Notice: ${codeLabel(kind, code)}")
                     if (detail != null) append("  $detail")
                 }.trimEnd()
-                val copied = runCatching {
-                    val clipboard = context.getSystemService(ClipboardManager::class.java) ?: error("no clipboard")
-                    clipboard.setPrimaryClip(ClipData.newPlainText("Spicy Lyrics Mobile debug info", text))
-                }.isSuccess
+                val copied = actions.copyText(text)
                 copy = if (copied) CopyState.Copied else CopyState.Failed
             }, primary = !kind.retry, bodySp)
-            NoticeButton("Get help on Discord", Icons.Rounded.Forum, { openUrl(context, DISCORD_URL) }, primary = false, bodySp)
+            NoticeButton("Get help on Discord", actions.icons.help, actions.onOpenHelp, primary = false, bodySp)
         }
         if (spotify) {
-            NoticeButton("Find on Spotify", Icons.Rounded.Search, actions.onSearchSpotify, primary = false, bodySp)
+            NoticeButton("Find on Spotify", actions.icons.search, actions.onSearchSpotify, primary = false, bodySp)
         }
     }
 }
@@ -293,6 +297,7 @@ private fun codeLabel(kind: NoticeKind, code: String?) = kind.slug + (code?.let 
 @Composable
 private fun NoticeButton(label: String, icon: ImageVector, onClick: () -> Unit, primary: Boolean, bodySp: Float) {
     val interaction = remember { MutableInteractionSource() }
+    val haptics = LocalHapticFeedback.current
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(if (pressed) 0.97f else 1f, tween(120), label = "noticeButtonScale")
     val background = when {
@@ -309,7 +314,7 @@ private fun NoticeButton(label: String, icon: ImageVector, onClick: () -> Unit, 
                 if (primary) Modifier else Modifier.border(1.dp, if (pressed) SpicyColors.HairlineStrong else SpicyColors.Hairline, CircleShape),
             )
             .background(background, CircleShape)
-            .clickable(interaction, indication = null, role = Role.Button, onClick = withHaptic(HapticFeedbackType.ContextClick, onClick))
+            .clickable(interaction, indication = null, role = Role.Button, onClick = { haptics.performHapticFeedback(HapticFeedbackType.ContextClick); onClick() })
             .padding(horizontal = 16.dp, vertical = 9.dp),
         contentAlignment = Alignment.Center,
     ) {
