@@ -29,12 +29,17 @@ class PageMetricsTest {
     @Test
     fun `on the page the lyrics box matches the shared landscape geometry`() {
         val shared = LandscapeMetrics(1100f, 760f, 1f)
-        for (withBar in listOf(true, false)) for (onRight in listOf(true, false)) {
+        for ((withBar, onRight) in listOf(true to false, true to true, false to false)) {
             val expected = shared.lyricsBox(withBar, onRight)
             val actual = page.lyricsBox(withBar, onRight)
             assertEquals(expected.leftPx, actual.leftPx, 0.01f)
             assertEquals(expected.widthPx, actual.widthPx, 0.01f)
         }
+    }
+
+    @Test
+    fun `without the bar the lyrics keep their place whichever side it was on`() {
+        assertEquals(page.lyricsBox(withBar = false, barOnRight = false), page.lyricsBox(withBar = false, barOnRight = true))
     }
 
     @Test
