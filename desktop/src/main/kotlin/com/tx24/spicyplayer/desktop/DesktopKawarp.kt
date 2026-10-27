@@ -7,7 +7,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
@@ -21,22 +23,32 @@ import androidx.compose.ui.unit.Constraints
 import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.KawarpBlurCore
 import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.KawarpEngine
 import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.KawarpOptions
+import java.io.File
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.hypot
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.jetbrains.skia.Bitmap
+import org.jetbrains.skia.Canvas as SkCanvas
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorSpace
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.FilterTileMode
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.Rect
 import org.jetbrains.skia.RuntimeEffect
 import org.jetbrains.skia.RuntimeShaderBuilder
 import org.jetbrains.skia.SamplingMode
 
 private const val CANVAS_WIDTH = 300
 private const val CANVAS_HEIGHT = 150
+/** Covers are scaled to this square before the blur. */
+private const val COVER_SIZE = 256
 
 private val OPTIONS = KawarpOptions(
     warpIntensity = 1f,
@@ -51,22 +63,38 @@ private val OPTIONS = KawarpOptions(
 
 /**
  * The app's Kawarp background on Skia: the same AGSL, compiled as SkSL, drawn at the reference's
- * 300x150 and stretched over the window. The cover is a made-up one; there is no crossfade.
+ * 300x150 and stretched over the window. Each new [cover] crossfades in over the last; without
+ * one, a made-up cover shows.
  */
 @Composable
-fun DesktopKawarp(modifier: Modifier = Modifier) {
+fun DesktopKawarp(cover: File? = null, isPlaying: Boolean = true, modifier: Modifier = Modifier) {
+    val playing by rememberUpdatedState(isPlaying)
     val engine = remember { KawarpEngine(OPTIONS) }
-    val builder = remember {
-        val texture = blurredTexture(SyntheticCover.pixels(256), 256)
-        RuntimeShaderBuilder(RuntimeEffect.makeForShader(KAWARP_FUSED_AGSL)).apply {
-            child("texCur", texture)
-            child("texNext", texture)
+    val effect = remember { RuntimeEffect.makeForShader(KAWARP_FUSED_AGSL) }
+    val placeholder = remember { blurredTexture(SyntheticCover.pixels(COVER_SIZE), COVER_SIZE) }
+    var current by remember { mutableStateOf(placeholder) }
+    var next by remember { mutableStateOf(placeholder) }
+    LaunchedEffect(cover) {
+        val file = cover ?: return@LaunchedEffect
+        val texture = withContext(Dispatchers.Default) {
+            runCatching { decodeCover(file)?.let { blurredTexture(it, COVER_SIZE) } }.getOrNull()
+        } ?: return@LaunchedEffect
+        current = next
+        next = texture
+        engine.startTransition(System.currentTimeMillis())
+    }
+    val builder = remember(current, next) {
+        RuntimeShaderBuilder(effect).apply {
+            child("texCur", current)
+            child("texNext", next)
         }
     }
     var frame by remember { mutableLongStateOf(0L) }
     LaunchedEffect(Unit) {
         var last = 0L
         while (true) withFrameNanos { now ->
+            // Full speed while playing, a tenth while paused; the engine eases between them.
+            engine.targetAnimationSpeed = if (playing) 1f else 0.1f
             if (last != 0L) engine.tick((now - last) / 1e9f)
             last = now
             frame = now
@@ -91,7 +119,8 @@ fun DesktopKawarp(modifier: Modifier = Modifier) {
             @Suppress("UNUSED_EXPRESSION") frame
             builder.uniform("uResolution", size.width, size.height)
             builder.uniform("uTime", engine.accumulatedTime)
-            builder.uniform("uBlend", 0f)
+            // The crossfade is eased with a half cosine, like the app's.
+            builder.uniform("uBlend", 0.5f - 0.5f * cos(engine.blendFactor(System.currentTimeMillis()) * PI.toFloat()))
             builder.uniform("uIntensity", OPTIONS.warpIntensity)
             builder.uniform("uSaturation", OPTIONS.saturation)
             builder.uniform("uDithering", OPTIONS.dithering)
@@ -99,6 +128,21 @@ fun DesktopKawarp(modifier: Modifier = Modifier) {
             drawRect(brush = ShaderBrush(builder.makeShader().asComposeShader()))
         }
     }
+}
+
+/** A cover image file as [COVER_SIZE]-square RGBA floats, top row first; null if it doesn't decode. */
+private fun decodeCover(file: File): FloatArray? {
+    val image = Image.makeFromEncoded(file.readBytes())
+    val info = ImageInfo(COVER_SIZE, COVER_SIZE, ColorType.RGBA_8888, ColorAlphaType.PREMUL)
+    val bitmap = Bitmap().apply { allocPixels(info) }
+    SkCanvas(bitmap).drawImageRect(
+        image,
+        Rect.makeWH(image.width.toFloat(), image.height.toFloat()),
+        Rect.makeWH(COVER_SIZE.toFloat(), COVER_SIZE.toFloat()),
+        SamplingMode.LINEAR, null, true,
+    )
+    val bytes = bitmap.readPixels() ?: return null
+    return FloatArray(bytes.size) { (bytes[it].toInt() and 0xFF) / 255f }
 }
 
 /** The cover through Kawarp's blur, as a premultiplied half-float texture, like the app's. */

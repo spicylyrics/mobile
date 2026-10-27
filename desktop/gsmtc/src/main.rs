@@ -6,6 +6,7 @@
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::io::Write;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -13,10 +14,14 @@ use windows::Foundation::TypedEventHandler;
 use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSession as Session,
     GlobalSystemMediaTransportControlsSessionManager as Manager,
+    GlobalSystemMediaTransportControlsSessionMediaProperties as MediaProperties,
     GlobalSystemMediaTransportControlsSessionPlaybackStatus as Status,
 };
+use windows::Storage::Streams::DataReader;
 use windows::Win32::System::WinRT::{RoInitialize, RO_INIT_MULTITHREADED};
 
+/// The cover file written for each track (app, title, artist, album), so a poll doesn't read it again.
+static COVERS: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
 /// Last line written per app, without its timestamps and event name.
 static LAST: OnceLock<Mutex<HashMap<String, Value>>> = OnceLock::new();
 static START: OnceLock<Instant> = OnceLock::new();
@@ -42,7 +47,41 @@ fn status_name(s: Status) -> &'static str {
     }
 }
 
-fn snapshot(session: &Session, current: Option<&str>) -> windows::core::Result<(String, Value)> {
+/// The session's thumbnail written to a temp file named by its content, so the path changes when
+/// the picture does. Read once per track, and again on a media event: some players send the new
+/// title before the new picture.
+fn cover(app: &str, media: &MediaProperties, refresh: bool) -> Option<String> {
+    let text = |r: windows::core::Result<windows::core::HSTRING>| r.map(|s| s.to_string()).unwrap_or_default();
+    let key = format!("{app}\x1f{}\x1f{}\x1f{}", text(media.Title()), text(media.Artist()), text(media.AlbumTitle()));
+    let covers = COVERS.get_or_init(Default::default);
+    if !refresh {
+        if let Some(path) = covers.lock().unwrap().get(&key) {
+            return Some(path.clone());
+        }
+    }
+    let stream = media.Thumbnail().ok()?.OpenReadAsync().ok()?.get().ok()?;
+    let size = stream.Size().ok()? as u32;
+    if size == 0 {
+        return None;
+    }
+    let reader = DataReader::CreateDataReader(&stream).ok()?;
+    reader.LoadAsync(size).ok()?.get().ok()?;
+    let mut bytes = vec![0u8; size as usize];
+    reader.ReadBytes(&mut bytes).ok()?;
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut hasher);
+    let dir = std::env::temp_dir().join("spicy-lyrics-covers");
+    std::fs::create_dir_all(&dir).ok()?;
+    let path = dir.join(format!("{:016x}.img", hasher.finish()));
+    if !path.exists() {
+        std::fs::write(&path, &bytes).ok()?;
+    }
+    let path = path.to_string_lossy().into_owned();
+    covers.lock().unwrap().insert(key, path.clone());
+    Some(path)
+}
+
+fn snapshot(session: &Session, current: Option<&str>, refresh_cover: bool) -> windows::core::Result<(String, Value)> {
     let app = session.SourceAppUserModelId()?.to_string();
     let media = session.TryGetMediaPropertiesAsync()?.get().ok();
     let timeline = session.GetTimelineProperties()?;
@@ -62,13 +101,14 @@ fn snapshot(session: &Session, current: Option<&str>) -> windows::core::Result<(
         "lastUpdatedMs": ticks_to_unix_ms(timeline.LastUpdatedTime()?.UniversalTime),
         "status": status_name(playback.PlaybackStatus()?),
         "rate": rate,
+        "cover": media.as_ref().and_then(|m| cover(&app, m, refresh_cover)),
     });
     Ok((app, state))
 }
 
 /// Writes [session]'s state as [event]; a poll writes only a changed state.
 fn report(session: &Session, event: &str, current: Option<&str>) {
-    let Ok((app, state)) = snapshot(session, current) else { return };
+    let Ok((app, state)) = snapshot(session, current, event == "media" || event == "added") else { return };
     let mut last = LAST.get_or_init(Default::default).lock().unwrap();
     if event == "poll" && last.get(&app) == Some(&state) {
         return;

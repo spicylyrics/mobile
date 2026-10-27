@@ -33,6 +33,10 @@ class MediaSession(private val appFilter: String? = null) {
     @Volatile var track: Track? = null
         private set
 
+    /** The current track's thumbnail, a file the helper wrote; it can come a little after the title. */
+    @Volatile var cover: File? = null
+        private set
+
     private var lastStampMs = 0L
     private var lastStatus = ""
     /** Whether the status changed since the stamp did: every later report with that stamp is stale. */
@@ -46,6 +50,7 @@ class MediaSession(private val appFilter: String? = null) {
         if (!picked) return null
 
         val title = line.str("title")
+        cover = line.str("cover").takeIf(String::isNotBlank)?.let(::File)
         // Apple Music for Windows sends "artist — album" as the artist and no album.
         val (artist, album) = line.str("artist").let { raw ->
             if (line.str("album").isBlank() && " — " in raw) raw.substringBeforeLast(" — ") to raw.substringAfterLast(" — ")

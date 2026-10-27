@@ -74,6 +74,7 @@ fun main(args: Array<String>) {
     val lookup = LyricsLookup()
     val screen = MutableStateFlow<Screen>(Screen.Waiting)
     val playing = MutableStateFlow(false)
+    val cover = MutableStateFlow<File?>(null)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var fetch: Job? = null
 
@@ -86,6 +87,7 @@ fun main(args: Array<String>) {
             val line = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return@forEachLine
             val event = session.feed(line, receivedMono, receivedWall)
             playing.value = session.clock.isPlaying
+            cover.value = session.cover
             if (event is SessionEvent.NewTrack) {
                 val track = event.track
                 screen.value = Screen.Track(track, LyricsState.Loading)
@@ -111,8 +113,9 @@ fun main(args: Array<String>) {
             CompositionLocalProvider(LocalView provides View(Display(refreshRate))) {
                 val shown by screen.collectAsState()
                 val isPlaying by playing.collectAsState()
+                val coverFile by cover.collectAsState()
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
-                    DesktopKawarp()
+                    DesktopKawarp(coverFile, isPlaying)
                     when (val s = shown) {
                         Screen.Waiting -> Notice("Waiting for a song", "Play something in Spotify or another player that shows in Windows' media controls.")
                         is Screen.Track -> {
