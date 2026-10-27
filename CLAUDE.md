@@ -13,7 +13,7 @@ Code comments describe what the code does, not where it was ported from. Credits
 Windows / PowerShell (use `./gradlew` from Git Bash):
 
 ```
-.\gradlew.bat assembleDebug testDebugUnitTest :core:test :renderer:desktopTest :ui:desktopTest lintDebug      # full check (from README)
+.\gradlew.bat assembleDebug testDebugUnitTest :core:test :renderer:desktopTest :ui:desktopTest :desktop:compileKotlin :desktop:test lintDebug      # full check (from README)
 .\gradlew.bat :core:test --tests "com.tx24.spicyplayer.lyrics.spicy.parser.TtmlLyricsParserTest"
 .\gradlew.bat testDebugUnitTest --tests "*ScrollManagerTest.some test name*"
 .\gradlew.bat installDebug
