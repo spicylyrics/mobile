@@ -94,7 +94,7 @@ The next step after the renderer: a `:ui` module (same targets, same package nam
 **Big-screen settings panel:** `ui/settings/panel/` holds a settings panel for wide windows: a sidebar of tabs with search beside a pane of grouped cards (toggles, selects, sliders, buttons). Under 600dp wide it turns into one page at a time: the section list, then a section with a back button. It is the big-screen settings for desktop windows, and later for tablets and DeX windows behind a check that keeps the phone's own screens; platform bits (opening links, pickers) go through `PlatformActions`. `settingsPanelSections` builds its rows over `CommonAppSettings`, so every row is a saved setting; actions the platform lacks (clearing the lyrics cache) leave their rows out. The desktop app opens it in a window of its own on Ctrl+, (`desktop/.../SettingsWindow.kt`), saved through `FileSettingsStore`. The phone keeps its own settings screens.
 
 **Movable behind an interface:**
-- `controls/LyricsControls.kt`, `nowplaying/CompactNowPlayingHeader.kt`, `LyricsNotice.kt`, `NowPlayingInfo.kt`, `PipSongCard.kt`, `PortraitCanvas.kt`, `CoverStage.kt` (also the animated-cover view, below), and the lyrics screen composable in `MainActivity.kt` (`LyricsApp` and below): **now-playing state + transport** (track, artwork, position clock, playing, play/pause/skip/seek), today read straight from `ExternalPlaybackViewModel`.
+- The lyrics screen composable in `MainActivity.kt` (`LyricsApp` and below): the **now-playing state + transport** below, plus the settings store. Its components moved in step 3 (below); `LyricsApp` itself is still the Android shell's glue.
 - `settings/AppSettings.kt` (`SharedPreferences`): a **settings store**. Done in step 2, below.
 - `settings/` `SettingsScreen`, `SettingsPages`, `QuickSettings`, `Queue`, `CustomSources`, `DelayCalibration`, `HapticsSettings`, `SourcePicker`, `TranslationSettings`, `spotifysearch/SpotifySearch.kt`: the same **app-state interface** over the view model's lyrics/source/translation actions, plus **platform actions** (open a URL, open the system's notification-access or app settings, pick a file or folder).
 - Images in the header, queue and search (Coil 2): an **image loader** like the renderer's `LyricsImageLoader`, or Coil 3 (multiplatform) on both platforms once the phone is checked on it.
@@ -112,9 +112,30 @@ The next step after the renderer: a `:ui` module (same targets, same package nam
 **Order:**
 1. `:ui` with the movable-as-is group. No behaviour change; `:app` only changes its dependency. Done.
 2. The settings store and the shared settings (see "Settings in `:ui`" below). The phone's settings pages stay in `:app`, reading them; big screens get a settings screen of their own, built on the same settings.
-3. The now-playing state + transport interface; the header, controls, notices and the lyrics screen composable; `MainActivity` shrinks to the Android shell.
+3. The now-playing state + transport interface; the header, controls, notices and the lyrics screen composable; `MainActivity` shrinks to the Android shell. Components done (below); the page itself is next.
 4. Backgrounds (blurred-image expect) and image loading (Coil 3 or the loader interface), each checked for smoothness on the phone.
 5. Desktop counterparts for the Android-only list as wanted: video covers, file pickers, opening profiles in the browser.
+
+### Step 3: now playing
+
+Moved to `:ui` commonMain, packages unchanged: `controls/LyricsControls.kt` (with `CoverControls`, `StageControls`, the timelines), `nowplaying/CompactNowPlayingHeader.kt` (the cover change animation included), `LyricsNotice.kt`, `NowPlayingInfo.kt`, `PipSongCard.kt` (and `PipDock`), `PortraitCanvas.kt`, `CoverStage.kt`. The controls' tests moved to `ui/src/desktopTest`.
+
+The seams they sit behind:
+
+| Seam | Common side | Android | Desktop |
+|---|---|---|---|
+| Player state + transport | `NowPlaying` (`state: StateFlow<NowPlayingState>`) over `PlaybackTransport` (`positionMs()` as a call, read every frame; play/pause, skips, seek, custom actions). `NowPlayingState.info` is the header's `NowPlayingInfo` | `ViewModelNowPlaying` over `ExternalPlaybackViewModel`; the screen builds `PlaybackControlsState` from its transport and maps the view model's state with `PlayerUiState.nowPlayingState(artwork)` in composition, so nothing waits on a flow hop | `DesktopNowPlaying` over `MediaSession`, refreshed after each snapshot; `capabilitiesOf` maps the source's `Transport` set to `PlayerCapabilities`; tests use `FakeNowPlaying` |
+| Pictures | `ImageBitmap` everywhere: the cover in `NowPlayingInfo`, the player's action icons in `SessionCustomAction` | converted once per `Bitmap` (the view model caches action icons; the screen remembers the cover's wrapper), so equality and the cover loader's keys hold | native |
+| Covers, loops, avatars, shadow | `NowPlayingPlatform` through `LocalNowPlayingPlatform`: `rememberCover` (returns a `CoverImage` with a fingerprint and `sameCover`), `rememberMotionCover`/`forgetMotionCover`, `MotionCoverVideo`, `CrossfadingMotionVideo`, `Avatar`, `drawCoverShadow`, `blursLayers` | `AndroidNowPlayingPlatform`: `rememberSessionArtwork` (`SessionArtwork` is the `CoverImage`), the media3 views, Coil's `AsyncImage`, the shadow-layer paint from API 28, blur from API 31 | `BasicNowPlayingPlatform` (the default): the still cover as sent, no loops, avatars through `LocalLyricsImageLoader`, no shadow |
+| Notice buttons | `NoticeActions` carries `copyText`, `onOpenHelp` and `NoticeIcons` | `androidNoticeActions`: the clipboard, the Discord link, Material's extended icons | to do |
+| Animations off | `PlaybackControlsState.animate`, `LyricsNotice(animate = )` | read from the settings' `LocalUiAnimations` at the call | to do |
+| Haptics | `LocalHapticFeedback` (multiplatform) | `ProvideTouchHaptics`, as before | Compose's default |
+
+`ReleaseYear` says `before` rather than carrying the settings' `ReleaseYearPosition`; the screen leaves it null when the year is off. The More menu keeps a private copy of the settings menus' popup position and fill until the settings controls move.
+
+Still in `:app`: `LyricsApp` (keyguard, refresh rate, orientation, brightness, picture-in-picture, lifecycle, usage counts, the modals, the settings pages it opens), `MotionCover*`, `SessionArtwork`, the backgrounds. The desktop builds its own screen against `NowPlaying` rather than this one, so the phone's page stays in `LyricsApp`; the components above are shared code the phone uses, available to the desktop where they fit.
+
+**The big-screen page:** `ui/bigscreen/` holds the lyrics page for large windows: desktop windows now, tablets and DeX later (the phone keeps its own page). `BigScreenPage` takes a `NowPlaying`, `PlayerCapabilities` (which transport commands reach the player, and whether the window can go fullscreen), the `LyricsState`, and the lyrics view and background as slots. `BigScreenState` holds the view mode (page, cinema, fullscreen) and its moves; `layoutFor` picks the side or compact layout from the window size, so the same page works in any window and either orientation. `BigScreenMetrics` places the now-playing bar and the lyrics. Tooltips come through `LocalTooltipHost`, which the desktop fills with its tooltip area and touch platforms leave empty. Its tests are in `ui/src/desktopTest/.../bigscreen`. The More menu (`MoreMenu.kt`) reads `LocalLyricsActions`: a `LyricsActions` lists the song's sources with what each had (`LyricsOptions`), picks one for the song, turns translation on or off with its language, and sets the translation and romanization display modes; without one its entries show as unavailable. The desktop's is `DesktopLyrics` (`:desktop`), over its lookup (`SongLookup`, a source picked per song asked through a policy with only that provider on) and Google Translate through `TranslationEngine`, keeping the display modes in `CommonAppSettings` and the per-song source and translation switch in `lyrics.properties` beside the settings file.
 
 ### Settings in `:ui`
 

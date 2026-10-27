@@ -25,10 +25,13 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.rememberInfiniteTransition
 import com.tx24.spicyplayer.ui.theme.SpicyType
 import com.tx24.spicyplayer.ui.theme.SpicyRadii
-import com.tx24.spicyplayer.ui.components.SelectMenuPosition
-import com.tx24.spicyplayer.ui.components.MENU_FILL
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.draw.clip
@@ -48,7 +51,6 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.AnimatedVisibility
 import com.tx24.spicyplayer.ui.theme.SpicyPalette
 
-import com.tx24.spicyplayer.ui.components.LocalUiAnimations
 
 import androidx.compose.animation.core.animateFloatAsState
 
@@ -115,7 +117,6 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
@@ -197,6 +198,8 @@ class PlaybackControlsState(
     val rotated: Boolean = false,
     /** Where the lyrics come from, as one short line under the timeline; null shows none. */
     val credit: MiniCredit? = null,
+    /** The skips move on and play turns into pause as they're pressed; off, the glyphs just swap. */
+    val animate: Boolean = true,
 )
 
 /**
@@ -450,7 +453,7 @@ private fun MoreButton(actions: List<FloatingAction>, size: Dp) {
         }
         if (menu.currentState || menu.targetState) {
             val margin = with(LocalDensity.current) { SpicySpacing.S2.roundToPx() }
-            val position = remember(margin) { SelectMenuPosition(margin) }
+            val position = remember(margin) { MenuPosition(margin) }
             Popup(popupPositionProvider = position, onDismissRequest = { menu.targetState = false }, properties = PopupProperties(focusable = true)) {
                 val origin = TransformOrigin(1f, if (position.above) 1f else 0f)
                 AnimatedVisibility(
@@ -822,7 +825,7 @@ private val ShadeEasing = CubicBezierEasing(0.45f, 0f, 0.35f, 1f)
  * How far in from the page's left edge the portrait controls' rows start, in px, on a page
  * [pageWidthPx] wide: their side margin, inside the column they're centred in.
  */
-internal fun controlsContentStartPx(pageWidthPx: Float, density: Float): Float {
+fun controlsContentStartPx(pageWidthPx: Float, density: Float): Float {
     val column = minOf(pageWidthPx, CONTROLS_MAX_WIDTH.value * density)
     return (pageWidthPx - column) / 2f + SIDE_MARGIN.value * density
 }
@@ -838,7 +841,7 @@ private const val SHADE_SOFT_INTENSITY = 0.2f
  * controls themselves ([controlsHeightPx], as reported by `onControlsHeight`) and the part of the
  * shade above them that blurs text. A notice kept above this is sharp.
  */
-internal fun controlsClearancePx(controlsHeightPx: Int, wide: Boolean, density: Float): Float {
+fun controlsClearancePx(controlsHeightPx: Int, wide: Boolean, density: Float): Float {
     val reachPx = (if (wide) BAR_SHADE_REACH else SHADE_REACH).value * density
     return controlsHeightPx + shadeBlurAbovePx(reachPx, controlsHeightPx.toFloat(), ShadeEasing, SHADE_SOFT_INTENSITY)
 }
@@ -870,9 +873,9 @@ private val ShadeGradient = Brush.verticalGradient(
 )
 
 /** Where a player's custom action goes. Players only give a name, so this reads the name. */
-internal enum class ActionKind { Shuffle, Repeat, Other }
+enum class ActionKind { Shuffle, Repeat, Other }
 
-internal val SessionCustomAction.kind: ActionKind
+val SessionCustomAction.kind: ActionKind
     get() {
         val text = "$name $action".lowercase()
         return when {
@@ -882,12 +885,19 @@ internal val SessionCustomAction.kind: ActionKind
         }
     }
 
+/**
+ * The player's buttons the controls show: all of them, or with [playerButtons] off only shuffle
+ * and repeat, which keep their places in the playback row.
+ */
+fun shownCustomActions(actions: List<SessionCustomAction>, playerButtons: Boolean): List<SessionCustomAction> =
+    if (playerButtons) actions else actions.filter { it.kind != ActionKind.Other }
+
 /** A player's own icon, in white like everything else here; its name when it sent no icon. */
 @Composable
 private fun ActionIcon(action: SessionCustomAction, modifier: Modifier) {
     val bitmap = action.icon
     if (bitmap != null) {
-        val painter = remember(bitmap) { BitmapPainter(bitmap.asImageBitmap()) }
+        val painter = remember(bitmap) { BitmapPainter(bitmap) }
         Image(painter, null, modifier, colorFilter = ColorFilter.tint(SpicyColors.TextPrimary))
     } else {
         Text(action.name.take(2), style = TimeStyle.copy(color = SpicyColors.TextPrimary))
@@ -920,7 +930,7 @@ private fun PlaybackRow(
     ) {
         val slot = if (fillSlots) Modifier.weight(1f).height(TOUCH_SIZE) else null
         if (sides) SideAction(shuffle, controls, sideWidth, slot)
-        val animate = LocalUiAnimations.current
+        val animate = controls.animate
         val scope = rememberCoroutineScope()
         // The skips move on and play turns into pause, Apple Music's way, when animations are on.
         val previous = remember { Animatable(0f) }
@@ -986,7 +996,7 @@ private fun SideAction(action: SessionCustomAction?, controls: PlaybackControlsS
         Spacer(slot ?: Modifier.size(TOUCH_SIZE))
         return
     }
-    val painter = remember(bitmap) { BitmapPainter(bitmap.asImageBitmap()) }
+    val painter = remember(bitmap) { BitmapPainter(bitmap) }
     PressableGlyph(
         painter, width, 1f, action.name,
         colorFilter = ColorFilter.tint(SpicyColors.TextPrimary),
@@ -1287,8 +1297,35 @@ internal fun formatClock(ms: Long): String {
     val hours = totalSeconds / 3_600L
     val minutes = (totalSeconds % 3_600L) / 60L
     val seconds = totalSeconds % 60L
-    return if (hours > 0L) "%d:%02d:%02d".format(hours, minutes, seconds) else "%d:%02d".format(minutes, seconds)
+    return if (hours > 0L) "$hours:${twoDigits(minutes)}:${twoDigits(seconds)}" else "$minutes:${twoDigits(seconds)}"
 }
+
+internal fun twoDigits(value: Long): String = value.toString().padStart(2, '0')
+
+/**
+ * The More menu's place: lined up with the button's right edge, below it, or above where there's
+ * no room below; kept [margin] clear of the window's edges.
+ */
+private class MenuPosition(private val margin: Int) : PopupPositionProvider {
+    var above by mutableStateOf(false)
+        private set
+
+    override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset {
+        val gap = margin / 2
+        val bottom = windowSize.height
+        val maxX = (windowSize.width - popupContentSize.width - margin).coerceAtLeast(margin)
+        val x = (anchorBounds.right - popupContentSize.width).coerceIn(margin, maxX)
+        val below = anchorBounds.bottom + gap
+        above = below + popupContentSize.height > bottom - margin &&
+            anchorBounds.top - gap - popupContentSize.height >= margin
+        val y = if (above) anchorBounds.top - gap - popupContentSize.height else below
+        val maxY = (bottom - popupContentSize.height - margin).coerceAtLeast(margin)
+        return IntOffset(x, y.coerceIn(margin, maxY))
+    }
+}
+
+/** The menu's plate: the settings menus' fill. */
+private val MENU_FILL = Color(30, 30, 34).copy(alpha = 0.98f)
 
 /** The controls' glyphs, in white. */
 internal object SpicyIcons {
