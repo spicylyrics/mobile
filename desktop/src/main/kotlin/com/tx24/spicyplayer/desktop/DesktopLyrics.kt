@@ -1,5 +1,6 @@
 package com.tx24.spicyplayer.desktop
 
+import androidx.compose.runtime.snapshotFlow
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
 import com.tx24.spicyplayer.network.data.LyricsSourceDescriptor
@@ -140,6 +141,18 @@ class DesktopLyrics(
     override fun setRomanizationMode(mode: RomanizationMode) {
         settings.romanizationMode = mode
         optionsState.update { it.copy(romanizationMode = mode) }
+    }
+
+    /**
+     * Keeps the menu's display modes in step with [settings] when something else changes them
+     * (the settings window). Runs as long as [scope].
+     */
+    fun followSettings() {
+        scope.launch {
+            snapshotFlow { settings.translationMode to settings.romanizationMode }.collect { (translation, romanization) ->
+                optionsState.update { it.copy(translationMode = translation, romanizationMode = romanization) }
+            }
+        }
     }
 
     /** Waits for the lookup and translation under way; for tests. */
