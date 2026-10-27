@@ -28,9 +28,9 @@ import androidx.compose.ui.unit.Constraints
 import kotlinx.coroutines.launch
 
 /**
- * Portrait, with the big cover up: the record's animated cover, or its still cover, spread edge to
- * edge as a square from the top of the screen, as Apple Music shows it, its bottom melting into the
- * background behind. The song is docked under it ([PortraitCanvasDock]). The
+ * Portrait, with the big cover up: the record's animated cover, or its still cover, filling the
+ * screen's width from the top down to about the song's name, cropped at the sides, its bottom
+ * melting into the background behind, as Apple Music shows it. The song is docked under it ([PortraitCanvasDock]). The
  * still cover stays beneath the loop, so a loop that's slow to start, or fails, shows the cover.
  */
 @Composable
@@ -51,8 +51,8 @@ fun PortraitCoverStage(
         Box(
             Modifier
                 .layout { measurable, constraints ->
-                    val side = constraints.maxWidth
-                    val placeable = measurable.measure(Constraints.fixed(side, side))
+                    val height = (constraints.maxHeight * HEIGHT).toInt().coerceAtLeast(1)
+                    val placeable = measurable.measure(Constraints.fixed(constraints.maxWidth, height))
                     layout(constraints.maxWidth, constraints.maxHeight) {
                         placeable.place(0, 0)
                     }
@@ -83,14 +83,18 @@ fun PortraitCoverStage(
                         scope.launch { forgetMotionCover(context, motionQuery) }
                     },
                     modifier = Modifier.fillMaxSize(),
+                    // Covers the box at its own shape, centred across.
+                    cropFromTop = 0.5f,
                 )
             }
         }
     }
 }
 
-/** How much of the square's height its bottom melts over. */
-private const val FEATHER = 0.3f
+/** How much of the screen's height the picture covers, from the top. */
+private const val HEIGHT = 0.68f
+/** How much of the picture's height its bottom melts over. */
+private const val FEATHER = 0.35f
 /** Across the feather, from the edge in: (share of it, opacity). */
 private val FEATHER_STOPS = listOf(0f to 0f, 0.18f to 0.10f, 0.38f to 0.36f, 0.72f to 0.85f, 1f to 1f)
 private const val VEIL = 0.12f
