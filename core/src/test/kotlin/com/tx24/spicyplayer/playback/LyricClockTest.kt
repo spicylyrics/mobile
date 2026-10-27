@@ -189,4 +189,11 @@ class LyricClockTest {
         val clock = clockAt(10_000L)
         assertEquals(400L, clock.onReport(LyricClock.Report(playing, true, 10_500L, 100L, 1f), 100L, snap = true).appliedMs)
     }
+
+    @Test fun playingAtSpeedZeroCountsAsNormalSpeed() {
+        assertEquals(1f, LyricClock.playingSpeed(playing = true, reported = 0f))
+        assertEquals(1f, LyricClock.playingSpeed(playing = true, reported = Float.NaN))
+        assertEquals(1.5f, LyricClock.playingSpeed(playing = true, reported = 1.5f))
+        assertEquals(0f, LyricClock.playingSpeed(playing = false, reported = 0f))
+    }
 }

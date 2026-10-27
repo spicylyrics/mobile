@@ -179,6 +179,12 @@ class LyricClock(nowMs: Long) {
     }
 
     companion object {
+        /**
+         * The speed to count a report at: some players report playing at speed 0, which would
+         * hold the lyrics still. Playing is taken as normal speed then.
+         */
+        fun playingSpeed(playing: Boolean, reported: Float): Float = if (playing && !(reported > 0f)) 1f else reported
+
         /** Smaller differences aren't worth moving for: under a frame. */
         const val MIN_MOVE_MS = 15L
         /** Two votes this close are the same position. */
