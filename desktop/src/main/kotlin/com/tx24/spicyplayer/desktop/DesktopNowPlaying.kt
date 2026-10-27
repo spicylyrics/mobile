@@ -70,11 +70,11 @@ class DesktopNowPlaying(
         mutableState.value = now.copy(isPlaying = !now.isPlaying)
     }
 
-    override fun skipNext() = skip(NowPlayingCommand.NEXT, TrackDirection.Forward)
+    override fun skipNext() = sendSkip(NowPlayingCommand.NEXT, TrackDirection.Forward)
 
-    override fun skipPrevious() = skip(NowPlayingCommand.PREVIOUS, TrackDirection.Backward)
+    override fun skipPrevious() = sendSkip(NowPlayingCommand.PREVIOUS, TrackDirection.Backward)
 
-    private fun skip(command: NowPlayingCommand, direction: TrackDirection) {
+    private fun sendSkip(command: NowPlayingCommand, direction: TrackDirection) {
         val app = mutableState.value.player ?: return
         pendingDirection = direction
         control(app, command, 0L)
