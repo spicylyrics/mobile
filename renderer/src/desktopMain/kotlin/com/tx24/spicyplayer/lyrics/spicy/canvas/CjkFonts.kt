@@ -70,8 +70,9 @@ object CjkFonts {
     // Skia's typeface for the weight, its nearest face where the font has none (YaHei has no
     // SemiBold). Compose looks a typeface up again by its alias, and by the family name alone it
     // finds JhengHei's Regular whatever the weight (SystemFont does the same), so each weight
-    // gets an alias of its own.
-    private fun family(name: String, weight: FontWeight): FontFamily? = families.getOrPut(name to weight) {
+    // gets an alias of its own. JhengHei's Bold (msjhbd.ttc) does resolve; it is just drawn
+    // lighter than the others, about as dark as YaHei's Regular, so it can pass for Regular.
+    internal fun family(name: String, weight: FontWeight): FontFamily? = families.getOrPut(name to weight) {
         val style = FontStyle(weight.weight, FontWidth.NORMAL, FontSlant.UPRIGHT)
         java.util.Optional.ofNullable(FontMgr.default.matchFamilyStyle(name, style)?.let { FontFamily(Typeface(it, alias = "cjk-$name-${weight.weight}")) })
     }.orElse(null)

@@ -37,6 +37,7 @@ kotlin {
         getByName("desktopTest").dependencies {
             implementation("junit:junit:4.13.2")
             implementation("net.sf.kxml:kxml2:2.3.0")
+            implementation(compose.desktop.currentOs)
         }
         // The lyric fonts live once, as Android font resources; the desktop reads the same files
         // from its classpath.
