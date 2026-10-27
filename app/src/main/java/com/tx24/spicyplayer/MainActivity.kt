@@ -278,6 +278,8 @@ class LyricsActivity : ComponentActivity() {
     private var inPip by mutableStateOf(false)
     /** Whether the screen in front is one it's fine to shrink (not settings, a pop-up, the intro). */
     private val pipAllowed = MutableStateFlow(false)
+    /** Another screen was opened for an answer ([startActivityForResult]): no window until it's back. */
+    private val pipHeld = MutableStateFlow(false)
     private var pipAutoEnter = false
     /** The window's shape from Settings (`AppSettings.pipShape`). */
     private val pipRatio = MutableStateFlow(Rational(16, 9))
@@ -318,9 +320,10 @@ class LyricsActivity : ComponentActivity() {
                 repeatOnLifecycle(Lifecycle.State.STARTED) {
                     combine(
                         pipAllowed,
+                        pipHeld,
                         playbackViewModel.state.map { it.isPlaying to (it.sourcePackage != null) }.distinctUntilChanged(),
                         pipRatio,
-                    ) { allowed, (playing, hasSession), ratio -> Triple(playing, allowed && hasSession, ratio) }
+                    ) { allowed, held, (playing, hasSession), ratio -> Triple(playing, allowed && !held && hasSession, ratio) }
                         .collectLatest { (playing, autoEnter, ratio) ->
                             pipAutoEnter = autoEnter
                             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return@collectLatest
@@ -421,7 +424,30 @@ class LyricsActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        pipHeld.value = false
         playbackViewModel.refresh()
+    }
+
+    /**
+     * Opening a file picker (or anything else that answers back) is leaving the app as far as
+     * Android's concerned, so the lyrics would shrink and the screen waiting for the answer would
+     * close and miss it. The window stays shut until the app is back.
+     */
+    @Deprecated("Deprecated in Java")
+    override fun startActivityForResult(intent: Intent, requestCode: Int, options: Bundle?) {
+        if (requestCode >= 0 && pipSupported) {
+            pipHeld.value = true
+            pipAutoEnter = false
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                runCatching {
+                    setPictureInPictureParams(
+                        PictureInPicture.params(this, playbackViewModel.state.value.isPlaying, false, pipAcceptedRatio),
+                    )
+                }
+            }
+        }
+        @Suppress("DEPRECATION")
+        super.startActivityForResult(intent, requestCode, options)
     }
 
     override fun onStop() {
