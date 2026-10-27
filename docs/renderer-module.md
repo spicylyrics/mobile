@@ -4,6 +4,8 @@ The word-synced lyrics renderer and the Kawarp background engine, shared by the 
 
 Files keep the app's package names (as `:core` does), so moving one doesn't change its imports.
 
+The modules stay flat beside each other: `:core` (JVM), `:renderer` (multiplatform), later `:ui` (multiplatform, shared screens), and the two apps `:app` and `:desktop` on top. Dependencies run one way, `:core` ← `:renderer` ← `:ui` ← apps. A `:shared:*` group would only add a folder level and longer project paths in every build file and CI command; the module names already say what is shared.
+
 ## Layout
 
 ```
@@ -43,6 +45,8 @@ The JVM actuals are written twice (Android and desktop), a few lines each, rathe
 
 `commonMain` holds no `java.*` or `android.*` reference. With only JVM-flavoured targets the compiler doesn't enforce that (common code compiles against the JVM on each target), so `CommonMainPlatformApiTest` scans the sources for it.
 
+Fonts are not in Compose Multiplatform resources, on purpose. The home screen widget's layouts (`widget_song_row.xml`, `styles.xml`) name `@font/lyrics_*`, and a widget can only use Android font resources, so the files must stay Android resources; CMP resources would package a second copy as assets. CMP's `Font(Res.font.x)` is also `@Composable`, while the renderer builds its font families once, outside composition. So the files live once in `src/androidMain/res/font`, and other modules reuse the families through `LyricsLayoutCalculator.spicyFontFamily` (which also honours the Lyrics Font setting). The renderer has no strings or images of its own. An iOS target would read the same files from its bundle in its `LyricFonts` actual.
+
 ## The shader
 
 The fused Kawarp shader is one string, `KAWARP_FUSED_AGSL` in `kawarp/KawarpShader.kt`. The same source is valid AGSL and SkSL, so nothing is converted: Android compiles it with `RuntimeShader`, the desktop with Skia's `RuntimeEffect.makeForShader`.
@@ -71,3 +75,39 @@ Compose comes from Compose Multiplatform 1.12.2, which resolves to the androidx 
 ```
 .\gradlew.bat assembleDebug testDebugUnitTest :core:test :renderer:desktopTest lintDebug
 ```
+
+## Sharing the UI
+
+The next step after the renderer: a `:ui` module (same targets, same package names) holding the lyrics screen and its chrome, so `:app` keeps the Android shell and `:desktop` a window. A survey of `app/.../ui/` and `MainActivity.kt` at the time of the renderer move:
+
+**Movable as they are** (Compose only; `haze` and Material 3 both exist for Compose Multiplatform):
+- `theme/SpicyTokens.kt`; `components/` `KeyFocus`, `LyricsSkeleton`, `SettingsSkeleton`, `ScreenSlide`, `ScrollHints`, `SpicyGlyphs`, `GlassButton`, `Backdrop`
+- `controls/TransportGlyphs.kt`
+- `nowplaying/` `CompactHeaderMetrics`, `LandscapeMetrics`, `HeaderMarquee`, `StageArt`
+- `background/CoverColors.kt`; `settings/SystemBarsMode.kt`
+
+**Movable behind an interface:**
+- `controls/LyricsControls.kt`, `nowplaying/CompactNowPlayingHeader.kt`, `LyricsNotice.kt`, `NowPlayingInfo.kt`, `PipSongCard.kt`, `PortraitCanvas.kt`, `CoverStage.kt` (also the animated-cover view, below), and the lyrics screen composable in `MainActivity.kt` (`LyricsApp` and below): **now-playing state + transport** (track, artwork, position clock, playing, play/pause/skip/seek), today read straight from `ExternalPlaybackViewModel`.
+- `settings/AppSettings.kt` (`SharedPreferences`) and every settings page reading it: a **settings store** (key-value; `SharedPreferences` on Android, `java.util.prefs` or a file on desktop).
+- `settings/` `SettingsScreen`, `SettingsPages`, `QuickSettings`, `Queue`, `CustomSources`, `DelayCalibration`, `HapticsSettings`, `SourcePicker`, `TranslationSettings`, `spotifysearch/SpotifySearch.kt`: the same **app-state interface** over the view model's lyrics/source/translation actions, plus **platform actions** (open a URL, open the system's notification-access or app settings, pick a file or folder).
+- Images in the header, queue and search (Coil 2): an **image loader** like the renderer's `LyricsImageLoader`, or Coil 3 (multiplatform) on both platforms once the phone is checked on it.
+- `components/SpicyModal.kt`, `SettingsControls.kt`, `background/SpicySessionBackground.kt`: `Build.VERSION` checks become a **platform capabilities** expect (backdrop blur, `RenderEffect`).
+- `components/SpicyBrand.kt`, `SpicyToast.kt`, `intro/IntroScreen.kt`: `R.drawable` vectors move to **CMP resources** in `:ui` (strings too, once there are any to translate; the UI's text is in Kotlin today).
+- Touch haptics (`ProvideTouchHaptics`, the groove haptics): a **haptics** interface, a no-op on desktop.
+- `background/StillBackgrounds.kt`, `LegacyBackground.kt`, `CanvasAmbient.kt`: Android `Bitmap` blur and grading become a **blurred-image** expect (Skia's blur on desktop), the same split as Kawarp's hosts.
+
+**Android-only** (a desktop counterpart is new work, not a move):
+- `nowplaying/MotionCover.kt`, `MotionCoverStream.kt`, `background/MotionFrames` feed: media3 + GL video for animated covers and Canvas.
+- `nowplaying/SessionArtwork.kt`: the other app's MediaSession bitmaps.
+- `lyricsmanager/LyricsManager.kt` file import, `settings/LyricsFontFile.kt`: the Storage Access Framework, `Typeface`.
+- `profile/ProfileModal.kt` (WebView), `settings/AppIcon.kt` (launcher aliases), `settings/DebugReport.kt`, `controls/KeyInput.kt` (Android key events), `PictureInPicture.kt`, the activity shell (window, keyguard, brightness, refresh rate), `widget/`, the notification listener in `playback/`, Gemini Nano translation (ML Kit).
+
+**Order:**
+1. `:ui` with the movable-as-is group, drawables in CMP resources. No behaviour change; `:app` only changes its dependency.
+2. The settings store, then `AppSettings` and the settings pages that need only it.
+3. The now-playing state + transport interface; the header, controls, notices and the lyrics screen composable; `MainActivity` shrinks to the Android shell.
+4. Backgrounds (blurred-image expect) and image loading (Coil 3 or the loader interface), each checked for smoothness on the phone.
+5. Desktop counterparts for the Android-only list as wanted: video covers, file pickers, opening profiles in the browser.
+
+iOS stays blocked on `:core` until its models, detectors and translation presentation are multiplatform; nothing in the plan above adds a new blocker.
+
