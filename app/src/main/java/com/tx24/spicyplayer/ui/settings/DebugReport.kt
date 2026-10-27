@@ -73,6 +73,7 @@ internal fun extraLogs(context: Context): String? {
         section("Translation (newest last):", TranslationTrace.lines(now))
         section("Sync (newest last):", SyncTrace.lines(now))
         section("Downloaded since start:", TrafficCounter.lines())
+        section("Widgets:", com.tx24.spicyplayer.widget.LyricsWidget.sizeLines(context).takeIf { it.size > 1 }.orEmpty())
         section("Last crash:", com.tx24.spicyplayer.playback.CrashLog.lines(context))
     }
     return redactSecrets(report).trimEnd().ifEmpty { null }

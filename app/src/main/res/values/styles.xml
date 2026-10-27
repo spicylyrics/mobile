@@ -7,31 +7,7 @@
         <item name="android:statusBarColor">@android:color/black</item>
     </style>
 
-    <!-- The home screen widget's lyric lines, their romanization or translation, buttons and times. -->
-    <style name="WidgetLyricLine">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">4dp</item>
-        <item name="android:ellipsize">end</item>
-        <item name="android:shadowColor">#59000000</item>
-        <item name="android:shadowDy">1</item>
-        <item name="android:shadowRadius">6</item>
-        <item name="android:visibility">gone</item>
-    </style>
-
-    <style name="WidgetLyricNote">
-        <item name="android:layout_width">match_parent</item>
-        <item name="android:layout_height">wrap_content</item>
-        <item name="android:ellipsize">end</item>
-        <item name="android:maxLines">2</item>
-        <item name="android:shadowColor">#59000000</item>
-        <item name="android:shadowDy">1</item>
-        <item name="android:shadowRadius">6</item>
-        <item name="android:textSize">12sp</item>
-        <item name="android:textStyle">bold</item>
-        <item name="android:visibility">gone</item>
-    </style>
-
+    <!-- The home screen widget's buttons and times. -->
     <style name="WidgetButton">
         <item name="android:layout_width">34dp</item>
         <item name="android:layout_height">34dp</item>
@@ -45,5 +21,6 @@
         <item name="android:layout_height">wrap_content</item>
         <item name="android:textColor">#B3FFFFFF</item>
         <item name="android:textSize">11sp</item>
+        <item name="android:fontFamily">@font/lyrics_medium</item>
     </style>
 </resources>

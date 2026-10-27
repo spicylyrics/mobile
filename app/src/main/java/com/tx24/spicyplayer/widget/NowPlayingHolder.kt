@@ -1,11 +1,17 @@
 package com.tx24.spicyplayer.widget
 
 import android.content.BroadcastReceiver
+import android.content.ComponentCallbacks
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.res.Configuration
 import android.graphics.Bitmap
+import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.KawarpSnapshot
+import com.tx24.spicyplayer.lyrics.spicy.models.LyricsCredit
+import com.tx24.spicyplayer.lyrics.spicy.models.LyricsFooter
+import com.tx24.spicyplayer.lyrics.spicy.models.LyricsProvenance
 import android.graphics.BitmapShader
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -14,6 +20,7 @@ import android.graphics.Shader
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
+import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
 import android.os.Handler
@@ -78,6 +85,8 @@ internal object NowPlayingHolder {
     private var songDelays: SongDelays? = null
     private var sessionManager: MediaSessionManager? = null
     private var controller: MediaController? = null
+    private val observedSessions = HashMap<MediaSession.Token, MediaController>()
+    private val observedCallbacks = HashMap<MediaSession.Token, MediaController.Callback>()
     private val stickiness = SessionStickiness(SESSION_SWITCH_GRACE_MS)
     /** Looks at the sessions again once the followed one has been stopped for its grace. */
     private val sessionRecheck = Runnable { refreshSessions() }
@@ -90,13 +99,13 @@ internal object NowPlayingHolder {
     private var title = ""
     private var artist = ""
     private var durationMs = 0L
-    private var provider: String? = null
+    private var credit: String? = null
     private var leads: List<WidgetLines.Lead> = emptyList()
     private var synced = false
     /** Shown in place of lyrics while there are none. */
     private var notice: String? = WAITING
     private var art: Bitmap? = null
-    private var sample: Bitmap? = null
+    private var backdrop: Bitmap? = null
     private var cover: Bitmap? = null
     private var colors: CoverColors? = null
     /** Whether any placed widget shows romanization, and any the progress bar ([LyricsWidget.wants]). */
@@ -126,11 +135,28 @@ internal object NowPlayingHolder {
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             screenOn = intent.action == Intent.ACTION_SCREEN_ON
-            if (screenOn) show() else main.removeCallbacks(tick)
+            if (screenOn) refreshSessions() else main.removeCallbacks(tick)
         }
     }
 
-    private val tick = Runnable { show() }
+    private val tick = Runnable { refreshSessions() }
+
+    /** Whether the screen was wide when the widgets were last drawn ([LyricsWidget.screenDp]). */
+    private var wide: Boolean? = null
+
+    /** Turned: each widget is drawn again for its size this way round ([LyricsWidget.sizeDp]). */
+    private val configCallbacks = object : ComponentCallbacks {
+        override fun onConfigurationChanged(config: Configuration) {
+            val app = context ?: return
+            val now = LyricsWidget.screenDp(app).let { (width, height) -> width > height }
+            if (now == wide) return
+            wide = now
+            show(full = true)
+        }
+
+        @Deprecated("Deprecated in Java")
+        override fun onLowMemory() = Unit
+    }
 
     val running: Boolean get() = scope != null
 
@@ -142,6 +168,7 @@ internal object NowPlayingHolder {
         val app = context.applicationContext
         if (running) {
             readWants(app)
+            refreshSessions()
             show(full = true)
             return
         }
@@ -155,6 +182,8 @@ internal object NowPlayingHolder {
         screenOn = app.getSystemService(PowerManager::class.java)?.isInteractive ?: true
         val screen = IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_SCREEN_OFF) }
         ContextCompat.registerReceiver(app, screenReceiver, screen, ContextCompat.RECEIVER_NOT_EXPORTED)
+        wide = LyricsWidget.screenDp(app).let { (width, height) -> width > height }
+        app.registerComponentCallbacks(configCallbacks)
         val manager = app.getSystemService(MediaSessionManager::class.java)
         val listener = ComponentName(app, SessionAccessService::class.java)
         runCatching {
@@ -173,8 +202,12 @@ internal object NowPlayingHolder {
         val app = context ?: return
         main.removeCallbacks(tick)
         runCatching { app.unregisterReceiver(screenReceiver) }
+        app.unregisterComponentCallbacks(configCallbacks)
         runCatching { sessionManager?.removeOnActiveSessionsChangedListener(sessionsListener) }
         controller?.unregisterCallback(controllerCallback)
+        observedSessions.forEach { (token, session) -> observedCallbacks[token]?.let(session::unregisterCallback) }
+        observedSessions.clear()
+        observedCallbacks.clear()
         main.removeCallbacks(sessionRecheck)
         stickiness.reset()
         scope?.cancel()
@@ -196,8 +229,8 @@ internal object NowPlayingHolder {
 
     /** The lyrics screen's own [lyrics] for song [key] (by [lyricsKey]), over the widget's lookup. */
     fun offer(key: String?, lyrics: LyricsState) {
-        if (!running || key == null || (lyrics !is LyricsState.Ready && lyrics !is LyricsState.Error)) return
-        if (key != songKey) {
+        if (key == null || (lyrics !is LyricsState.Ready && lyrics !is LyricsState.Error)) return
+        if (!running || key != songKey) {
             pendingOffer = key to lyrics
             return
         }
@@ -238,6 +271,24 @@ internal object NowPlayingHolder {
     }
 
     private fun follow(sessions: List<MediaController>) {
+        // Session-list changes do not report a paused player starting again. Watch every
+        // player, just as the main screen does, including those we are not following yet.
+        val tokens = sessions.map { it.sessionToken }.toSet()
+        (observedSessions.keys - tokens).forEach { token ->
+            observedSessions.remove(token)?.let { session -> observedCallbacks.remove(token)?.let(session::unregisterCallback) }
+        }
+        sessions.forEach { session ->
+            val token = session.sessionToken
+            if (token !in observedSessions) {
+                val callback = object : MediaController.Callback() {
+                    override fun onPlaybackStateChanged(state: PlaybackState?) = refreshSessions()
+                    override fun onSessionDestroyed() = refreshSessions()
+                }
+                observedSessions[token] = session
+                observedCallbacks[token] = callback
+                session.registerCallback(callback, main)
+            }
+        }
         val now = SystemClock.elapsedRealtime()
         val best = bestSession(sessions, controller?.sessionToken, stickiness, now)
         main.removeCallbacks(sessionRecheck)
@@ -247,6 +298,8 @@ internal object NowPlayingHolder {
             stickiness.reset()
             controller?.unregisterCallback(controllerCallback)
             controller = best
+            clock.reset(now)
+            awaitingReport = true
             best?.registerCallback(controllerCallback, main)
         }
         update()
@@ -265,10 +318,15 @@ internal object NowPlayingHolder {
         }
         val newSong = key != songKey
         if (newSong) startSong(key, metadata)
+        // Players may publish the duration after the title, or briefly omit it during
+        // playback updates. Learn it when available without hiding an existing timeline.
+        val reportedDuration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION)
+        val durationChanged = reportedDuration > 0L && reportedDuration != durationMs
+        if (durationChanged) durationMs = reportedDuration
         val coverChanged = refreshCover(metadata)
         val wasPlaying = clock.isPlaying
         report(session, newSong)
-        show(full = newSong || coverChanged || wasPlaying != clock.isPlaying)
+        show(full = newSong || coverChanged || durationChanged || wasPlaying != clock.isPlaying)
     }
 
     private fun startSong(key: String, metadata: MediaMetadata) {
@@ -292,6 +350,8 @@ internal object NowPlayingHolder {
             take(lyrics)
             return
         }
+        // While the lyrics screen is up it offers its own lyrics, kept even from before a widget
+        // was placed ([offer]), so looking up here would only ask the sources twice.
         if (!appShowing) lookUpSong()
     }
 
@@ -325,7 +385,11 @@ internal object NowPlayingHolder {
                 lookupJob?.cancel()
                 leads = WidgetLines.leads(lyrics.lines)
                 synced = lyrics.lyricsType != LyricsType.Static
-                provider = lyrics.provider
+                credit = LyricsFooter(
+                    provenance = LyricsProvenance(lyrics.source ?: lyrics.provider),
+                    maker = lyrics.maker?.let { LyricsCredit(it.username, it.profileUrl, it.avatarUrl) },
+                    uploader = lyrics.uploader?.let { LyricsCredit(it.username, it.profileUrl, it.avatarUrl) },
+                ).miniCredit()?.text
                 lookedUpPlain = false
                 notice = if (leads.isEmpty()) NO_LYRICS else null
             }
@@ -341,7 +405,7 @@ internal object NowPlayingHolder {
         title = ""
         artist = ""
         durationMs = 0L
-        provider = null
+        credit = null
         lookedUpPlain = false
         leads = emptyList()
         synced = false
@@ -379,14 +443,14 @@ internal object NowPlayingHolder {
             ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
         if (picture === art) return false
         art = picture
-        sample = null
+        backdrop = null
         cover = null
         colors = null
         if (picture != null) runCatching { readCover(picture) }
         return true
     }
 
-    /** The cover shrunk to [SAMPLE_PX] (for the colours and the blurred background) and to a rounded thumbnail. */
+    /** The cover's colours (from it shrunk to [SAMPLE_PX]), a still of the background, and a rounded thumbnail. */
     private fun readCover(picture: Bitmap) {
         val hardware = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && picture.config == Bitmap.Config.HARDWARE
         val readable = if (hardware) picture.copy(Bitmap.Config.ARGB_8888, false) else picture
@@ -394,7 +458,7 @@ internal object NowPlayingHolder {
         val pixels = IntArray(SAMPLE_PX * SAMPLE_PX)
         small.getPixels(pixels, 0, SAMPLE_PX, 0, 0, SAMPLE_PX, SAMPLE_PX)
         colors = CoverColors.of(pixels)
-        sample = small
+        backdrop = runCatching { KawarpSnapshot.render(readable) }.getOrNull()
         val thumb = Bitmap.createBitmap(COVER_PX, COVER_PX, Bitmap.Config.ARGB_8888)
         Canvas(thumb).apply {
             val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -435,18 +499,20 @@ internal object NowPlayingHolder {
                 playing = playing,
                 positionMs = clock.positionAt(SystemClock.elapsedRealtime()),
                 durationMs = durationMs,
-                provider = provider.takeIf { notice == null },
+                credit = credit.takeIf { notice == null },
                 cover = cover,
-                sample = sample,
+                backdrop = backdrop,
                 colors = colors,
+                duet = leads.any { it.oppositeAligned },
             )
             last = content
             LyricsWidget.show(app, content, full)
         }
+        // Paused, every player's own callbacks wake it again ([follow]).
         if (!screenOn || !playing) return
         val speed = clock.anchor.speed.takeIf { it > 0f } ?: 1f
         val toLine = lines.changesAtMs?.let { ((it - position) / speed).toLong() }
-        val wait = listOfNotNull(toLine, PROGRESS_STEP_MS.takeIf { wantsProgress }).minOrNull() ?: return
+        val wait = listOfNotNull(toLine, PROGRESS_STEP_MS.takeIf { wantsProgress }).minOrNull() ?: MAX_SLEEP_MS
         main.postDelayed(tick, wait.coerceIn(16L, MAX_SLEEP_MS))
     }
 }

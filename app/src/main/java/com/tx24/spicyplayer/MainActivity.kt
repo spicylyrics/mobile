@@ -846,9 +846,10 @@ private fun LyricsApp(
         }
     }
     // Ambient mode: left untouched while the music plays, the page goes dark and dim with only the
-    // lyrics on it. Any touch or key brings it back (and does nothing else).
+    // lyrics on it. Any touch or key brings it back (and does nothing else). Over the big cover in
+    // portrait too: the cover fades with the header, leaving only the docked song, and comes back as it was.
     var ambient by remember { mutableStateOf(false) }
-    val ambientAllowed = settings.ambientMode && state.isPlaying && !inPip && !overlayOpen && !headerExpanded
+    val ambientAllowed = settings.ambientMode && state.isPlaying && !inPip && !overlayOpen && !(headerExpanded && landscape)
     LaunchedEffect(ambientAllowed, settings.ambientDelay) {
         if (!ambientAllowed) {
             ambient = false
@@ -1220,9 +1221,11 @@ private fun LyricsApp(
                             .padding(belowTop)
                             .inLyricsBox()
                             .fillMaxSize()
-                            // Expanding, the lyrics fade out under the cover.
+                            // Expanding, the lyrics fade out under the cover. In ambient mode a notice in
+                            // their place (no lyrics, an error) fades too, leaving the docked song alone.
                             .graphicsLayer {
-                                alpha = (1f - expansion) * swapFade()
+                                val notice = if (state.lyrics is LyricsState.Ready) 1f else 1f - ambientFade.value
+                                alpha = (1f - expansion) * notice * swapFade()
                                 translationY = shownLyricsTopPx.value - lyricsTopPx
                             },
                     ) {
@@ -1263,12 +1266,15 @@ private fun LyricsApp(
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    // Ambient mode: the lyrics sink into the black under the song docked at the bottom.
+                    // Ambient mode: the lyrics sink into the black under the song docked at the bottom,
+                    // and rise out of it at the top.
                     if (ambientDrawn && !landscape) Box(
                         Modifier.fillMaxSize().graphicsLayer { alpha = ambientFade.value }.drawBehind {
                             drawRect(
                                 Brush.verticalGradient(
-                                    0f to Color.Transparent,
+                                    0f to Color.Black,
+                                    0.04f to Color.Black,
+                                    0.2f to Color.Transparent,
                                     0.6f to Color.Transparent,
                                     0.82f to Color.Black,
                                     1f to Color.Black,
