@@ -90,7 +90,7 @@ The next step after the renderer: a `:ui` module (same targets, same package nam
 `components/SettingsSkeleton.kt` stayed in `:app`: it draws its rows with `outlinedCard` from `SettingsControls.kt`, so it moves with the settings controls. The glyphs `:app` draws (`SpicyGlyphs`, `SkipGlyph`, `PlayPauseGlyph`) went from `internal` to public to be reachable across the module line. No drawables were needed, so `:ui` has no Compose resources yet.
 
 **Movable behind an interface:**
-- `controls/LyricsControls.kt`, `nowplaying/CompactNowPlayingHeader.kt`, `LyricsNotice.kt`, `NowPlayingInfo.kt`, `PipSongCard.kt`, `PortraitCanvas.kt`, `CoverStage.kt` (also the animated-cover view, below), and the lyrics screen composable in `MainActivity.kt` (`LyricsApp` and below): **now-playing state + transport** (track, artwork, position clock, playing, play/pause/skip/seek), today read straight from `ExternalPlaybackViewModel`.
+- The lyrics screen composable in `MainActivity.kt` (`LyricsApp` and below): the **now-playing state + transport** below, plus the settings store. Its components moved in step 3 (below); `LyricsApp` itself is still the Android shell's glue.
 - `settings/AppSettings.kt` (`SharedPreferences`) and every settings page reading it: a **settings store** (key-value; `SharedPreferences` on Android, `java.util.prefs` or a file on desktop).
 - `settings/` `SettingsScreen`, `SettingsPages`, `QuickSettings`, `Queue`, `CustomSources`, `DelayCalibration`, `HapticsSettings`, `SourcePicker`, `TranslationSettings`, `spotifysearch/SpotifySearch.kt`: the same **app-state interface** over the view model's lyrics/source/translation actions, plus **platform actions** (open a URL, open the system's notification-access or app settings, pick a file or folder).
 - Images in the header, queue and search (Coil 2): an **image loader** like the renderer's `LyricsImageLoader`, or Coil 3 (multiplatform) on both platforms once the phone is checked on it.
@@ -108,9 +108,28 @@ The next step after the renderer: a `:ui` module (same targets, same package nam
 **Order:**
 1. `:ui` with the movable-as-is group. No behaviour change; `:app` only changes its dependency. Done.
 2. The settings store, then `AppSettings` and the settings pages that need only it.
-3. The now-playing state + transport interface; the header, controls, notices and the lyrics screen composable; `MainActivity` shrinks to the Android shell.
+3. The now-playing state + transport interface; the header, controls, notices and the lyrics screen composable; `MainActivity` shrinks to the Android shell. Components done (below); the page itself is next.
 4. Backgrounds (blurred-image expect) and image loading (Coil 3 or the loader interface), each checked for smoothness on the phone.
 5. Desktop counterparts for the Android-only list as wanted: video covers, file pickers, opening profiles in the browser.
+
+### Step 3: now playing
+
+Moved to `:ui` commonMain, packages unchanged: `controls/LyricsControls.kt` (with `CoverControls`, `StageControls`, the timelines), `nowplaying/CompactNowPlayingHeader.kt` (the cover change animation included), `LyricsNotice.kt`, `NowPlayingInfo.kt`, `PipSongCard.kt` (and `PipDock`), `PortraitCanvas.kt`, `CoverStage.kt`. The controls' tests moved to `ui/src/desktopTest`.
+
+The seams they sit behind:
+
+| Seam | Common side | Android | Desktop |
+|---|---|---|---|
+| Player state + transport | `NowPlaying` (`state: StateFlow<NowPlayingState>`) over `PlaybackTransport` (`positionMs()` as a call, read every frame; play/pause, skips, seek, custom actions). `NowPlayingState.info` is the header's `NowPlayingInfo` | `ViewModelNowPlaying` over `ExternalPlaybackViewModel`; the screen builds `PlaybackControlsState` from its transport and maps the view model's state with `PlayerUiState.nowPlayingState(artwork)` in composition, so nothing waits on a flow hop | not wired yet; tests use `FakeNowPlaying` |
+| Pictures | `ImageBitmap` everywhere: the cover in `NowPlayingInfo`, the player's action icons in `SessionCustomAction` | converted once per `Bitmap` (the view model caches action icons; the screen remembers the cover's wrapper), so equality and the cover loader's keys hold | native |
+| Covers, loops, avatars, shadow | `NowPlayingPlatform` through `LocalNowPlayingPlatform`: `rememberCover` (returns a `CoverImage` with a fingerprint and `sameCover`), `rememberMotionCover`/`forgetMotionCover`, `MotionCoverVideo`, `CrossfadingMotionVideo`, `Avatar`, `drawCoverShadow`, `blursLayers` | `AndroidNowPlayingPlatform`: `rememberSessionArtwork` (`SessionArtwork` is the `CoverImage`), the media3 views, Coil's `AsyncImage`, the shadow-layer paint from API 28, blur from API 31 | `BasicNowPlayingPlatform` (the default): the still cover as sent, no loops, avatars through `LocalLyricsImageLoader`, no shadow |
+| Notice buttons | `NoticeActions` carries `copyText`, `onOpenHelp` and `NoticeIcons` | `androidNoticeActions`: the clipboard, the Discord link, Material's extended icons | to do |
+| Animations off | `PlaybackControlsState.animate`, `LyricsNotice(animate = )` | read from the settings' `LocalUiAnimations` at the call | to do |
+| Haptics | `LocalHapticFeedback` (multiplatform) | `ProvideTouchHaptics`, as before | Compose's default |
+
+`ReleaseYear` says `before` rather than carrying the settings' `ReleaseYearPosition`; the screen leaves it null when the year is off. The More menu keeps a private copy of the settings menus' popup position and fill until the settings controls move.
+
+Still in `:app`: `LyricsApp` (keyguard, refresh rate, orientation, brightness, picture-in-picture, lifecycle, usage counts, the modals, the settings pages it opens), `MotionCover*`, `SessionArtwork`, the backgrounds. The next cut is the page inside `LyricsApp`'s `BoxWithConstraints` as a `LyricsPage(nowPlaying, settings snapshot, slots)`, once the settings store from step 2 can feed it.
 
 iOS stays blocked on `:core` until its models, detectors and translation presentation are multiplatform; nothing in the plan above adds a new blocker.
 
