@@ -188,7 +188,7 @@ private fun Lyrics(lyrics: LyricsState.Ready, trackKey: String, currentTimeMs: (
             LyricsType.Syllable -> config.isMinimal
             LyricsType.Line -> config.isSimple
             else -> false
-        })
+        }).also(CjkFonts::useFor)
     }
     LyricsView(
         lines = lines,
