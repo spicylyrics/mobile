@@ -17,13 +17,12 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import com.tx24.spicyplayer.desktop.page.LyricsPage
-import com.tx24.spicyplayer.desktop.page.PageActions
-import com.tx24.spicyplayer.desktop.page.PageContent
-import com.tx24.spicyplayer.desktop.page.PageState
-import com.tx24.spicyplayer.desktop.page.ViewMode
-import com.tx24.spicyplayer.desktop.page.onKey
-import com.tx24.spicyplayer.desktop.page.pageKeyOf
+import com.tx24.spicyplayer.ui.bigscreen.BigScreenActions
+import com.tx24.spicyplayer.ui.bigscreen.BigScreenPage
+import com.tx24.spicyplayer.ui.bigscreen.BigScreenState
+import com.tx24.spicyplayer.ui.bigscreen.LocalTooltipHost
+import com.tx24.spicyplayer.ui.bigscreen.ViewMode
+import com.tx24.spicyplayer.ui.bigscreen.pageKeyOf
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalDisplayRefreshRate
@@ -89,6 +88,8 @@ fun main(args: Array<String>) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var fetch: Job? = null
     var beats: Job? = null
+    val nowPlaying = DesktopNowPlaying(source, session)
+    val capabilities = capabilitiesOf(source.capabilities)
 
     fun lookUp(track: Track) {
         screen.value = Screen.Track(track, LyricsState.Loading)
@@ -106,6 +107,7 @@ fun main(args: Array<String>) {
             val event = session.feed(update.snapshot, received.receivedMono, received.receivedWall)
             playing.value = session.clock.isPlaying
             cover.value = session.cover
+            nowPlaying.refresh()
             if (event is SessionEvent.NewTrack) {
                 val track = event.track
                 lookUp(track)
@@ -125,7 +127,7 @@ fun main(args: Array<String>) {
         .takeIf { it > 0 }?.toFloat() ?: 60f
     application {
         val windowState = rememberWindowState(size = DpSize(1100.dp, 760.dp))
-        var page by remember { mutableStateOf(PageState()) }
+        var page by remember { mutableStateOf(BigScreenState()) }
         LaunchedEffect(page.mode) {
             windowState.placement = if (page.mode == ViewMode.Fullscreen) WindowPlacement.Fullscreen else WindowPlacement.Floating
         }
@@ -134,35 +136,34 @@ fun main(args: Array<String>) {
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
-            onKeyEvent = { event -> pageKeyOf(event)?.let { page = page.onKey(it); true } ?: false },
+            onKeyEvent = { event -> pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: false },
         ) {
-            CompositionLocalProvider(LocalDisplayRefreshRate provides refreshRate, LocalLyricsImageLoader provides PlaceholderAvatars) {
+            CompositionLocalProvider(
+                LocalDisplayRefreshRate provides refreshRate,
+                LocalLyricsImageLoader provides PlaceholderAvatars,
+                LocalTooltipHost provides DesktopTooltips,
+            ) {
                 val shown by screen.collectAsState()
                 val isPlaying by playing.collectAsState()
                 val coverFile by cover.collectAsState()
                 val actions = remember {
-                    PageActions(
-                        onState = { page = it },
-                        onPlayPause = {
-                            session.track?.app?.let { app -> source.control(app, if (session.clock.isPlaying) Transport.PAUSE else Transport.PLAY) }
-                        },
-                        onSeek = { session.seek(source, it) },
+                    // TODO: open the settings panel once it lands.
+                    BigScreenActions(onState = { page = it }, onOpenSettings = {})
+                }
+                val noticeActions = remember {
+                    desktopNoticeActions(
+                        track = { session.track },
                         onRetry = { session.track?.let { lookUp(it) } },
-                        // TODO: open the settings panel once it lands.
-                        onOpenSettings = {},
+                        report = { session.track?.let { "Track: ${it.title} by ${it.artist}\nPlayer: ${it.app}" }.orEmpty() },
                     )
                 }
-                LyricsPage(
+                BigScreenPage(
                     state = page,
-                    content = when (val s = shown) {
-                        Screen.Waiting -> PageContent.Waiting
-                        is Screen.Track -> PageContent.Playing(s.track, s.lyrics)
-                    },
-                    cover = coverFile,
-                    isPlaying = isPlaying,
-                    positionMs = { session.clock.positionAt(monoMs()) },
-                    capabilities = source.capabilities,
+                    nowPlaying = nowPlaying,
+                    capabilities = capabilities,
+                    lyrics = (shown as? Screen.Track)?.lyrics ?: LyricsState.Idle,
                     actions = actions,
+                    noticeActions = noticeActions,
                     background = {
                         DesktopKawarp(coverFile, isPlaying, speed = {
                             analysis.value?.let { BackgroundSpeed.at(session.clock.positionAt(monoMs()) / 1000f, it) }

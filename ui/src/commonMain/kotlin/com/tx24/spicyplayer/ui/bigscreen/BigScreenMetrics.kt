@@ -1,18 +1,18 @@
-package com.tx24.spicyplayer.desktop.page
+package com.tx24.spicyplayer.ui.bigscreen
 
 import com.tx24.spicyplayer.ui.nowplaying.CompactHeaderMetrics
 import com.tx24.spicyplayer.ui.nowplaying.LandscapeMetrics
 import com.tx24.spicyplayer.ui.nowplaying.LyricsBox
 
 /**
- * Where everything on the (not compact) lyrics page goes for one window size, in px from the
+ * Where everything on the (side layout) big-screen lyrics page goes for one window size, in px from the
  * page's top left. Written as CSS container units against the page (`cqw`/`cqh` are percentages
  * of its width and height), and against the cover for what sits on it.
  *
  * On the page the now-playing bar keeps a little closer to the edge than in cinema and
  * fullscreen (`:not(.Fullscreen)` scales its gap by .7 and the lyrics' start by .9).
  */
-class PageMetrics(
+class BigScreenMetrics(
     val widthPx: Float,
     val heightPx: Float,
     val density: Float,

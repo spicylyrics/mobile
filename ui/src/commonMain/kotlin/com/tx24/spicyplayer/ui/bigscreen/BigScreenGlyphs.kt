@@ -1,4 +1,4 @@
-package com.tx24.spicyplayer.desktop.page
+package com.tx24.spicyplayer.ui.bigscreen
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable

@@ -1,15 +1,13 @@
-package com.tx24.spicyplayer.desktop.page
+package com.tx24.spicyplayer.ui.bigscreen
 
-import com.tx24.spicyplayer.desktop.Transport
 import com.tx24.spicyplayer.ui.nowplaying.LandscapeMetrics
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class PageMetricsTest {
-    private val page = PageMetrics(1100f, 760f, 1f, ViewMode.Page)
-    private val cinema = PageMetrics(1100f, 760f, 1f, ViewMode.Cinema)
+class BigScreenMetricsTest {
+    private val page = BigScreenMetrics(1100f, 760f, 1f, ViewMode.Page)
+    private val cinema = BigScreenMetrics(1100f, 760f, 1f, ViewMode.Cinema)
 
     @Test
     fun `the cover is 1_1 times the smaller of 30cqw and 52cqh`() {
@@ -56,12 +54,11 @@ class PageMetricsTest {
     }
 
     @Test
-    fun `playback times are M SS with uncapped minutes`() {
-        assertEquals("0:00", formatPlaybackTime(0))
-        assertEquals("0:59", formatPlaybackTime(59_999))
-        assertEquals("1:01", formatPlaybackTime(61_000))
-        assertEquals("60:00", formatPlaybackTime(3_600_000))
-        assertEquals("0:00", formatPlaybackTime(-5))
+    fun `the cover scales with the window, by height on a wide one`() {
+        val wide = BigScreenMetrics(2560f, 1080f, 1f, ViewMode.Page)
+        assertEquals(1080f * 0.52f * 1.1f, wide.coverSizePx, 0.01f)
+        val tablet = BigScreenMetrics(2560f, 1600f, 2f, ViewMode.Page)
+        assertTrue(tablet.coverSizePx < 1600f)
     }
 
     @Test
@@ -76,12 +73,10 @@ class PageMetricsTest {
 
     @Test
     fun `playback buttons keep their places and enable by capability`() {
-        val windows = transportSlots(setOf(Transport.PLAY, Transport.PAUSE, Transport.SEEK))
+        val windows = transportSlots(PlayerCapabilities(skipNext = false, skipPrevious = false))
         assertEquals(listOf(TransportButton.Previous, TransportButton.PlayPause, TransportButton.Next), windows.map { it.button })
         assertEquals(listOf(false, true, false), windows.map { it.enabled })
-        assertTrue(transportSlots(Transport.entries.toSet()).all { it.enabled })
-        assertTrue(transportSlots(emptySet()).none { it.enabled })
-        assertTrue(canSeek(setOf(Transport.SEEK)))
-        assertFalse(canSeek(setOf(Transport.PLAY)))
+        assertTrue(transportSlots(PlayerCapabilities()).all { it.enabled })
+        assertTrue(transportSlots(PlayerCapabilities(false, false, false, false)).none { it.enabled })
     }
 }
