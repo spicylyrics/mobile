@@ -107,7 +107,9 @@ class MediaSession(private val appFilter: String? = null) {
 val projectRoot: File = generateSequence(File("").absoluteFile) { it.parentFile }
     .firstOrNull { File(it, "settings.gradle.kts").exists() } ?: File("").absoluteFile
 
-fun defaultHelper() = File(projectRoot, "desktop/gsmtc/target/release/gsmtc.exe")
+/** The helper bundled with the installed app, or the checkout's cargo build under `:desktop:run`. */
+fun defaultHelper(): File = System.getProperty("compose.application.resources.dir")?.let { File(it, "gsmtc.exe") }
+    ?.takeIf(File::exists) ?: File(projectRoot, "desktop/gsmtc/target/release/gsmtc.exe")
 
 fun monoMs() = System.nanoTime() / 1_000_000
 

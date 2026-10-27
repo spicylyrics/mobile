@@ -17,6 +17,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +50,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.jetbrains.skia.Image
 import kotlinx.coroutines.launch
 
 /** What the window shows: nothing playing, a track being looked up, or its lyrics or notice. */
@@ -109,6 +112,7 @@ fun main(args: Array<String>) {
             onCloseRequest = { process.destroy(); exitApplication() },
             state = rememberWindowState(size = DpSize(1100.dp, 760.dp)),
             title = "Spicy Lyrics",
+            icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
         ) {
             CompositionLocalProvider(LocalView provides View(Display(refreshRate))) {
                 val shown by screen.collectAsState()
