@@ -103,7 +103,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
-import com.tx24.spicyplayer.lyrics.spicy.ScrollConfig
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -182,6 +181,8 @@ import com.tx24.spicyplayer.ui.nowplaying.CompactNowPlayingHeader
 import com.tx24.spicyplayer.ui.nowplaying.LyricsNotice
 import com.tx24.spicyplayer.ui.nowplaying.NoticeActions
 import com.tx24.spicyplayer.ui.nowplaying.androidNoticeActions
+import com.tx24.spicyplayer.ui.settings.renderConfig
+import com.tx24.spicyplayer.ui.settings.romanizes
 import com.tx24.spicyplayer.ui.nowplaying.AndroidNowPlayingPlatform
 import com.tx24.spicyplayer.ui.nowplaying.LocalNowPlayingPlatform
 import com.tx24.spicyplayer.ui.nowplaying.PipSongCard
@@ -217,7 +218,6 @@ import com.tx24.spicyplayer.ui.background.CanvasAmbient
 import androidx.compose.animation.core.spring
 import com.tx24.spicyplayer.ui.settings.AppSettings
 import com.tx24.spicyplayer.ui.settings.SystemBarsMode
-import com.tx24.spicyplayer.ui.settings.LyricsStyle
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsLayoutCalculator
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -537,7 +537,7 @@ private fun LyricsApp(
     val romanizationAvailable = (state.lyrics as? LyricsState.Ready)?.let { ready ->
         ready.lines.any { line -> line.words.any { it.romanized != null } }
     } == true
-    val romanize = settings.romanize && romanizationAvailable
+    val romanize = settings.romanizes(romanizationAvailable)
     // The lyrics font: ours, the phone's, or the file picked in settings (ours again if it's gone).
     val lyricsFont = settings.lyricsFont
     val customFontFile = settings.customFontFile
@@ -729,30 +729,7 @@ private fun LyricsApp(
     val coverTouchArea = remember { CoverTouchArea() }
     // Elsewhere, where a touch leaves the controls alone: the cover's gestures, credit links.
     val revealGuard = remember { ControlsRevealGuard() }
-    // Built fresh, not copied: the mode-dependent defaults are worked out in the constructor.
-    val appleMusicStyle = settings.lyricsStyle == LyricsStyle.AppleMusic
-    val renderConfig = RenderConfig(
-        // Simple and Minimal are Spicy Lyrics' modes; the Apple Music style has its own look.
-        simpleLyricsMode = settings.simpleLyricsMode && !appleMusicStyle,
-        minimalLyricsMode = settings.minimalLyricsMode && !appleMusicStyle,
-        appleMusic = appleMusicStyle,
-        refreshedSimple = settings.refreshedSimpleLyrics && settings.simpleLyricsMode && !appleMusicStyle,
-        wordMotionBoost = settings.wordMotionBoost,
-        wideDuetPadding = settings.duetLinePadding,
-        creditsFollowLastLine = settings.creditsFollowLastLine,
-        refinedCredits = settings.refinedCredits,
-        backgroundPop = settings.backgroundPop && !appleMusicStyle,
-        keepOverlappingLines = settings.keepOverlappingLines,
-        syllableMerge = settings.syllableMerge,
-        distanceBlurEnabled = settings.distanceBlur && !lowPerformance,
-        glowEnabled = settings.glow && !lowPerformance,
-        scroll = ScrollConfig(
-            leadMs = if (settings.scrollLeadEnabled) settings.scrollLeadMs.coerceAtLeast(0).toLong() else 0L,
-            smooth = settings.smoothScrolling,
-            seekFadeCompensation = settings.seekFadeCompensation,
-            staticSongMs = if (settings.staticAutoScroll) state.durationMs else 0L,
-        ),
-    )
+    val renderConfig = settings.renderConfig(state.durationMs)
     var showSettings by remember { mutableStateOf(false) }
     // The settings pages left open, so coming back from the floating window lands on the same one.
     var settingsPages by remember { mutableStateOf(emptyList<SettingsPage>()) }
