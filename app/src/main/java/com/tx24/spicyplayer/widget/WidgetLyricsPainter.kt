@@ -16,7 +16,6 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import android.text.TextUtils
 import androidx.core.content.res.ResourcesCompat
-import com.tx24.spicyplayer.R
 import com.tx24.spicyplayer.lyrics.spicy.parser.RtlDetector
 
 /**
@@ -27,8 +26,8 @@ import com.tx24.spicyplayer.lyrics.spicy.parser.RtlDetector
  * lit as it finishes. In a song with a duet, each line is inset on the side it leans away from.
  */
 internal class WidgetLyricsPainter(context: Context) {
-    private val bold: Typeface = ResourcesCompat.getFont(context, R.font.lyrics_bold) ?: Typeface.DEFAULT_BOLD
-    private val semibold: Typeface = ResourcesCompat.getFont(context, R.font.lyrics_semibold) ?: Typeface.DEFAULT_BOLD
+    private val bold: Typeface = ResourcesCompat.getFont(context, com.tx24.spicyplayer.renderer.R.font.lyrics_bold) ?: Typeface.DEFAULT_BOLD
+    private val semibold: Typeface = ResourcesCompat.getFont(context, com.tx24.spicyplayer.renderer.R.font.lyrics_semibold) ?: Typeface.DEFAULT_BOLD
 
     /** The lyrics area's look, beyond [WidgetSettings]. */
     data class Style(

@@ -10,12 +10,13 @@ Files keep the app's package names (as `:core` does), so moving one doesn't chan
 renderer/
   src/commonMain/kotlin/com/tx24/spicyplayer/
     lyrics/spicy/RenderConfig.kt
+    lyrics/spicy/Platform.kt                  expect: clock, identity hash, code points, rounding
     lyrics/spicy/parser/LetterSynthesizer.kt
     lyrics/spicy/animation/**                 springs, splines, LyricsAnimator, motion styles
     lyrics/spicy/canvas/*.kt                  LyricsView, layout, wrapping, scroll, drawing, credits
     lyrics/spicy/canvas/LyricFonts.kt         expect: the bundled lyric font families
     lyrics/spicy/canvas/LyricsImageLoader.kt  the credits' avatar loader, injected by the host
-    lyrics/spicy/canvas/Platform.kt           expect: clock, identity hash, code points
+    lyrics/spicy/canvas/RefreshRate.kt        expect: the display's refresh rate, for the frame loop
     lyrics/spicy/canvas/kawarp/KawarpEngine.kt, KawarpBlurCore.kt, KawarpShader.kt
     ui/controls/ControlsRevealGuard.kt        touches that leave the playback controls hidden
   src/androidMain/kotlin/...                  actuals
@@ -32,10 +33,10 @@ Not moved: the Kawarp hosts, which are platform code through and through. `Kawar
 |---|---|---|---|
 | Lyric fonts | `internal expect object LyricFonts` (`bundled`, `vazirmatn`, `georgian` font families) | `Font(R.font.x, weight, variationSettings)` from the module's `res/font`, as before | the same `.ttf` files read from the classpath (`/font/x.ttf`) |
 | Display refresh rate | `@Composable internal expect fun rememberRefreshRate(): () -> Float?`, read by the frame loop | `LocalView.current.display?.refreshRate` | `LocalDisplayRefreshRate`, which the window provides |
-| Credits avatars | `fun interface LyricsImageLoader`, `LocalLyricsImageLoader` (null: no avatars) | `:app` provides a Coil 2 loader around the lyrics screen | `:desktop` provides the flat placeholder it drew before |
+| Credits avatars | `fun interface LyricsImageLoader`, `LocalLyricsImageLoader` (null: no avatars) | `:app` provides `CoilLyricsImageLoader` (Coil 2, the lyrics screen's context) at the screen's root | `:desktop` provides `PlaceholderAvatars`, the flat square it drew before |
 | Monotonic clock | `internal expect fun monotonicNanos(): Long` | `System.nanoTime()` | `System.nanoTime()` |
 | Identity hash | `internal expect fun identityHash(any: Any): Int` (the per-word letter-spacing nudge that keeps text layouts distinct) | `System.identityHashCode` | `System.identityHashCode` |
-| Code points | `internal expect` `codePointAt`, `codePointBefore`, `charCount`, `roundHalfUp` | `java.lang` | `java.lang` |
+| Code points, rounding | `internal expect` `codePointAtIndex`, `codePointBeforeIndex`, `charCount`, `roundHalfUp` | `java.lang` | `java.lang` |
 | Haptics | `LocalHapticFeedback`, already common | Android's | a no-op |
 
 The JVM actuals are written twice (Android and desktop), a few lines each, rather than through a custom `jvmShared` source set, which would switch off Kotlin's default source-set hierarchy.

@@ -1,7 +1,5 @@
 package com.tx24.spicyplayer.desktop
 
-import android.view.Display
-import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,7 +15,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -31,6 +28,8 @@ import androidx.compose.ui.window.rememberWindowState
 import com.google.gson.JsonParser
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
+import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalDisplayRefreshRate
+import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalLyricsImageLoader
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsView
 import com.tx24.spicyplayer.lyrics.spicy.models.Line
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsCredit
@@ -110,7 +109,7 @@ fun main(args: Array<String>) {
             state = rememberWindowState(size = DpSize(1100.dp, 760.dp)),
             title = "Spicy Lyrics",
         ) {
-            CompositionLocalProvider(LocalView provides View(Display(refreshRate))) {
+            CompositionLocalProvider(LocalDisplayRefreshRate provides refreshRate, LocalLyricsImageLoader provides PlaceholderAvatars) {
                 val shown by screen.collectAsState()
                 val isPlaying by playing.collectAsState()
                 val coverFile by cover.collectAsState()

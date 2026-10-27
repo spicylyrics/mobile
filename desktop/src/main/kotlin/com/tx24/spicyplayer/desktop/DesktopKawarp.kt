@@ -20,6 +20,7 @@ import androidx.compose.ui.graphics.asComposeShader
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
+import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.KAWARP_FUSED_AGSL
 import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.KawarpBlurCore
 import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.KawarpEngine
 import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.KawarpOptions

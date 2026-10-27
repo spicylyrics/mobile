@@ -1,7 +1,5 @@
 package com.tx24.spicyplayer.desktop
 
-import android.view.Display
-import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -27,6 +24,8 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
+import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalDisplayRefreshRate
+import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalLyricsImageLoader
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsView
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsCredit
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsFooter
@@ -94,7 +93,7 @@ fun runDemo(args: Array<String>) {
         )
         var hud by remember { mutableStateOf("") }
         Window(onCloseRequest = { stats.printSummary(); exitApplication() }, state = state, title = "Spicy Lyrics renderer demo") {
-            CompositionLocalProvider(LocalView provides View(Display(refreshRate))) {
+            CompositionLocalProvider(LocalDisplayRefreshRate provides refreshRate, LocalLyricsImageLoader provides PlaceholderAvatars) {
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
                     if (flag("--no-kawarp")) Box(Modifier.fillMaxSize().background(
                         Brush.linearGradient(listOf(Color(0xFF3A1C5C), Color(0xFF0E2A47), Color(0xFF4A1530)))

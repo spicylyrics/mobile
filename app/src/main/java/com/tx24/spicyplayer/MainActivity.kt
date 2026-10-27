@@ -123,6 +123,8 @@ import androidx.compose.foundation.layout.width
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsLayoutMetrics
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsView
+import com.tx24.spicyplayer.lyrics.spicy.canvas.CoilLyricsImageLoader
+import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalLyricsImageLoader
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsViewState
 import com.tx24.spicyplayer.lyrics.spicy.canvas.ActiveLineDirection
 import com.tx24.spicyplayer.lyrics.spicy.canvas.PinnedFooterMode
@@ -354,9 +356,12 @@ class LyricsActivity : ComponentActivity() {
                 pipRatioApplied = true
                 pipRatio.value = PictureInPicture.ratio(settings.pipShape, settings.pipCustomRatio)
             }
+            val context = LocalContext.current
+            val lyricsImages = remember(context) { CoilLyricsImageLoader(context) }
             MaterialTheme(colorScheme = darkColorScheme()) {
                 ProvideTouchHaptics(settings.touchHaptics) {
                     CompositionLocalProvider(
+                        LocalLyricsImageLoader provides lyricsImages,
                         LocalUiAnimations provides (settings.uiAnimations && !settings.lowPerformance),
                         LocalPopupPalette provides settings.popupTheme.palette,
                         LocalAppIcon provides settings.appIcon,
