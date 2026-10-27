@@ -57,11 +57,11 @@ private sealed interface Screen {
 }
 
 /**
- * Usage: `run [--app <id substring>] [--helper <gsmtc.exe>] [--snap file.png --snap-at S]`, or `run --demo ...` for the
+ * Usage: `run [--app <id substring>] [--offset <ms>] [--helper <gsmtc.exe>] [--snap file.png --snap-at S]`, or `run --demo ...` for the
  * renderer on a made-up song (see [runDemo]).
  *
  * Shows the lyrics of Windows' current media session (or the first whose app id contains
- * `--app`), word-synced on the session's position.
+ * `--app`), word-synced on the session's position, `--offset` ms earlier.
  */
 fun main(args: Array<String>) {
     if ("--demo" in args) return runDemo(args)
@@ -70,7 +70,7 @@ fun main(args: Array<String>) {
     require(helper.exists()) { "No media session helper at $helper; build it with `cargo build --release` in desktop/gsmtc" }
     CoreLog.sink = { level, tag, message -> if (level >= CoreLog.Level.WARN) System.err.println("[$tag] $message") }
 
-    val session = MediaSession(opts["--app"])
+    val session = MediaSession(opts["--app"], opts["--offset"]?.toLongOrNull() ?: 0L)
     val lookup = LyricsLookup()
     val screen = MutableStateFlow<Screen>(Screen.Waiting)
     val playing = MutableStateFlow(false)
