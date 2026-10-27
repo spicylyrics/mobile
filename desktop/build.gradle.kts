@@ -57,7 +57,6 @@ dependencies {
     implementation(compose.desktop.currentOs)
     // :core compiles against the XmlPull API that Android ships.
     runtimeOnly("net.sf.kxml:kxml2:2.3.0")
-    testImplementation("junit:junit:4.13.2")
 }
 
 val desktopArgs = (findProperty("desktopArgs") as String?)?.split(" ")?.filter { it.isNotBlank() }.orEmpty()
