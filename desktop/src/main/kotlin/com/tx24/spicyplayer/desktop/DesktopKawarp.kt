@@ -64,11 +64,18 @@ private val OPTIONS = KawarpOptions(
 /**
  * The app's Kawarp background on Skia: the same AGSL, compiled as SkSL, drawn at the reference's
  * 300x150 and stretched over the window. Each new [cover] crossfades in over the last; without
- * one, a made-up cover shows.
+ * one, a made-up cover shows. [speed] is read every frame while playing; null (or returning null)
+ * is the normal speed.
  */
 @Composable
-fun DesktopKawarp(cover: File? = null, isPlaying: Boolean = true, modifier: Modifier = Modifier) {
+fun DesktopKawarp(
+    cover: File? = null,
+    isPlaying: Boolean = true,
+    speed: (() -> Float?)? = null,
+    modifier: Modifier = Modifier,
+) {
     val playing by rememberUpdatedState(isPlaying)
+    val latestSpeed by rememberUpdatedState(speed)
     val engine = remember { KawarpEngine(OPTIONS) }
     val effect = remember { RuntimeEffect.makeForShader(KAWARP_FUSED_AGSL) }
     val placeholder = remember { blurredTexture(SyntheticCover.pixels(COVER_SIZE), COVER_SIZE) }
@@ -93,8 +100,9 @@ fun DesktopKawarp(cover: File? = null, isPlaying: Boolean = true, modifier: Modi
     LaunchedEffect(Unit) {
         var last = 0L
         while (true) withFrameNanos { now ->
-            // Full speed while playing, a tenth while paused; the engine eases between them.
-            engine.targetAnimationSpeed = if (playing) 1f else 0.1f
+            // Playing: the song's beat-driven speed where there is one, else 1. Paused: a tenth.
+            // The engine eases between them.
+            engine.targetAnimationSpeed = if (playing) latestSpeed?.invoke() ?: 1f else 0.1f
             if (last != 0L) engine.tick((now - last) / 1e9f)
             last = now
             frame = now

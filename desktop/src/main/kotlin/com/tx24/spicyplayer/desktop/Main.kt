@@ -41,6 +41,10 @@ import com.tx24.spicyplayer.lyrics.spicy.models.LyricsProvenance
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
 import com.tx24.spicyplayer.lyrics.spicy.models.Word
 import com.tx24.spicyplayer.lyrics.spicy.models.buildDisplayTimeline
+import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.BackgroundSpeed
+import com.tx24.spicyplayer.network.data.spotify.AudioAnalysis
+import com.tx24.spicyplayer.network.data.spotify.LocalTrackMetadata
+import com.tx24.spicyplayer.network.data.spotify.SharedSpotify
 import com.tx24.spicyplayer.platform.CoreLog
 import java.awt.GraphicsEnvironment
 import java.io.File
@@ -52,6 +56,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.jetbrains.skia.Image
 import kotlinx.coroutines.launch
+
+/** The background speeds up and slows down with the song's tempo, loudness and beats. */
+private const val BEAT_REACTIVE_BACKGROUND = true
+
+/** Where Spotify's audio analyses are kept between runs. */
+private val cacheDir = File(System.getenv("LOCALAPPDATA") ?: System.getProperty("java.io.tmpdir"), "Spicy Lyrics/cache")
 
 /** What the window shows: nothing playing, a track being looked up, or its lyrics or notice. */
 private sealed interface Screen {
@@ -78,8 +88,12 @@ fun main(args: Array<String>) {
     val screen = MutableStateFlow<Screen>(Screen.Waiting)
     val playing = MutableStateFlow(false)
     val cover = MutableStateFlow<File?>(null)
+    // The playing song's audio analysis, which the background's speed follows.
+    val analysis = MutableStateFlow<AudioAnalysis?>(null)
+    val spotify = SharedSpotify.extras(cacheDir)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var fetch: Job? = null
+    var beats: Job? = null
 
     val process = ProcessBuilder(helper.path).redirectErrorStream(true).start()
     Runtime.getRuntime().addShutdownHook(Thread { process.destroy() })
@@ -98,6 +112,13 @@ fun main(args: Array<String>) {
                 fetch = scope.launch {
                     val found = lookup.find(track).lyrics
                     if (session.track?.key == track.key) screen.value = Screen.Track(track, found)
+                }
+                analysis.value = null
+                beats?.cancel()
+                if (BEAT_REACTIVE_BACKGROUND) beats = scope.launch {
+                    val local = LocalTrackMetadata(track.title, track.artist, track.album, track.durationMs)
+                    val found = spotify.trackIds(local, null).firstOrNull()?.let { spotify.audioAnalysis(it) }
+                    if (session.track?.key == track.key) analysis.value = found
                 }
             }
         }
@@ -119,7 +140,9 @@ fun main(args: Array<String>) {
                 val isPlaying by playing.collectAsState()
                 val coverFile by cover.collectAsState()
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
-                    DesktopKawarp(coverFile, isPlaying)
+                    DesktopKawarp(coverFile, isPlaying, speed = {
+                        analysis.value?.let { BackgroundSpeed.at(session.clock.positionAt(monoMs()) / 1000f, it) }
+                    })
                     when (val s = shown) {
                         Screen.Waiting -> Notice("Waiting for a song", "Play something in Spotify or another player that shows in Windows' media controls.")
                         is Screen.Track -> {
