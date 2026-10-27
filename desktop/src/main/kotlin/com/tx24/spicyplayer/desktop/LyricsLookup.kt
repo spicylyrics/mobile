@@ -72,8 +72,9 @@ private fun providers(clientKey: String): Set<RemoteLyricsProvider> {
     )
 }
 
-/** The publishable Spicy Lyrics key, from the checkout's `.env` or the environment. */
+/** The publishable Spicy Lyrics key, from the checkout's `.env`, the environment, or the one built in. */
 private fun spicyLyricsKey(): String = File(projectRoot, ".env").takeIf(File::exists)?.readLines()
     ?.firstOrNull { it.trim().startsWith("SPICY_LYRICS_CLIENT_KEY=") }?.substringAfter("=")?.trim()?.trim('"')
     ?.takeIf(String::isNotBlank)
-    ?: System.getenv("SPICY_LYRICS_CLIENT_KEY").orEmpty()
+    ?: System.getenv("SPICY_LYRICS_CLIENT_KEY")?.takeIf(String::isNotBlank)
+    ?: LyricsLookup::class.java.getResource("/spicy-lyrics-key.txt")?.readText()?.trim().orEmpty()

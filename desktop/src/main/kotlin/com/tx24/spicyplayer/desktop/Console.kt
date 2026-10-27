@@ -13,13 +13,13 @@ import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.*
 
 /**
- * Usage: `console [--app <id substring>] [--log <file>] [--helper <gsmtc.exe>] [--replay <log>]`
+ * Usage: `console [--app <id substring>] [--offset <ms>] [--log <file>] [--helper <gsmtc.exe>] [--replay <log>]`
  *
  * A measurement tool, not the app: follows Windows' current media session (or the first whose
  * app id contains `--app`), fetches its lyrics and prints the current line whenever it changes.
  * `--log` writes every raw helper line, stamped with when it arrived, for working out each
  * player's position error later. `--replay <log>` feeds such a log back through the clock at its
- * recorded times, without lyrics.
+ * recorded times, without lyrics. `--offset` moves the lyrics that many ms earlier (later if negative).
  */
 fun main(args: Array<String>) = runBlocking {
     // Windows' JVM writes stdout in the ANSI codepage, which has no CJK.
@@ -31,7 +31,7 @@ fun main(args: Array<String>) = runBlocking {
     CoreLog.sink = { level, tag, message -> if (level == CoreLog.Level.WARN) System.err.println("  [$tag] $message") }
 
     val lookup = LyricsLookup()
-    val session = MediaSession(opts["--app"])
+    val session = MediaSession(opts["--app"], opts["--offset"]?.toLongOrNull() ?: 0L)
     val clock = session.clock
     say("helper ${helper.path}, key ${lookup.keyHint}, log ${opts["--log"] ?: "off"}")
 
