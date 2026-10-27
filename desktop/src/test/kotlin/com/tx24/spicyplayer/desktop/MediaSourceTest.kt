@@ -34,8 +34,8 @@ class MediaSourceTest {
     }
 
     @Test
-    fun `gsmtc can't skip yet`() {
-        assertEquals(setOf(Transport.PLAY, Transport.PAUSE, Transport.SEEK), GsmtcMediaSource(File("x")).capabilities)
+    fun `both sources take every command`() {
+        assertEquals(Transport.entries.toSet(), GsmtcMediaSource(File("x")).capabilities)
         assertEquals(Transport.entries.toSet(), MprisMediaSource(path = null).capabilities)
         assertNotNull(MprisMediaSource(path = null).unavailableReason)
     }

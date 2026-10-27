@@ -91,6 +91,7 @@ class GsmtcLineTest {
         assertEquals(listOf("ctl", "Spotify", "pause"), gsmtcCtlArgs("Spotify", Transport.PAUSE, 0))
         assertEquals(listOf("ctl", "Spotify", "seek", "61234"), gsmtcCtlArgs("Spotify", Transport.SEEK, 61234))
         assertEquals(listOf("ctl", "Spotify", "seek", "0"), gsmtcCtlArgs("Spotify", Transport.SEEK, -50))
-        assertNull(gsmtcCtlArgs("Spotify", Transport.NEXT, 0))
+        assertEquals(listOf("ctl", "Spotify", "next"), gsmtcCtlArgs("Spotify", Transport.NEXT, 0))
+        assertEquals(listOf("ctl", "Spotify", "previous"), gsmtcCtlArgs("Spotify", Transport.PREVIOUS, 0))
     }
 }
