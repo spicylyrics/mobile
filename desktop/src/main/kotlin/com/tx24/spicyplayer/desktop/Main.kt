@@ -20,6 +20,7 @@ import androidx.compose.ui.window.rememberWindowState
 import com.tx24.spicyplayer.ui.bigscreen.BigScreenActions
 import com.tx24.spicyplayer.ui.bigscreen.BigScreenPage
 import com.tx24.spicyplayer.ui.bigscreen.BigScreenState
+import com.tx24.spicyplayer.ui.bigscreen.LocalLyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.LocalTooltipHost
 import com.tx24.spicyplayer.ui.bigscreen.ViewMode
 import com.tx24.spicyplayer.ui.bigscreen.pageKeyOf
@@ -41,6 +42,12 @@ import com.tx24.spicyplayer.network.data.spotify.AudioAnalysis
 import com.tx24.spicyplayer.network.data.spotify.LocalTrackMetadata
 import com.tx24.spicyplayer.network.data.spotify.SharedSpotify
 import com.tx24.spicyplayer.platform.CoreLog
+import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
+import com.tx24.spicyplayer.translation.TranslationMode
+import com.tx24.spicyplayer.translation.TranslationPresentation
+import com.tx24.spicyplayer.translation.TranslationResult
+import com.tx24.spicyplayer.ui.settings.CommonAppSettings
+import com.tx24.spicyplayer.ui.settings.FileSettingsStore
 import java.awt.GraphicsEnvironment
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -86,19 +93,16 @@ fun main(args: Array<String>) {
     val analysis = MutableStateFlow<AudioAnalysis?>(null)
     val spotify = SharedSpotify.extras(cacheDir)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    var fetch: Job? = null
     var beats: Job? = null
     val nowPlaying = DesktopNowPlaying(source, session)
+    val settings = CommonAppSettings(FileSettingsStore.default(), pipButtonByDefault = false, prereleasesByDefault = true)
+    val songLyrics = DesktopLyrics(lookup, GoogleSongTranslator(File(cacheDir, "translations")), settings, DesktopLyrics.defaultStore(), scope)
+    scope.launch {
+        songLyrics.shown.collect { shown -> if (shown != null) screen.value = Screen.Track(shown.track, shown.lyrics) }
+    }
     val capabilities = capabilitiesOf(source.capabilities)
 
-    fun lookUp(track: Track) {
-        screen.value = Screen.Track(track, LyricsState.Loading)
-        fetch?.cancel()
-        fetch = scope.launch {
-            val found = lookup.find(track).lyrics
-            if (session.track?.key == track.key) screen.value = Screen.Track(track, found)
-        }
-    }
+    fun lookUp(track: Track) = songLyrics.load(track)
 
     Runtime.getRuntime().addShutdownHook(Thread { source.close() })
     scope.launch {
@@ -120,6 +124,7 @@ fun main(args: Array<String>) {
                 }
             }
         }
+        songLyrics.clear()
         screen.value = Screen.Waiting
         nowPlaying.clear()
     }
@@ -143,10 +148,12 @@ fun main(args: Array<String>) {
                 LocalDisplayRefreshRate provides refreshRate,
                 LocalLyricsImageLoader provides PlaceholderAvatars,
                 LocalTooltipHost provides DesktopTooltips,
+                LocalLyricsActions provides songLyrics,
             ) {
                 val shown by screen.collectAsState()
                 val isPlaying by playing.collectAsState()
                 val coverFile by cover.collectAsState()
+                val translated by songLyrics.shown.collectAsState()
                 val actions = remember {
                     // TODO: open the settings panel once it lands.
                     BigScreenActions(onState = { page = it }, onOpenSettings = {})
@@ -183,6 +190,9 @@ fun main(args: Array<String>) {
                             romanize = romanize,
                             activeLineTopPx = activeLineTopPx,
                             config = renderConfig,
+                            translation = translated?.takeIf { it.lyrics === lyrics }?.translation,
+                            translationMode = settings.translationMode,
+                            romanizationMode = settings.romanizationMode,
                         )
                     },
                     // TODO: the settings panel's render config once it lands.
@@ -205,9 +215,12 @@ private fun Lyrics(
     romanize: Boolean,
     activeLineTopPx: Float?,
     config: RenderConfig,
+    translation: TranslationResult?,
+    translationMode: TranslationMode,
+    romanizationMode: RomanizationMode,
 ) {
-    val lines = remember(lyrics.lines, config) {
-        val original = lyrics.lines.map { line ->
+    val original = remember(lyrics.lines) {
+        lyrics.lines.map { line ->
             Line(
                 words = line.words.map { Word(it.text, it.startMs, it.endMs, isPartOfWord = it.attached, romanizedText = it.romanized) },
                 startMs = line.startMs,
@@ -220,11 +233,16 @@ private fun Lyrics(
                 untimed = line.untimed,
             )
         }
+    }
+    val lines = remember(original, config) {
         buildDisplayTimeline(original, minimalMode = config.isMinimal, holdThroughShortGaps = when (lyrics.lyricsType) {
             LyricsType.Syllable -> config.isMinimal
             LyricsType.Line -> config.isSimple
             else -> false
         }).also(CjkFonts::useFor)
+    }
+    val presentation = remember(original, lines, translation, translationMode) {
+        translation?.let { TranslationPresentation.forTimeline(original, lines, it, translationMode) }
     }
     LyricsView(
         lines = lines,
@@ -233,6 +251,8 @@ private fun Lyrics(
         onSeekWord = onSeek,
         modifier = modifier,
         romanize = romanize,
+        romanizationMode = romanizationMode,
+        translation = presentation,
         activeLineTopPx = activeLineTopPx,
         isPlaying = isPlaying,
         focusAnchorFraction = 0.5f,
