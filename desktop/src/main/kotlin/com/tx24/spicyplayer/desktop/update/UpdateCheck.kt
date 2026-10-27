@@ -80,7 +80,7 @@ fun configDir(
     return File(config, "spicy-lyrics-desktop")
 }
 
-const val RELEASES_URL = "https://api.github.com/repos/spicylyrics/mobile/releases?per_page=30"
+const val RELEASES_URL = "https://api.github.com/repos/spicylyrics/mobile/releases?per_page=100"
 
 /** The releases listing from GitHub, or null on any failure. */
 fun fetchReleases(): String? = runCatching {
