@@ -15,7 +15,15 @@ plugins {
     id("org.jetbrains.compose")
 }
 
-version = "0.1.0"
+// CI passes -PdesktopVersion from a desktop-vX.Y.Z tag. Windows installers take only
+// MAJOR.MINOR.BUILD, with MAJOR and MINOR up to 255 and BUILD up to 65535.
+version = (findProperty("desktopVersion") as String?)?.trim()?.takeIf(String::isNotEmpty) ?: "0.1.0"
+version.toString().split('.').let { parts ->
+    val limits = listOf(255, 255, 65535)
+    require(parts.size == 3 && parts.zip(limits).all { (part, max) ->
+        part.matches(Regex("[0-9]+")) && (part.toIntOrNull() ?: Int.MAX_VALUE) <= max
+    }) { "Desktop version must be MAJOR.MINOR.BUILD (MAJOR, MINOR <= 255, BUILD <= 65535), got '$version'" }
+}
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
