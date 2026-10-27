@@ -148,6 +148,22 @@ private fun lyricsSection(s: CommonAppSettings) = PanelSection(
     ),
 )
 
+/**
+ * The lyrics font: Default or System, and Custom while a font file is picked (or already chosen),
+ * so a custom font is never dropped by a panel that can't pick one.
+ */
+internal fun lyricsFontChoices(s: CommonAppSettings): List<LyricsFont> =
+    LyricsFont.entries.filter { it != LyricsFont.Custom || s.customFontFile.isNotBlank() || s.lyricsFont == LyricsFont.Custom }
+
+private fun lyricsFontRow(s: CommonAppSettings) = PanelRow.Select(
+    "lyricsFont", "Lyrics Font", "Use your system font instead of the Spicy Lyrics font, or the font you picked.",
+    keywords = "system default custom font typeface",
+    options = lyricsFontChoices(s).map { it.name },
+    labels = lyricsFontChoices(s).map { if (it == LyricsFont.Custom) s.customFontName.ifBlank { it.label } else it.label },
+    value = { s.lyricsFont.name },
+    onChange = { name -> LyricsFont.entries.firstOrNull { it.name == name }?.let { s.lyricsFont = it } },
+)
+
 private fun backgroundSection(s: CommonAppSettings) = PanelSection(
     PanelSectionId.Background, "Background", PanelIcons.Background,
     groups = listOf(
@@ -309,13 +325,7 @@ private fun appearanceSection(s: CommonAppSettings) = PanelSection(
     PanelSectionId.Appearance, "Appearance", PanelIcons.Appearance,
     groups = listOf(
         PanelGroup("Text", listOf(
-            PanelRow.Toggle(
-                "skipSpicyFont", "Use System Font", "Use your system font instead of the Spicy Lyrics font.",
-                key = "lyricsFont",
-                keywords = "default font typeface",
-                checked = { s.lyricsFont == LyricsFont.System },
-                onChange = { s.lyricsFont = if (it) LyricsFont.System else LyricsFont.Default },
-            ),
+            lyricsFontRow(s),
             PanelRow.Slider(
                 "lyricsSizeLandscape", "Lyrics Size", "How big the lyrics are, against the window's default.",
                 keywords = "text scale bigger smaller",

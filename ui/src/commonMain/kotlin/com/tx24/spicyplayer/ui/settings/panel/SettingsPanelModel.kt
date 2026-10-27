@@ -179,19 +179,25 @@ fun highlightRanges(text: String, query: String): List<IntRange> {
     }
 }
 
-/** How the panel lays out for its width: tabs beside the pane, or one page at a time. */
-enum class PanelLayout { TwoPane, SinglePane }
+/**
+ * How the panel lays out for its width: [Wide], the tab rail beside the pane; [Compact], the same
+ * with a narrower rail and gutters, as on a tablet in portrait; [SinglePane], one page at a time,
+ * the section list first, as on a phone or a small window.
+ */
+enum class PanelLayout(val railWidth: Dp, val gutter: Dp) {
+    Wide(216.dp, 32.dp),
+    Compact(184.dp, 22.dp),
+    SinglePane(0.dp, 16.dp),
+}
 
-/** Below this, a phone in portrait or a narrow window: one page, the section list first. */
+/** Below this, one page at a time. */
 val SINGLE_PANE_BELOW = 600.dp
 
-/** Below this the tab rail and the pane's gutters narrow, as on a tablet in portrait. */
-val NARROW_RAIL_BELOW = 900.dp
+/** Below this, the narrower rail and gutters. */
+val COMPACT_BELOW = 900.dp
 
-fun panelLayoutFor(width: Dp): PanelLayout = if (width < SINGLE_PANE_BELOW) PanelLayout.SinglePane else PanelLayout.TwoPane
-
-/** The tab rail's width beside the pane. */
-fun sidebarWidthFor(width: Dp): Dp = if (width < NARROW_RAIL_BELOW) 184.dp else 216.dp
-
-/** The pane's side gutters beside the rail. */
-fun paneGutterFor(width: Dp): Dp = if (width < NARROW_RAIL_BELOW) 22.dp else 32.dp
+fun panelLayoutFor(width: Dp): PanelLayout = when {
+    width < SINGLE_PANE_BELOW -> PanelLayout.SinglePane
+    width < COMPACT_BELOW -> PanelLayout.Compact
+    else -> PanelLayout.Wide
+}

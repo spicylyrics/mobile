@@ -4,7 +4,6 @@ import com.tx24.spicyplayer.ui.settings.CommonAppSettings
 import com.tx24.spicyplayer.ui.settings.InMemorySettingsStore
 import com.tx24.spicyplayer.ui.settings.LyricsFont
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -70,13 +69,27 @@ class SettingsPanelSectionsTest {
     }
 
     @Test
-    fun `use system font switches between the default and the system font`() {
-        val row = rows.single { it.id == "skipSpicyFont" } as PanelRow.Toggle
-        assertFalse(row.checked())
-        row.onChange(true)
+    fun `lyrics font offers custom only when there is one`() {
+        val row = rows.single { it.id == "lyricsFont" } as PanelRow.Select
+        assertEquals(listOf("Default", "System"), row.options)
+        row.onChange("System")
         assertEquals(LyricsFont.System, settings.lyricsFont)
-        row.onChange(false)
+        row.onChange("Default")
         assertEquals(LyricsFont.Default, settings.lyricsFont)
+    }
+
+    @Test
+    fun `a custom font stays custom when the panel leaves it alone`() {
+        val withFont = CommonAppSettings(
+            InMemorySettingsStore(mapOf("lyricsFont" to "Custom", "customFontFile" to "fonts/mine.ttf", "customFontName" to "Mine")),
+            pipButtonByDefault = false, prereleasesByDefault = false,
+        )
+        val row = settingsPanelSections(withFont).flatMap { it.rows }.single { it.id == "lyricsFont" } as PanelRow.Select
+        assertEquals(listOf("Default", "System", "Custom"), row.options)
+        assertEquals("Mine", row.labels.last())
+        assertEquals("Custom", row.value())
+        assertEquals(LyricsFont.Custom, withFont.lyricsFont)
+        assertEquals("fonts/mine.ttf", withFont.customFontFile)
     }
 
     @Test

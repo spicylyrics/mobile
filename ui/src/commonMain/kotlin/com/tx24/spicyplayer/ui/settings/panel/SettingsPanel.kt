@@ -136,7 +136,7 @@ fun SettingsPanel(
         ) {
             val layout = panelLayoutFor(maxWidth)
             val back: (() -> Unit)? = when {
-                layout == PanelLayout.TwoPane -> null
+                layout != PanelLayout.SinglePane -> null
                 query.isNotEmpty() -> ({ query = "" })
                 tab != null -> ({ tab = null })
                 else -> null
@@ -163,17 +163,17 @@ fun SettingsPanel(
             ) {
                 val section = sections.firstOrNull { it.id == tab } ?: sections.first()
                 when {
-                    layout == PanelLayout.TwoPane -> Row(Modifier.fillMaxSize()) {
+                    layout != PanelLayout.SinglePane -> Row(Modifier.fillMaxSize()) {
                         Sidebar(
                             sections, section.id, hits, query, { query = it }, searchFocus, select,
-                            SidebarStyle.Rail(sidebarWidthFor(maxWidth), brand?.fieldDeep ?: Color.Black),
+                            SidebarStyle.Rail(layout.railWidth, brand?.fieldDeep ?: Color.Black),
                         )
-                        Pane(section, hits, query, actions, select, onClose, back = null, gutter = paneGutterFor(maxWidth))
+                        Pane(section, hits, query, actions, select, onClose, back = null, gutter = layout.gutter)
                     }
                     // One pane: the section list, with the search, until a tab or a search is open.
                     tab == null && hits == null ->
                         Sidebar(sections, null, null, query, { query = it }, searchFocus, select, SidebarStyle.Page, onClose)
-                    else -> Pane(section, hits, query, actions, select, onClose, back = back, gutter = SINGLE_PANE_GUTTER)
+                    else -> Pane(section, hits, query, actions, select, onClose, back = back, gutter = layout.gutter)
                 }
             }
         }
@@ -181,7 +181,6 @@ fun SettingsPanel(
 }
 
 private val ROW_HEIGHT = 34.dp
-private val SINGLE_PANE_GUTTER = SpicySpacing.S4
 private val SmallShape = RoundedCornerShape(SpicyRadii.Sm)
 private val CardShape = RoundedCornerShape(SpicyRadii.Md)
 

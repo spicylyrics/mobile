@@ -69,15 +69,17 @@ class SettingsPanelModelTest {
     }
 
     @Test
-    fun `layout picks one pane below 600dp and narrows the rail below 900dp`() {
-        // A phone in portrait, a split-screen or small window, a tablet in portrait, a desktop window.
+    fun `layout is one pane below 600dp, compact below 900dp, else wide`() {
+        // A phone in portrait, a small window, a tablet in portrait, a desktop window.
         assertEquals(PanelLayout.SinglePane, panelLayoutFor(360.dp))
         assertEquals(PanelLayout.SinglePane, panelLayoutFor(599.dp))
-        assertEquals(PanelLayout.TwoPane, panelLayoutFor(600.dp))
-        assertEquals(PanelLayout.TwoPane, panelLayoutFor(800.dp))
-        assertEquals(184.dp, sidebarWidthFor(800.dp))
-        assertEquals(22.dp, paneGutterFor(800.dp))
-        assertEquals(216.dp, sidebarWidthFor(940.dp))
-        assertEquals(32.dp, paneGutterFor(940.dp))
+        assertEquals(PanelLayout.Compact, panelLayoutFor(600.dp))
+        assertEquals(PanelLayout.Compact, panelLayoutFor(899.dp))
+        assertEquals(PanelLayout.Wide, panelLayoutFor(900.dp))
+        assertEquals(PanelLayout.Wide, panelLayoutFor(1400.dp))
+        assertEquals(184.dp, PanelLayout.Compact.railWidth)
+        assertEquals(22.dp, PanelLayout.Compact.gutter)
+        assertEquals(216.dp, PanelLayout.Wide.railWidth)
+        assertEquals(32.dp, PanelLayout.Wide.gutter)
     }
 }
