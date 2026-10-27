@@ -170,7 +170,7 @@ fun main(args: Array<String>) {
                             analysis.value?.let { BackgroundSpeed.at(session.clock.positionAt(monoMs()) / 1000f, it) }
                         })
                     },
-                    lyricsView = { modifier, romanize, activeLineTopPx ->
+                    lyricsView = { modifier, romanize, activeLineTopPx, renderConfig ->
                         val s = shown as? Screen.Track
                         val lyrics = s?.lyrics as? LyricsState.Ready
                         if (s != null && lyrics != null) Lyrics(
@@ -182,8 +182,11 @@ fun main(args: Array<String>) {
                             modifier = modifier,
                             romanize = romanize,
                             activeLineTopPx = activeLineTopPx,
+                            config = renderConfig,
                         )
                     },
+                    // TODO: the settings panel's render config once it lands.
+                    renderConfig = RenderConfig.FULL,
                 )
             }
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
@@ -201,9 +204,9 @@ private fun Lyrics(
     modifier: Modifier,
     romanize: Boolean,
     activeLineTopPx: Float?,
+    config: RenderConfig,
 ) {
-    val config = RenderConfig.FULL
-    val lines = remember(lyrics.lines) {
+    val lines = remember(lyrics.lines, config) {
         val original = lyrics.lines.map { line ->
             Line(
                 words = line.words.map { Word(it.text, it.startMs, it.endMs, isPartOfWord = it.attached, romanizedText = it.romanized) },

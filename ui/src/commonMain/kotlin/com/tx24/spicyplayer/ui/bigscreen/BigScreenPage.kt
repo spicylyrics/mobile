@@ -65,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.tx24.spicyplayer.lyrics.LyricsState
+import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsLayoutCalculator
 import com.tx24.spicyplayer.ui.components.ExpandGlyph
 import com.tx24.spicyplayer.ui.components.GlassButton
@@ -113,10 +114,11 @@ class BigScreenActions(
  * controls, and in cinema and fullscreen the cover's playback row and timeline. Too narrow or
  * upright for that ([BigScreenState.layoutFor]), the song moves to a bar across the top.
  *
- * Controls show on hover, or for a while after a tap where there's no pointer. The song and its
+ * Controls show on hover, or toggle with a tap where nothing else took it (touch). The song and its
  * transport come from [nowPlaying]; [capabilities] say which commands the platform carries out.
  * [lyricsView] draws ready lyrics into the box it's given, romanized or not, keeping the active
- * line's top at the given px (compact) or centred (null). [noticeActions] are the notice's buttons.
+ * line's top at the given px (compact) or centred (null), drawn with [renderConfig]: the one
+ * place the page picks how the lyrics render. [noticeActions] are the notice's buttons.
  */
 @Composable
 fun BigScreenPage(
@@ -127,8 +129,10 @@ fun BigScreenPage(
     actions: BigScreenActions,
     noticeActions: NoticeActions?,
     background: @Composable () -> Unit,
-    lyricsView: @Composable (modifier: Modifier, romanize: Boolean, activeLineTopPx: Float?) -> Unit,
+    lyricsView: @Composable (modifier: Modifier, romanize: Boolean, activeLineTopPx: Float?, renderConfig: RenderConfig) -> Unit,
+    renderConfig: RenderConfig = RenderConfig.FULL,
 ) {
+    val lyricsSlot: @Composable (Modifier, Boolean, Float?) -> Unit = { modifier, romanize, top -> lyricsView(modifier, romanize, top, renderConfig) }
     val playing by nowPlaying.state.collectAsState()
     val pageHover = remember { MutableInteractionSource() }
     val pageHovered by pageHover.collectIsHoveredAsState()
@@ -164,7 +168,7 @@ fun BigScreenPage(
             return@BoxWithConstraints
         }
         if (state.layoutFor(widthDp, heightDp) == BigScreenLayout.Compact) {
-            CompactPage(env, playing, cover, lyrics, noticeActions, showControls, lyricsView)
+            CompactPage(env, playing, cover, lyrics, noticeActions, showControls, lyricsSlot)
             return@BoxWithConstraints
         }
 
@@ -173,7 +177,7 @@ fun BigScreenPage(
         LyricsArea(
             lyrics, state.romanized, metrics, box.leftPx, box.widthPx, 0f,
             Modifier.offset { IntOffset(box.leftPx.roundToInt(), 0) }.width(box.widthPx.toDp(density)).fillMaxHeight(),
-            noticeActions, lyricsView,
+            noticeActions, lyricsSlot,
         )
         if (withBar) NowBar(env, playing, cover, nowPlaying, showControls)
         if (!state.immersive) PageControls(env, showControls, Modifier.fillMaxWidth())
