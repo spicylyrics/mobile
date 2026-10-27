@@ -141,15 +141,15 @@ class MediaSession(private val appFilter: String? = null, private val offsetMs: 
 val projectRoot: File = generateSequence(File("").absoluteFile) { it.parentFile }
     .firstOrNull { File(it, "settings.gradle.kts").exists() } ?: File("").absoluteFile
 
+fun defaultHelper() = File(projectRoot, "desktop/gsmtc/target/release/gsmtc.exe")
+
+fun monoMs() = System.nanoTime() / 1_000_000
+
+internal fun JsonObject.str(name: String) = get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty()
+
 /** How far a Chromium browser's report after a seek or a new song runs ahead of the audio. */
 const val CHROMIUM_LEAD_MS = 65L
 
 /** Chrome, Edge and the like, and the apps they install (a 16-digit hex id). */
 fun isChromium(app: String) =
     Regex("chrome|msedge|brave|opera|vivaldi", RegexOption.IGNORE_CASE).containsMatchIn(app) || Regex("[0-9A-F]{16}").matches(app)
-
-fun defaultHelper() = File(projectRoot, "desktop/gsmtc/target/release/gsmtc.exe")
-
-fun monoMs() = System.nanoTime() / 1_000_000
-
-internal fun JsonObject.str(name: String) = get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty()
