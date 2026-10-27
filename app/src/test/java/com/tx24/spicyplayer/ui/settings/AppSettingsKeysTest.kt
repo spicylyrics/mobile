@@ -23,6 +23,18 @@ class AppSettingsKeysTest {
         assertEquals(AppIcon.Purple, AppSettings(Prefs(mapOf("appIcon" to 2))).appIcon)
     }
 
+    @Test fun theSharedNamesMatchTheAppsTypes() {
+        assertEquals(LoopKind.entries.map { it.name to it.label }, LOOP_KINDS.map { it.name to it.label })
+        assertEquals(AppIcon.entries.map { it.name to it.label }, APP_ICONS.map { it.name to it.label })
+    }
+
+    @Test fun theTypedViewsShareTheStoredState() {
+        val settings = AppSettings(Prefs(mapOf("pauseWithMusic" to "Canvas")))
+        assertEquals(setOf("Canvas"), settings.pauseWithMusicKinds)
+        assertEquals(setOf(LoopKind.Canvas), settings.pauseWithMusic)
+        assertEquals("Purple", settings.appIconName)
+    }
+
     @Test fun usageStatsReadsTheSameKeys() {
         assertEquals(UsageStats.KEY_ENABLED, CommonAppSettings.KEY_USAGE_STATS)
         assertEquals(UsageStats.KEY_ASKED, CommonAppSettings.KEY_USAGE_STATS_ASKED)

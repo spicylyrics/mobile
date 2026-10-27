@@ -64,6 +64,7 @@ class CommonAppSettingsTest {
         s.canvasBackground = s.canvasBackground
         s.bigCoverCanvas = s.bigCoverCanvas
         s.canvasBackdrop = s.canvasBackdrop
+        s.pauseWithMusicKinds = s.pauseWithMusicKinds
         s.animatedBackground = s.animatedBackground
         s.refinedBackground = s.refinedBackground
         s.backgroundFollowsMotion = s.backgroundFollowsMotion
@@ -105,6 +106,7 @@ class CommonAppSettingsTest {
         s.ttmlUploadSaves = s.ttmlUploadSaves
         s.settingsTheme = s.settingsTheme
         s.popupTheme = s.popupTheme
+        s.appIconName = s.appIconName
         s.usageStats = s.usageStats
         s.usageStatsAsked = s.usageStatsAsked
         s.introDone = s.introDone
@@ -158,6 +160,7 @@ class CommonAppSettingsTest {
             "canvasBackground" to false,
             "bigCoverCanvas" to true,
             "canvasBackdrop" to true,
+            "pauseWithMusic" to "AnimatedCover,Canvas",
             "animatedBackground" to false,
             "refinedBackground" to true,
             "backgroundFollowsMotion" to true,
@@ -199,6 +202,7 @@ class CommonAppSettingsTest {
             "ttmlUploadSaves" to true,
             "settingsTheme" to "Purple",
             "popupTheme" to "Purple",
+            "appIcon" to "Purple",
             "usageStats" to true,
             "usageStatsAsked" to false,
             "introDone" to false,
@@ -215,6 +219,18 @@ class CommonAppSettingsTest {
         }
         // The types a restore checks against are the ones written, plus the switch stageArts replaced.
         assertEquals(expected.keys + "coverStage", s.storedTypes.keys)
+    }
+
+    @Test fun namedChoicesReadOnlyKnownNames() {
+        assertEquals(setOf("Canvas"), settings("pauseWithMusic" to "Canvas, Hologram").second.pauseWithMusicKinds)
+        assertEquals(emptySet<String>(), settings("pauseWithMusic" to "").second.pauseWithMusicKinds)
+        assertEquals(setOf("AnimatedCover", "Canvas"), settings("pauseWithMusic" to 7).second.pauseWithMusicKinds)
+        assertEquals("Pride", settings("appIcon" to "Pride").second.appIconName)
+        assertEquals("Purple", settings("appIcon" to "Hologram").second.appIconName)
+
+        val (store, s) = settings()
+        s.pauseWithMusicKinds = setOf("Canvas", "AnimatedCover", "Hologram")
+        assertEquals("AnimatedCover,Canvas", store.getString("pauseWithMusic"))
     }
 
     @Test fun thePlatformDefaultsComeFromTheCaller() {

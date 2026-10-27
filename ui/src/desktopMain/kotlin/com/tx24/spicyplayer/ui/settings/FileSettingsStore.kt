@@ -94,10 +94,21 @@ class FileSettingsStore(private val file: File) : SettingsStore {
         /** Ends each element of a stored set, so an empty set and a set of one empty string differ. */
         private const val SET_END = '\u0000'
 
-        /** The settings file in the user's roaming app data. */
-        fun default(): FileSettingsStore {
-            val base = System.getenv("APPDATA")?.let(::File) ?: File(System.getProperty("user.home"), ".config")
-            return FileSettingsStore(File(base, "Spicy Lyrics/settings.properties"))
+        /** The settings file in the app's own folder ([appDataDir]), for this machine. */
+        fun default(): FileSettingsStore =
+            FileSettingsStore(File(appDataDir(System.getProperty("os.name").orEmpty(), System::getenv, System.getProperty("user.home")), FILE_NAME))
+
+        const val FILE_NAME = "settings.properties"
+
+        /**
+         * The app's data folder: `%APPDATA%/Spicy Lyrics Desktop` on Windows, else
+         * `$XDG_CONFIG_HOME/spicy-lyrics-desktop` or `~/.config/spicy-lyrics-desktop`.
+         */
+        fun appDataDir(osName: String, env: (String) -> String?, home: String): File {
+            val appData = env("APPDATA")?.takeIf(String::isNotBlank)
+            if (osName.startsWith("Windows", ignoreCase = true) && appData != null) return File(appData, "Spicy Lyrics Desktop")
+            val config = env("XDG_CONFIG_HOME")?.takeIf(String::isNotBlank) ?: File(home, ".config").path
+            return File(config, "spicy-lyrics-desktop")
         }
 
         private fun load(file: File): MutableMap<String, String> {
