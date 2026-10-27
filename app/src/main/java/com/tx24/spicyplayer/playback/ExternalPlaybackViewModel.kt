@@ -1541,6 +1541,10 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         if (force) lookupCache.remove(request)
         // Results per source for this request: a policy change re-picks from these instead of refetching.
         val known = lookupCache.getOrPut(request) { ConcurrentHashMap() }
+        // A song coming up again asks the sources that gave no answer last time again (a timeout,
+        // a refusal, a queue): kept, they'd hold it on a worse pick all session. A source still
+        // resting is skipped by its cooldown.
+        if (settle) known.values.removeAll { it is ProviderResult.Unavailable || it is ProviderResult.CoolingDown || it is ProviderResult.Queued }
         lyricsJob = viewModelScope.launch {
             if (mutableState.value.lyrics !is LyricsState.Ready) {
                 mutableState.value = mutableState.value.copy(lyrics = LyricsState.Loading, lookupStatus = "Starting lyric lookup…")
