@@ -85,14 +85,19 @@ import com.tx24.spicyplayer.ui.components.ChromeTheme
 import com.tx24.spicyplayer.ui.components.drawBrandMark
 import com.tx24.spicyplayer.ui.components.drawBrandRamp
 import com.tx24.spicyplayer.ui.components.rememberBrandGlyph
+import com.tx24.spicyplayer.ui.settings.LocalPlatformActions
 import com.tx24.spicyplayer.ui.theme.LocalSpicyPalette
 import com.tx24.spicyplayer.ui.theme.SpicyColors
+import com.tx24.spicyplayer.ui.theme.SpicyRadii
+import com.tx24.spicyplayer.ui.theme.SpicySpacing
 import com.tx24.spicyplayer.ui.theme.SpicyType
 
 /**
- * The big-screen settings panel: a sidebar of tabs with search over a pane of grouped cards.
- * [theme] dresses it, in the brand's ramp or the plain plate. Escape clears the search, then
- * closes ([onClose]); Ctrl+F jumps to the search.
+ * The big-screen settings panel: a sidebar of tabs with search beside a pane of grouped cards, or,
+ * narrower than [SINGLE_PANE_BELOW], the section list and then one section at a time with a back
+ * button ([panelLayoutFor]). [theme] dresses it, in the brand's ramp or the plain plate. Links open
+ * through `LocalPlatformActions`. Escape clears the search, then goes back, then closes
+ * ([onClose]); Ctrl+F jumps to the search.
  */
 @Composable
 fun SettingsPanel(
@@ -104,18 +109,19 @@ fun SettingsPanel(
 ) {
     val palette = theme.palette
     CompositionLocalProvider(LocalSpicyPalette provides palette) {
-        var tab by remember { mutableStateOf(sections.first().id) }
+        // Null is the section list, which only a single pane shows; two panes always have a tab.
+        var tab by remember { mutableStateOf<PanelSectionId?>(null) }
         var query by remember { mutableStateOf("") }
         val searchFocus = remember { FocusRequester() }
         val searching = searchTerms(query).isNotEmpty()
-        val hits = if (searching) searchPanel(query, sections) else emptyList()
-        val section = sections.firstOrNull { it.id == tab } ?: sections.first()
+        val hits = if (searching) searchPanel(query, sections) else null
         val brand = palette.brand
         val glyph = rememberBrandGlyph()
+        val select: (PanelSectionId) -> Unit = { tab = it; query = "" }
 
         LaunchedEffect(Unit) { runCatching { searchFocus.requestFocus() } }
 
-        Row(
+        BoxWithConstraints(
             modifier
                 .fillMaxSize()
                 .drawBehind {
@@ -126,12 +132,25 @@ fun SettingsPanel(
                     } else {
                         drawRect(palette.BgElevated.copy(alpha = 1f))
                     }
-                }
-                .onPreviewKeyEvent { event ->
+                },
+        ) {
+            val layout = panelLayoutFor(maxWidth)
+            val back: (() -> Unit)? = when {
+                layout == PanelLayout.TwoPane -> null
+                query.isNotEmpty() -> ({ query = "" })
+                tab != null -> ({ tab = null })
+                else -> null
+            }
+            Box(
+                Modifier.fillMaxSize().onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     when {
                         event.key == Key.Escape -> {
-                            if (query.isNotEmpty()) query = "" else onClose()
+                            when {
+                                query.isNotEmpty() -> query = ""
+                                back != null -> back()
+                                else -> onClose()
+                            }
                             true
                         }
                         event.key == Key.F && (event.isCtrlPressed || event.isMetaPressed) -> {
@@ -141,74 +160,81 @@ fun SettingsPanel(
                         else -> false
                     }
                 },
-        ) {
-            Sidebar(
-                sections = sections,
-                selected = tab,
-                hits = if (searching) hits else null,
-                query = query,
-                onQuery = { query = it },
-                searchFocus = searchFocus,
-                onSelect = { tab = it; query = "" },
-                deep = brand?.fieldDeep ?: Color.Black,
-            )
-            Pane(
-                section = section,
-                hits = if (searching) hits else null,
-                query = query,
-                actions = actions,
-                onSelect = { tab = it; query = "" },
-                onClose = onClose,
-            )
+            ) {
+                val section = sections.firstOrNull { it.id == tab } ?: sections.first()
+                when {
+                    layout == PanelLayout.TwoPane -> Row(Modifier.fillMaxSize()) {
+                        Sidebar(
+                            sections, section.id, hits, query, { query = it }, searchFocus, select,
+                            SidebarStyle.Rail(sidebarWidthFor(maxWidth), brand?.fieldDeep ?: Color.Black),
+                        )
+                        Pane(section, hits, query, actions, select, onClose, back = null, gutter = paneGutterFor(maxWidth))
+                    }
+                    // One pane: the section list, with the search, until a tab or a search is open.
+                    tab == null && hits == null ->
+                        Sidebar(sections, null, null, query, { query = it }, searchFocus, select, SidebarStyle.Page, onClose)
+                    else -> Pane(section, hits, query, actions, select, onClose, back = back, gutter = SINGLE_PANE_GUTTER)
+                }
+            }
         }
     }
 }
 
-private val SIDEBAR_WIDTH = 216.dp
-private val SIDEBAR_WIDTH_NARROW = 184.dp
 private val ROW_HEIGHT = 34.dp
-private val SmallShape = RoundedCornerShape(8.dp)
-private val CardShape = RoundedCornerShape(12.dp)
+private val SINGLE_PANE_GUTTER = SpicySpacing.S4
+private val SmallShape = RoundedCornerShape(SpicyRadii.Sm)
+private val CardShape = RoundedCornerShape(SpicyRadii.Md)
 
 private val titleStyle @Composable get() = SpicyType.Body.copy(
     fontSize = 24.sp, fontWeight = FontWeight.Bold, lineHeight = 1.15.em, letterSpacing = (-0.025).em,
 )
 
+/** How the section list sits: a tinted rail beside the pane, or the whole page on its own. */
+private sealed interface SidebarStyle {
+    class Rail(val width: Dp, val deep: Color) : SidebarStyle
+    data object Page : SidebarStyle
+}
+
 @Composable
 private fun Sidebar(
     sections: List<PanelSection>,
-    selected: PanelSectionId,
+    selected: PanelSectionId?,
     hits: List<SearchHit>?,
     query: String,
     onQuery: (String) -> Unit,
     searchFocus: FocusRequester,
     onSelect: (PanelSectionId) -> Unit,
-    deep: Color,
+    style: SidebarStyle,
+    onClose: (() -> Unit)? = null,
 ) {
-    BoxWithConstraints {
-        val width = if (maxWidth < 900.dp) SIDEBAR_WIDTH_NARROW else SIDEBAR_WIDTH
-        val hairline = SpicyColors.Hairline
-        Column(
-            Modifier
-                .width(width)
-                .fillMaxHeight()
-                .background(deep.copy(alpha = 0.42f))
-                .drawBehind { drawRect(hairline, topLeft = Offset(size.width - 1.dp.toPx(), 0f), size = Size(1.dp.toPx(), size.height)) }
-                .verticalScroll(rememberScrollState())
-                .padding(start = 12.dp, end = 12.dp, top = 22.dp, bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            Column(Modifier.padding(horizontal = 10.dp)) {
+    val hairline = SpicyColors.Hairline
+    val frame = when (style) {
+        is SidebarStyle.Rail -> Modifier
+            .width(style.width)
+            .fillMaxHeight()
+            .background(style.deep.copy(alpha = 0.42f))
+            .drawBehind { drawRect(hairline, topLeft = Offset(size.width - 1.dp.toPx(), 0f), size = Size(1.dp.toPx(), size.height)) }
+        SidebarStyle.Page -> Modifier.fillMaxSize()
+    }
+    Column(
+        frame
+            .verticalScroll(rememberScrollState())
+            .padding(start = 12.dp, end = 12.dp, top = 22.dp, bottom = SpicySpacing.S4),
+        verticalArrangement = Arrangement.spacedBy(SpicySpacing.S4),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                 BrandLine()
                 Spacer(Modifier.height(10.dp))
                 BasicText("Settings", style = titleStyle)
             }
-            SearchBar(query, onQuery, searchFocus)
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                sections.filter { !it.secondary }.forEach { Tab(it, selected, hits, onSelect) }
-                Box(Modifier.padding(horizontal = 10.dp, vertical = 8.dp).fillMaxWidth().height(1.dp).background(SpicyColors.Hairline))
-                sections.filter { it.secondary }.forEach { Tab(it, selected, hits, onSelect) }
-            }
+            onClose?.let { RoundButton(PanelIcons.Close, 12.dp, it) }
+        }
+        SearchBar(query, onQuery, searchFocus)
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            sections.filter { !it.secondary }.forEach { Tab(it, selected, hits, onSelect) }
+            Box(Modifier.padding(horizontal = 10.dp, vertical = SpicySpacing.S2).fillMaxWidth().height(1.dp).background(SpicyColors.Hairline))
+            sections.filter { it.secondary }.forEach { Tab(it, selected, hits, onSelect) }
         }
     }
 }
@@ -270,7 +296,7 @@ private fun SearchBar(query: String, onQuery: (String) -> Unit, focus: FocusRequ
 }
 
 @Composable
-private fun Tab(section: PanelSection, selected: PanelSectionId, hits: List<SearchHit>?, onSelect: (PanelSectionId) -> Unit) {
+private fun Tab(section: PanelSection, selected: PanelSectionId?, hits: List<SearchHit>?, onSelect: (PanelSectionId) -> Unit) {
     val count = hits?.let { h -> h.firstOrNull { it.section.id == section.id }?.rows?.size ?: 0 }
     val active = hits == null && section.id == selected
     val hover = remember { MutableInteractionSource() }
@@ -325,47 +351,53 @@ private fun Pane(
     actions: PanelActions,
     onSelect: (PanelSectionId) -> Unit,
     onClose: () -> Unit,
+    back: (() -> Unit)?,
+    gutter: Dp,
 ) {
-    BoxWithConstraints {
-        val gutter = if (maxWidth < 900.dp - SIDEBAR_WIDTH) 22.dp else 32.dp
-        val scroll = rememberScrollState()
-        LaunchedEffect(section.id, hits == null) { scroll.scrollTo(0) }
-        Column(Modifier.fillMaxSize()) {
-            val hairline = SpicyColors.Hairline
-            val scrolled = scroll.value > 0
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = ROW_HEIGHT)
-                    .drawBehind { if (scrolled) drawRect(hairline, topLeft = Offset(0f, size.height - 1.dp.toPx()), size = Size(size.width, 1.dp.toPx())) }
-                    .padding(start = gutter, end = 18.dp, top = 22.dp, bottom = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                BasicText(if (hits != null) "Results" else section.title, style = titleStyle)
-                if (hits != null) {
-                    val n = hits.sumOf { it.rows.size }
-                    BasicText(if (n == 1) "1 setting" else "$n settings", style = SpicyType.Caption.copy(color = SpicyColors.TextSecondary))
-                }
-                Spacer(Modifier.weight(1f))
-                CloseButton(onClose)
+    val scroll = rememberScrollState()
+    LaunchedEffect(section.id, hits == null) { scroll.scrollTo(0) }
+    Column(Modifier.fillMaxSize()) {
+        val hairline = SpicyColors.Hairline
+        val scrolled = scroll.value > 0
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = ROW_HEIGHT)
+                .drawBehind { if (scrolled) drawRect(hairline, topLeft = Offset(0f, size.height - 1.dp.toPx()), size = Size(size.width, 1.dp.toPx())) }
+                .padding(start = if (back != null) 12.dp else gutter, end = 18.dp, top = 22.dp, bottom = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(SpicySpacing.S3),
+        ) {
+            back?.let { RoundButton(PanelIcons.Chevron, 10.dp, it, mirrored = true) }
+            BasicText(
+                if (hits != null) "Results" else section.title,
+                style = titleStyle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            if (hits != null) {
+                val n = hits.sumOf { it.rows.size }
+                BasicText(if (n == 1) "1 setting" else "$n settings", style = SpicyType.Caption.copy(color = SpicyColors.TextSecondary))
             }
-            Column(
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(scroll)
-                    .padding(start = gutter, end = gutter, top = 8.dp, bottom = 32.dp),
-            ) {
-                androidx.compose.runtime.key(if (hits != null) "search" else section.id.name) {
-                    val shown = remember { Animatable(0f) }
-                    LaunchedEffect(Unit) { shown.animateTo(1f, tween(140)) }
-                    Column(Modifier.graphicsLayer { alpha = shown.value }) {
-                        when {
-                            hits != null -> SearchResults(hits, query, onSelect)
-                            section.id == PanelSectionId.About -> About(actions)
-                            else -> SectionBody(section)
-                        }
+            Spacer(Modifier.weight(1f))
+            RoundButton(PanelIcons.Close, 12.dp, onClose)
+        }
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .padding(start = gutter, end = gutter, top = SpicySpacing.S2, bottom = 32.dp),
+        ) {
+            androidx.compose.runtime.key(if (hits != null) "search" else section.id.name) {
+                val shown = remember { Animatable(0f) }
+                LaunchedEffect(Unit) { shown.animateTo(1f, tween(140)) }
+                Column(Modifier.graphicsLayer { alpha = shown.value }) {
+                    when {
+                        hits != null -> SearchResults(hits, query, onSelect)
+                        section.id == PanelSectionId.About -> About(actions)
+                        else -> SectionBody(section)
                     }
                 }
             }
@@ -373,8 +405,9 @@ private fun Pane(
     }
 }
 
+/** A 30dp round tinted button: close, and back on a single pane ([mirrored] turns the chevron). */
 @Composable
-private fun CloseButton(onClose: () -> Unit) {
+private fun RoundButton(icon: ImageVector, iconSize: Dp, onClick: () -> Unit, mirrored: Boolean = false) {
     val hover = remember { MutableInteractionSource() }
     val hovered by hover.collectIsHoveredAsState()
     Box(
@@ -383,11 +416,13 @@ private fun CloseButton(onClose: () -> Unit) {
             .clip(CircleShape)
             .background(if (hovered) SpicyColors.TintBgPressed else SpicyColors.TintBg)
             .hoverable(hover)
-            .clickable(interactionSource = hover, indication = null, onClick = onClose)
+            .clickable(interactionSource = hover, indication = null, onClick = onClick)
             .pointerHoverIcon(PointerIcon.Hand),
         contentAlignment = Alignment.Center,
     ) {
-        Glyph(PanelIcons.Close, if (hovered) SpicyColors.TextPrimary else SpicyColors.TextSecondary, 12.dp)
+        Box(Modifier.graphicsLayer { if (mirrored) rotationZ = 180f }) {
+            Glyph(icon, if (hovered) SpicyColors.TextPrimary else SpicyColors.TextSecondary, iconSize)
+        }
     }
 }
 
@@ -776,10 +811,10 @@ private fun About(actions: PanelActions) {
                 BasicText("Version $it", style = SpicyType.Body.copy(fontWeight = FontWeight.Medium))
             }
         }
-        val open = actions.openUrl
-        if (open != null && actions.links.isNotEmpty()) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                actions.links.forEach { (label, url) -> LinkButton(label) { open(url) } }
+        val platform = LocalPlatformActions.current
+        if (actions.links.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(SpicySpacing.S2)) {
+                actions.links.forEach { (label, url) -> LinkButton(label) { platform.openUrl(url) } }
             }
         }
     }

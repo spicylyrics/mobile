@@ -1,6 +1,7 @@
 package com.tx24.spicyplayer.desktop
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,6 +21,7 @@ import androidx.compose.ui.window.rememberWindowState
 import com.tx24.spicyplayer.ui.settings.CommonAppSettings
 import com.tx24.spicyplayer.ui.settings.DesktopPlatformActions
 import com.tx24.spicyplayer.ui.settings.FileSettingsStore
+import com.tx24.spicyplayer.ui.settings.LocalPlatformActions
 import com.tx24.spicyplayer.ui.settings.panel.PanelActions
 import com.tx24.spicyplayer.ui.settings.panel.SettingsPanel
 import com.tx24.spicyplayer.ui.settings.panel.settingsPanelSections
@@ -52,16 +54,17 @@ fun ApplicationScope.SettingsWindow(state: SettingsWindowState) {
         onPreviewKeyEvent = state::onKey,
     ) {
         val settings = desktopSettings
+        val platform = remember { DesktopPlatformActions(window) }
         val actions = remember {
-            val platform = DesktopPlatformActions(window)
             PanelActions(
-                openUrl = { platform.openUrl(it) },
                 // Set by the installer's launcher; a run from Gradle has none.
                 version = System.getProperty("jpackage.app-version"),
                 links = listOf("GitHub" to "https://github.com/spicylyrics/mobile"),
             )
         }
         val sections = remember(settings, actions) { settingsPanelSections(settings, actions) }
-        SettingsPanel(sections, settings.settingsTheme, onClose = { state.open = false }, actions = actions)
+        CompositionLocalProvider(LocalPlatformActions provides platform) {
+            SettingsPanel(sections, settings.settingsTheme, onClose = { state.open = false }, actions = actions)
+        }
     }
 }

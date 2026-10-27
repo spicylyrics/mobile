@@ -30,13 +30,14 @@ val BACKGROUND_TYPE_LABELS: Map<BackgroundType, String> = mapOf(
  * The panel's tabs over [settings]. Actions the platform has are passed in; a row whose action is
  * missing is left out.
  *
+ * Links open through `LocalPlatformActions`.
+ *
  * @param clearLyricsCache deletes every saved lyric.
  * @param version the app's version, for About.
  * @param links About's buttons, label to address.
  */
 class PanelActions(
     val clearLyricsCache: (() -> Unit)? = null,
-    val openUrl: ((String) -> Unit)? = null,
     val version: String? = null,
     val links: List<Pair<String, String>> = emptyList(),
 )

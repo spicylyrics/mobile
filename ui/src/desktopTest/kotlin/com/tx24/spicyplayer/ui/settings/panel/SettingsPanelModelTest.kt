@@ -1,5 +1,6 @@
 package com.tx24.spicyplayer.ui.settings.panel
 
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -65,5 +66,18 @@ class SettingsPanelModelTest {
         assertEquals(listOf(0..4, 6..11), highlightRanges("Early Scroll", "early scroll"))
         assertEquals(listOf(0..4), highlightRanges("Early", "ea rly"))
         assertTrue(highlightRanges("Early", "").isEmpty())
+    }
+
+    @Test
+    fun `layout picks one pane below 600dp and narrows the rail below 900dp`() {
+        // A phone in portrait, a split-screen or small window, a tablet in portrait, a desktop window.
+        assertEquals(PanelLayout.SinglePane, panelLayoutFor(360.dp))
+        assertEquals(PanelLayout.SinglePane, panelLayoutFor(599.dp))
+        assertEquals(PanelLayout.TwoPane, panelLayoutFor(600.dp))
+        assertEquals(PanelLayout.TwoPane, panelLayoutFor(800.dp))
+        assertEquals(184.dp, sidebarWidthFor(800.dp))
+        assertEquals(22.dp, paneGutterFor(800.dp))
+        assertEquals(216.dp, sidebarWidthFor(940.dp))
+        assertEquals(32.dp, paneGutterFor(940.dp))
     }
 }
