@@ -36,6 +36,7 @@ import com.tx24.spicyplayer.lyrics.spicy.models.LyricsProvenance
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
 import com.tx24.spicyplayer.lyrics.spicy.models.Word
 import com.tx24.spicyplayer.lyrics.spicy.models.buildDisplayTimeline
+import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
 import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.BackgroundSpeed
 import com.tx24.spicyplayer.network.data.spotify.AudioAnalysis
 import com.tx24.spicyplayer.network.data.spotify.LocalTrackMetadata
@@ -50,9 +51,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.jetbrains.skia.Image
 import kotlinx.coroutines.launch
-
-/** The background speeds up and slows down with the song's tempo, loudness and beats. */
-private const val BEAT_REACTIVE_BACKGROUND = true
 
 /** Where Spotify's audio analyses are kept between runs. */
 private val cacheDir = File(System.getenv("LOCALAPPDATA") ?: System.getProperty("java.io.tmpdir"), "Spicy Lyrics/cache")
@@ -113,7 +111,8 @@ fun main(args: Array<String>) {
                 lookUp(track)
                 analysis.value = null
                 beats?.cancel()
-                if (BEAT_REACTIVE_BACKGROUND) beats = scope.launch {
+                // The background follows the song's beats where the settings ask for it.
+                if (desktopSettings.desktopBackground().beatReactive) beats = scope.launch {
                     val local = LocalTrackMetadata(track.title, track.artist, track.album, track.durationMs)
                     val found = spotify.trackIds(local, null).firstOrNull()?.let { spotify.audioAnalysis(it) }
                     if (session.track?.key == track.key) analysis.value = found
@@ -129,7 +128,10 @@ fun main(args: Array<String>) {
     application {
         val windowState = rememberWindowState(size = DpSize(1100.dp, 760.dp))
         val settingsWindow = remember { SettingsWindowState() }
-        var page by remember { mutableStateOf(BigScreenState()) }
+        var page by remember { mutableStateOf(BigScreenState(romanized = desktopSettings.romanize)) }
+        // The page's romanize button and the Romanize setting are one switch.
+        LaunchedEffect(page.romanized) { if (desktopSettings.romanize != page.romanized) desktopSettings.romanize = page.romanized }
+        LaunchedEffect(desktopSettings.romanize) { if (page.romanized != desktopSettings.romanize) page = page.copy(romanized = desktopSettings.romanize) }
         LaunchedEffect(page.mode) {
             windowState.placement = if (page.mode == ViewMode.Fullscreen) WindowPlacement.Fullscreen else WindowPlacement.Floating
         }
@@ -149,10 +151,17 @@ fun main(args: Array<String>) {
                 val shown by screen.collectAsState()
                 val isPlaying by playing.collectAsState()
                 val coverFile by cover.collectAsState()
-                val actions = remember {
-                    // TODO: open the settings panel once it lands.
-                    BigScreenActions(onState = { page = it }, onOpenSettings = {})
-                }
+                val actions = remember { BigScreenActions(onState = { page = it }, onOpenSettings = { settingsWindow.open = true }) }
+                // Settings are Compose state: these follow the settings window as it changes them.
+                val track = shown as? Screen.Track
+                val lyricsState = track?.lyrics ?: LyricsState.Idle
+                val display = desktopSettings.desktopLyrics(
+                    lyricsState,
+                    track?.track?.durationMs ?: 0L,
+                    windowState.size.width.value,
+                    windowState.size.height.value,
+                )
+                val backdrop = desktopSettings.desktopBackground()
                 val noticeActions = remember {
                     desktopNoticeActions(
                         track = { session.track },
@@ -164,13 +173,19 @@ fun main(args: Array<String>) {
                     state = page,
                     nowPlaying = nowPlaying,
                     capabilities = capabilities,
-                    lyrics = (shown as? Screen.Track)?.lyrics ?: LyricsState.Idle,
+                    lyrics = lyricsState,
                     actions = actions,
                     noticeActions = noticeActions,
                     background = {
-                        DesktopKawarp(coverFile, isPlaying, speed = {
-                            analysis.value?.let { BackgroundSpeed.at(session.clock.positionAt(monoMs()) / 1000f, it) }
-                        })
+                        DesktopKawarp(
+                            coverFile,
+                            isPlaying,
+                            speed = {
+                                analysis.value?.let { BackgroundSpeed.at(session.clock.positionAt(monoMs()) / 1000f, it) }
+                            }.takeIf { backdrop.beatReactive },
+                            animate = backdrop.animate,
+                            blurPasses = backdrop.blurPasses,
+                        )
                     },
                     lyricsView = { modifier, romanize, activeLineTopPx, renderConfig ->
                         val s = shown as? Screen.Track
@@ -185,10 +200,11 @@ fun main(args: Array<String>) {
                             romanize = romanize,
                             activeLineTopPx = activeLineTopPx,
                             config = renderConfig,
+                            fontSizeScale = display.fontSizeScale,
+                            romanizationMode = display.romanizationMode,
                         )
                     },
-                    // TODO: the settings panel's render config once it lands.
-                    renderConfig = RenderConfig.FULL,
+                    renderConfig = display.config,
                 )
             }
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
@@ -208,6 +224,8 @@ private fun Lyrics(
     romanize: Boolean,
     activeLineTopPx: Float?,
     config: RenderConfig,
+    fontSizeScale: Float,
+    romanizationMode: RomanizationMode,
 ) {
     val lines = remember(lyrics.lines, config) {
         val original = lyrics.lines.map { line ->
@@ -242,6 +260,8 @@ private fun Lyrics(
         restTopFraction = 0.25f,
         lyricsType = lyrics.lyricsType,
         config = config,
+        fontSizeScale = fontSizeScale,
+        romanizationMode = romanizationMode,
         footer = remember(lyrics) {
             LyricsFooter(
                 songwriters = lyrics.songwriters,
