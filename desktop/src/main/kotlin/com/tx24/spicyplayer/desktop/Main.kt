@@ -43,7 +43,6 @@ import com.tx24.spicyplayer.network.data.spotify.AudioAnalysis
 import com.tx24.spicyplayer.network.data.spotify.LocalTrackMetadata
 import com.tx24.spicyplayer.network.data.spotify.SharedSpotify
 import com.tx24.spicyplayer.platform.CoreLog
-import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
 import com.tx24.spicyplayer.translation.TranslationMode
 import com.tx24.spicyplayer.translation.TranslationPresentation
 import com.tx24.spicyplayer.translation.TranslationResult
