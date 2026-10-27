@@ -165,4 +165,39 @@ class ScrollManagerTest {
         frames(2f, 1, -400f)
         assertEquals(-400f, scroll.animScrollY, 0.01f)
     }
+
+    @Test fun aRelayoutKeepsTheUsersScrollAtTheSamePointOfTheLyrics() {
+        frames(0.5f, 0, -300f)
+        drag(-1_000f)
+        val scrolled = scroll.animScrollY
+        // Bigger text: the same lyrics, twice as tall.
+        scroll.onRelayout()
+        now += 16
+        scroll.updateScroll(1f / 60f, height * 2, 0, -600f, targetVisiblePx = 0f)
+        assertEquals(scrolled * 2, scroll.animScrollY, 0.01f)
+        assertTrue(scroll.hideLineBlur)
+    }
+
+    @Test fun aRelayoutOfStaticLyricsKeepsThePlaceInsteadOfJumpingToTheTop() {
+        now += 16
+        scroll.updateScroll(1f / 60f, height, null, null)
+        drag(-800f)
+        repeat(120) {
+            now += 16
+            scroll.updateScroll(1f / 60f, height, null, null)
+        }
+        val scrolled = scroll.animScrollY
+        scroll.onRelayout()
+        now += 16
+        scroll.updateScroll(1f / 60f, height, null, null)
+        assertEquals(scrolled, scroll.animScrollY, 0.01f)
+    }
+
+    @Test fun aRelayoutWhileFollowingStillJumpsToTheLine() {
+        frames(0.5f, 2, -300f)
+        scroll.onRelayout()
+        now += 16
+        scroll.updateScroll(1f / 60f, height, 2, -700f, targetVisiblePx = 100f)
+        assertEquals(-700f, scroll.animScrollY, 0.01f)
+    }
 }
