@@ -26,7 +26,6 @@ import androidx.compose.ui.unit.sp
 import com.tx24.spicyplayer.R
 import com.tx24.spicyplayer.ui.theme.SpicyBrand
 import com.tx24.spicyplayer.ui.theme.SpicyColors
-import com.tx24.spicyplayer.ui.theme.SpicyPalette
 import com.tx24.spicyplayer.ui.theme.SpicyType
 import kotlin.math.abs
 import kotlin.math.cos
@@ -37,12 +36,6 @@ import kotlin.math.sin
  * brand line over a heading. Settings lays them over its blurred backdrop, a pop-up over an opaque
  * plate.
  */
-
-/** How a part of the chrome is dressed: the lavender brand, or the plain monochrome glass. */
-enum class ChromeTheme(val label: String, val palette: SpicyPalette) {
-    Purple("Purple", SpicyPalette.Purple),
-    Classic("Classic", SpicyPalette.Neutral),
-}
 
 /** The pop-ups' palette, from Settings → Theme; [SpicyModal] dresses itself in it. */
 val LocalPopupPalette = compositionLocalOf { ChromeTheme.Purple.palette }

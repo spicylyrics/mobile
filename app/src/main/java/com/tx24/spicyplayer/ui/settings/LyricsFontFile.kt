@@ -13,13 +13,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.RandomAccessFile
 
-/** The Lyrics Font setting. */
-enum class LyricsFont(val label: String) {
-    Default("Default"),
-    System("System"),
-    Custom("Custom"),
-}
-
 /**
  * A font file the user picked from their phone, copied into the app's own storage so it stays
  * readable. Each pick gets a new name: a font is cached by its path once loaded, so reusing one
