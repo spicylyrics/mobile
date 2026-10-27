@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.ContentScale
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalLyricsImageLoader
+import kotlinx.coroutines.CancellationException
 
 /** What the animated cover is looked up by. */
 data class MotionCoverQuery(val artist: String, val album: String, val title: String)
@@ -105,7 +106,15 @@ open class BasicNowPlayingPlatform : NowPlayingPlatform {
     @Composable
     override fun Avatar(url: String, modifier: Modifier) {
         val loader = LocalLyricsImageLoader.current ?: return
-        val image by produceState<ImageBitmap?>(null, url, loader) { value = runCatching { loader.load(url, AVATAR_PX) }.getOrNull() }
+        val image by produceState<ImageBitmap?>(null, url, loader) {
+            value = try {
+                loader.load(url, AVATAR_PX)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+        }
         image?.let { Image(it, null, modifier, contentScale = ContentScale.Crop) }
     }
 
