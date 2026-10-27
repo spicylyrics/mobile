@@ -26,6 +26,7 @@ import androidx.compose.ui.window.rememberWindowState
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalDisplayRefreshRate
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalLyricsImageLoader
+import com.tx24.spicyplayer.lyrics.spicy.canvas.CjkFonts
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsView
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsCredit
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsFooter
@@ -59,6 +60,7 @@ fun runDemo(args: Array<String>) {
     require(parsed.lines.isNotEmpty()) { "no lines parsed" }
     val type = parsed.type
     val lines = buildDisplayTimeline(parsed.lines, minimalMode = false)
+    CjkFonts.useFor(lines)
     val songEndMs = lines.maxOf { it.endMs } + 4_000L
     val startOffsetMs = value("--start-ms")?.toLong() ?: 0L
     val (windowW, windowH) = value("--size")?.split("x")?.map(String::toInt) ?: listOf(1280, 800)

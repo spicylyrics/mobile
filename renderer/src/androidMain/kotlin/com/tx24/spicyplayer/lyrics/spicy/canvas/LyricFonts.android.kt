@@ -17,6 +17,8 @@ internal actual object LyricFonts {
     actual val vazirmatn = variableFamily(R.font.vazirmatn_variable)
     actual val georgian = variableFamily(R.font.noto_sans_georgian_variable)
 
+    actual fun scriptFamily(text: String, weight: FontWeight): FontFamily? = null
+
     /**
      * A variable font at each weight the renderer asks for. The weight has to be set on the
      * font's `wght` axis: declared alone, every weight drew the file's default instance (400),

@@ -57,10 +57,11 @@ object LyricsLayoutCalculator {
             val line = display[index]
             var layout = original.copy(line = line, yOffset = original.yOffset + extraY)
             val size = metrics.baseFontSizeSp * if (line.isBackground) backgroundScale else 1f
+            val weight = if (line.isBackground) FontWeight.SemiBold else FontWeight.Bold
             fun measure(text: String, scale: Float, width: Float, right: Boolean) = textMeasurer.measure(
                 text = AnnotatedString(text),
-                style = TextStyle(fontFamily = fontFamilyFor(text), fontSize = (size * scale).sp,
-                    fontWeight = if (line.isBackground) FontWeight.SemiBold else FontWeight.Bold,
+                style = TextStyle(fontFamily = fontFamilyFor(text, weight), fontSize = (size * scale).sp,
+                    fontWeight = weight,
                     lineHeight = (size * scale * 1.18f).sp, textAlign = if (right) TextAlign.Right else TextAlign.Left,
                     textMotion = TextMotion.Animated, color = Color.White, shadow = Shadow.None),
                 constraints = Constraints(maxWidth = width.toInt().coerceAtLeast(1)),
@@ -170,7 +171,7 @@ object LyricsLayoutCalculator {
 
     /** The font for lyrics and the text around them (the song header, the controls' times). */
     val spicyFontFamily: FontFamily get() = fontOverride ?: LyricFonts.bundled
-    private fun fontFamilyFor(text: String): FontFamily = fontOverride ?: when (ScriptFontSelector.select(text)) {
+    private fun fontFamilyFor(text: String, weight: FontWeight): FontFamily = fontOverride ?: LyricFonts.scriptFamily(text, weight) ?: when (ScriptFontSelector.select(text)) {
         LyricScriptFont.DEFAULT -> spicyFontFamily
         LyricScriptFont.VAZIRMATN -> LyricFonts.vazirmatn
         LyricScriptFont.NOTO_SANS_GEORGIAN -> LyricFonts.georgian
@@ -322,7 +323,7 @@ object LyricsLayoutCalculator {
             // Standard lyric line layout.
             val romanizeLine = romanizes(line, romanize)
             val lineIsRtl = RtlDetector.isRtl(line.words.joinToString(" ") { displayText(it, romanizeLine) })
-            val lineFontFamily = fontFamilyFor(line.words.joinToString(" ") { displayText(it, romanizeLine) })
+            val lineFontFamily = fontFamilyFor(line.words.joinToString(" ") { displayText(it, romanizeLine) }, fontWeight)
             val contentSlot = metrics.contentSlot(hasDuet, lineIsRtl, line.oppositeAligned, wideDuet)
             // An active line-synced line grows 1.05x away from its aligned edge. The reference
             // wraps it inside a 5cqw padding that the growth fills; here it must wrap narrower

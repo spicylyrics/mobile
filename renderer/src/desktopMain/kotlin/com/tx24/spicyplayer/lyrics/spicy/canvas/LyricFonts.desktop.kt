@@ -15,6 +15,9 @@ internal actual object LyricFonts {
     actual val vazirmatn = variableFamily("vazirmatn_variable")
     actual val georgian = variableFamily("noto_sans_georgian_variable")
 
+    /** Windows' CJK fonts for Chinese, Japanese and Korean lines ([CjkFonts]). */
+    actual fun scriptFamily(text: String, weight: FontWeight): FontFamily? = CjkFonts.familyFor(text, weight)
+
     private fun variableFamily(name: String) = FontFamily(
         listOf(FontWeight.Normal, FontWeight.Medium, FontWeight.SemiBold, FontWeight.Bold).map { font(name, it) },
     )

@@ -34,6 +34,7 @@ Not moved: the Kawarp hosts, which are platform code through and through. `Kawar
 | Seam | Common side | Android | Desktop |
 |---|---|---|---|
 | Lyric fonts | `internal expect object LyricFonts` (`bundled`, `vazirmatn`, `georgian` font families) | `Font(R.font.x, weight, variationSettings)` from the module's `res/font`, as before | the same `.ttf` files read from the classpath (`/font/x.ttf`) |
+| Script fonts | `LyricFonts.scriptFamily(text, weight)`, asked first for each line | null: Android's font fallback already picks well | `CjkFonts`: Windows' Chinese, Japanese or Korean font for a CJK line, the Han font chosen per song (`CjkFonts.useFor(lines)`) |
 | Display refresh rate | `@Composable internal expect fun rememberRefreshRate(): () -> Float?`, read by the frame loop | `LocalView.current.display?.refreshRate` | `LocalDisplayRefreshRate`, which the window provides |
 | Credits avatars | `fun interface LyricsImageLoader`, `LocalLyricsImageLoader` (null: no avatars) | `:app` provides `CoilLyricsImageLoader` (Coil 2, the lyrics screen's context) at the screen's root | `:desktop` provides `PlaceholderAvatars`, the flat square it drew before |
 | Monotonic clock | `internal expect fun monotonicNanos(): Long` | `System.nanoTime()` | `System.nanoTime()` |
@@ -45,7 +46,7 @@ The JVM actuals are written twice (Android and desktop), a few lines each, rathe
 
 `commonMain` holds no `java.*` or `android.*` reference. With only JVM-flavoured targets the compiler doesn't enforce that (common code compiles against the JVM on each target), so `CommonMainPlatformApiTest` scans the sources for it.
 
-Fonts are not in Compose Multiplatform resources, on purpose. The home screen widget's layouts (`widget_song_row.xml`, `styles.xml`) name `@font/lyrics_*`, and a widget can only use Android font resources, so the files must stay Android resources; CMP resources would package a second copy as assets. CMP's `Font(Res.font.x)` is also `@Composable`, while the renderer builds its font families once, outside composition. So the files live once in `src/androidMain/res/font`, and other modules reuse the families through `LyricsLayoutCalculator.spicyFontFamily` (which also honours the Lyrics Font setting). The renderer has no strings or images of its own. An iOS target would read the same files from its bundle in its `LyricFonts` actual.
+Fonts are not in Compose Multiplatform resources, on purpose. The home screen widget's layouts (`widget_song_row.xml`, `styles.xml`) name `@font/lyrics_*`, and a widget can only use Android font resources, so the files must stay Android resources; CMP resources would package a second copy as assets. CMP's `Font(Res.font.x)` is also `@Composable`, while the renderer builds its font families once, outside composition. So the files live once in `src/androidMain/res/font`, and other modules reuse the families through `LyricsLayoutCalculator.spicyFontFamily` (which also honours the Lyrics Font setting). The renderer has no strings or images of its own. An iOS target needs the fonts as CMP resources (iOS has no Android resources and no classpath): either a copy for the iOS source set only, or CMP resources pointed at the same `res/font` directory for that source set, read in its `LyricFonts` actual.
 
 ## The shader
 

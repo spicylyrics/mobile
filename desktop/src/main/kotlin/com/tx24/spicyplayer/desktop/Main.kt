@@ -32,6 +32,7 @@ import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalDisplayRefreshRate
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalLyricsImageLoader
+import com.tx24.spicyplayer.lyrics.spicy.canvas.CjkFonts
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsView
 import com.tx24.spicyplayer.lyrics.spicy.models.Line
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsCredit
@@ -187,7 +188,7 @@ private fun Lyrics(lyrics: LyricsState.Ready, trackKey: String, currentTimeMs: (
             LyricsType.Syllable -> config.isMinimal
             LyricsType.Line -> config.isSimple
             else -> false
-        })
+        }).also(CjkFonts::useFor)
     }
     LyricsView(
         lines = lines,
