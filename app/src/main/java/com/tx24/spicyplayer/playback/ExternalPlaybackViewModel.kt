@@ -2312,7 +2312,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         // The end report skipped above is the last song's, not news for the next one.
         val fresh = clock.isFresh(report) && report != endBufferingReport
         val now = SystemClock.elapsedRealtime()
-        if (trackChanged && !fresh && now - lastReportAt > TRACK_REPORT_FRESH_MS) {
+        if (trackChanged && (report == endBufferingReport || (!fresh && now - lastReportAt > TRACK_REPORT_FRESH_MS))) {
             // No report for the new song yet: the one we have is the previous song's position.
             // Seeding the clock from it jumps the new lyrics ahead and forces a scroll, so the
             // song starts from 0 until the player reports.
