@@ -71,6 +71,7 @@ import com.tx24.spicyplayer.ui.components.ExpandGlyph
 import com.tx24.spicyplayer.ui.components.GlassButton
 import com.tx24.spicyplayer.ui.components.LyricsSkeleton
 import com.tx24.spicyplayer.ui.components.MoreGlyph
+import com.tx24.spicyplayer.ui.components.PictureInPictureGlyph
 import com.tx24.spicyplayer.ui.components.SettingsGlyph
 import com.tx24.spicyplayer.ui.components.SpicyGlyphs
 import com.tx24.spicyplayer.ui.components.SwapSideGlyph
@@ -102,10 +103,11 @@ private object NoTooltips : TooltipHost {
 
 val LocalTooltipHost = staticCompositionLocalOf<TooltipHost> { NoTooltips }
 
-/** What the page asks of the app beyond the player: a new view state, the settings panel. */
+/** What the page asks of the app beyond the player: a new view state, the settings panel, the floating window. */
 class BigScreenActions(
     val onState: (BigScreenState) -> Unit,
     val onOpenSettings: () -> Unit,
+    val onEnterPip: () -> Unit = {},
 )
 
 /**
@@ -131,6 +133,8 @@ fun BigScreenPage(
     background: @Composable () -> Unit,
     lyricsView: @Composable (modifier: Modifier, romanize: Boolean, activeLineTopPx: Float?, renderConfig: RenderConfig) -> Unit,
     renderConfig: RenderConfig = RenderConfig.FULL,
+    /** Whether the controls show, where the platform decides (a touch screen's own idle timer); null follows hover and taps. */
+    controlsShown: Boolean? = null,
 ) {
     val lyricsSlot: @Composable (Modifier, Boolean, Float?) -> Unit = { modifier, romanize, top -> lyricsView(modifier, romanize, top, renderConfig) }
     val playing by nowPlaying.state.collectAsState()
@@ -138,13 +142,13 @@ fun BigScreenPage(
     val pageHovered by pageHover.collectIsHoveredAsState()
     // A tap where nothing else took it shows the controls; the next one hides them.
     var revealed by remember { mutableStateOf(false) }
-    val showControls = pageHovered || revealed
+    val showControls = controlsShown ?: (pageHovered || revealed)
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
             .hoverable(pageHover)
-            .pointerInput(Unit) { detectTapGestures { revealed = !revealed } },
+            .then(if (controlsShown != null) Modifier else Modifier.pointerInput(Unit) { detectTapGestures { revealed = !revealed } }),
     ) {
         val density = LocalDensity.current.density
         val widthPx = constraints.maxWidth.toFloat()
@@ -488,6 +492,7 @@ private fun ViewControlsRow(env: PageEnv, size: Dp, modifier: Modifier) {
                             when (control) {
                                 ViewControl.More -> menuOpen = true
                                 ViewControl.Settings -> env.actions.onOpenSettings()
+                                ViewControl.PictureInPicture -> env.actions.onEnterPip()
                                 else -> env.actions.onState(state.click(control, env.widthDp, env.heightDp, env.capabilities))
                             }
                         },
@@ -516,6 +521,7 @@ private fun ControlGlyph(control: ViewControl, env: PageEnv, modifier: Modifier)
         ViewControl.NowBarSide -> SwapSideGlyph(state.nowBarOnRight, modifier)
         ViewControl.Fullscreen -> ExpandGlyph(expanded = state.mode == ViewMode.Fullscreen, modifier)
         ViewControl.More -> MoreGlyph(modifier)
+        ViewControl.PictureInPicture -> PictureInPictureGlyph(modifier)
         ViewControl.Settings -> SettingsGlyph(modifier)
         ViewControl.Close -> CloseGlyph(modifier)
     }

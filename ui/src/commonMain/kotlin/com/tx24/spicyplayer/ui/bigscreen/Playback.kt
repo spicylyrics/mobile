@@ -3,7 +3,8 @@ package com.tx24.spicyplayer.ui.bigscreen
 /**
  * What the platform can do for the big-screen page: which of [com.tx24.spicyplayer.ui.nowplaying.PlaybackTransport]'s
  * commands reach the player, and whether the window can go fullscreen (a desktop window can; a
- * tablet's app already fills the screen, so cinema is as far as it goes).
+ * tablet's app already fills the screen, so cinema is as far as it goes), and whether it has a
+ * floating window to shrink the lyrics into.
  */
 data class PlayerCapabilities(
     val playPause: Boolean = true,
@@ -11,6 +12,7 @@ data class PlayerCapabilities(
     val skipPrevious: Boolean = true,
     val seek: Boolean = true,
     val fullscreen: Boolean = false,
+    val pictureInPicture: Boolean = false,
 )
 
 /** A button in the cover's playback row. Shuffle and repeat are left out for now. */

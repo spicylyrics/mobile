@@ -191,6 +191,8 @@ import com.tx24.spicyplayer.ui.settings.PipWithoutLyrics
 import com.tx24.spicyplayer.ui.settings.debugReport
 import com.tx24.spicyplayer.ui.nowplaying.MotionCoverQuery
 import com.tx24.spicyplayer.ui.nowplaying.ViewModelNowPlaying
+import com.tx24.spicyplayer.ui.nowplaying.AndroidBigScreenPage
+import com.tx24.spicyplayer.ui.bigscreen.usesBigScreenLayout
 import com.tx24.spicyplayer.ui.nowplaying.nowPlayingState
 import com.tx24.spicyplayer.ui.nowplaying.skip
 import androidx.compose.ui.graphics.ImageBitmap
@@ -910,7 +912,66 @@ private fun LyricsApp(
             PipLyrics(state, viewModel, settings, renderConfig, lyricsViewState, romanize, lowPerformance, heldCanvasUrl, artwork)
             return@Scaffold
         }
-        CompositionLocalProvider(LocalControlsRevealGuard provides revealGuard) {
+        // A big window (a tablet held sideways, DeX, an unfolded foldable) gets the big-screen
+        // page; phones and upright tablets keep the layout below. Follows resizes as they happen.
+        if (usesBigScreenLayout(configuration.screenWidthDp.toFloat(), configuration.screenHeightDp.toFloat())) {
+            AndroidBigScreenPage(
+                nowPlaying = transport,
+                canSeek = state.canSeek,
+                pictureInPicture = onEnterPip != null,
+                lyrics = state.lyrics,
+                renderConfig = renderConfig,
+                noticeActions = noticeActions,
+                controlsShown = controlsVisible,
+                onTouch = {
+                    controlsVisible = true
+                    touches.value = SystemClock.uptimeMillis()
+                },
+                onOpenSettings = { whenUnlocked { showSettings = true } },
+                onEnterPip = { onEnterPip?.invoke() },
+                initialRomanized = romanize,
+                background = {
+                    SpicySessionBackground(
+                        artwork = state.artwork,
+                        artworkUri = state.artworkUri,
+                        isPlaying = state.isPlaying,
+                        hasSession = state.sourcePackage != null,
+                        modifier = Modifier.fillMaxSize(),
+                        type = backgroundType,
+                        animate = !lowPerformance && !settings.staticBackground && !ambient,
+                        blurDp = settings.backgroundBlurFor(backgroundType),
+                        artistHeaderUrl = state.artistHeaderUrl,
+                        artistHeaderPending = state.artistHeaderPending,
+                        speed = if (beatReactive) viewModel::backgroundSpeed else null,
+                        refined = settings.refinedBackground,
+                    )
+                },
+                lyricsView = { lyricsModifier, pageRomanize, activeLineTopPx, pageConfig ->
+                    LyricsPanel(
+                        lyrics = state.lyrics,
+                        translation = state.translation.takeIf { state.translationEnabled },
+                        translationMode = settings.translationMode,
+                        textCredits = settings.textCredits,
+                        romanizationCredit = rememberRomanizationCredit(state, pageRomanize, settings.textCredits),
+                        romanizationMode = settings.romanizationMode,
+                        currentTimeMs = viewModel::currentLyricPositionMs,
+                        onSeek = viewModel::seekTo,
+                        romanize = pageRomanize,
+                        isPlaying = state.isPlaying,
+                        activeLineTopPx = activeLineTopPx,
+                        centredLiftPx = 0f,
+                        noticeBottomPx = { 0f },
+                        viewState = lyricsViewState,
+                        pinnedFooter = PinnedFooterMode.Off,
+                        maskBottomPx = { 0f },
+                        config = pageConfig,
+                        fontSizeScale = settings.lyricsScale(landscape = true),
+                        noticeActions = noticeActions,
+                        modifier = lyricsModifier,
+                    )
+                },
+            )
+        } else CompositionLocalProvider(LocalControlsRevealGuard provides revealGuard) {
         Box(
             Modifier
                 .fillMaxSize()
