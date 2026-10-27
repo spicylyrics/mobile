@@ -13,7 +13,7 @@ The settings screen lives in `ui/settings/`; its controls in `ui/components/Sett
 
    **Everyday rows first.** A page shows the rows people actually change, and folds the rest into one `MoreOptions("…")` at its end, whose summary names what's inside. Decide by the usage dashboard: a setting that around 5% or more of installs move off its default stays visible, and a new feature stays visible until there's data on it. Search shows folded rows unfolded, so a folded row needs nothing extra to be found. A page of about five rows or fewer needs no fold.
 2. **Store it where it's used.**
-   - How the lyrics screen looks and behaves (word motion, refresh rate, update channel): a property in `ui/settings/AppSettings.kt` (the `ui` SharedPreferences), which reads as Compose state.
+   - How the lyrics screen looks and behaves (word motion, refresh rate, update channel): a property in `CommonAppSettings` (`ui/settings/CommonAppSettings.kt` in the shared `:ui` module), which reads as Compose state and is stored through `SettingsStore` (the `ui` SharedPreferences on Android). Add it to `CommonAppSettingsTest`, which pins every key and default. A setting whose type lives in `:app` is stored by name there, with a typed view in `AppSettings`.
    - Lookup, sources or playback: a field in `PlayerUiState` plus a view-model function that saves it.
    - Keep the logic free of Android code where possible, for the Kotlin Multiplatform move after v1.
 3. **Build it from the shared controls**, never Material ones:

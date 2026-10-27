@@ -87,6 +87,18 @@ class FileSettingsStoreTest {
         assertEquals(12, store.getInt("scrollLeadMs"))
     }
 
+    @Test fun theFileLivesInTheAppsOwnFolder() {
+        val windows = FileSettingsStore.appDataDir("Windows 11", { if (it == "APPDATA") "C:\\Users\\me\\AppData\\Roaming" else null }, "C:\\Users\\me")
+        assertEquals(File("C:\\Users\\me\\AppData\\Roaming", "Spicy Lyrics Desktop"), windows)
+        assertEquals(File("/home/me/.config", "spicy-lyrics-desktop"), FileSettingsStore.appDataDir("Linux", { null }, "/home/me"))
+        val xdg = FileSettingsStore.appDataDir("Linux", { if (it == "XDG_CONFIG_HOME") "/xdg" else null }, "/home/me")
+        assertEquals(File("/xdg", "spicy-lyrics-desktop"), xdg)
+        // APPDATA means nothing off Windows, and a blank XDG_CONFIG_HOME counts as unset.
+        val linuxWithAppData = FileSettingsStore.appDataDir("Linux", { if (it == "APPDATA") "/wine" else if (it == "XDG_CONFIG_HOME") " " else null }, "/home/me")
+        assertEquals(File("/home/me/.config", "spicy-lyrics-desktop"), linuxWithAppData)
+        assertEquals("settings.properties", FileSettingsStore.FILE_NAME)
+    }
+
     @Test fun commonAppSettingsReadBackWhatTheyWrote() {
         CommonAppSettings(FileSettingsStore(file), pipButtonByDefault = false, prereleasesByDefault = false).apply {
             backgroundType = BackgroundType.Color

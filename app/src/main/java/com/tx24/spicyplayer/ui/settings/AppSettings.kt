@@ -6,8 +6,8 @@ import com.tx24.spicyplayer.BuildConfig
 import com.tx24.spicyplayer.ui.nowplaying.LoopKind
 
 /**
- * The phone's settings: the shared ones ([CommonAppSettings]) in the `ui` preferences, plus the
- * ones whose types live in the app (the launcher icon, the paused loops).
+ * The phone's settings: the shared ones ([CommonAppSettings]) in the `ui` preferences, plus typed
+ * views of the two stored by name there because their types live in the app.
  */
 class AppSettings(prefs: SharedPreferences) : CommonAppSettings(
     store = SharedPreferencesStore(prefs),
@@ -15,15 +15,15 @@ class AppSettings(prefs: SharedPreferences) : CommonAppSettings(
     // On by default while the app itself is a pre-release (0.x).
     prereleasesByDefault = BuildConfig.VERSION_NAME.startsWith("0."),
 ) {
-    /** The loops that hold their frame while the music is paused; both kinds by default. */
-    var pauseWithMusic by setting("pauseWithMusic", String::class, {
-        store.getString("pauseWithMusic")?.let(LoopKind::parse) ?: LoopKind.entries.toSet()
-    }) { store.putString("pauseWithMusic", LoopKind.store(it)) }
+    /** The loops that hold their frame while the music is paused ([pauseWithMusicKinds]). */
+    var pauseWithMusic: Set<LoopKind>
+        get() = LoopKind.entries.filter { it.name in pauseWithMusicKinds }.toSet()
+        set(value) { pauseWithMusicKinds = value.mapTo(mutableSetOf()) { it.name } }
 
-    /** Which launcher icon shows (`AppIcon.apply`). */
-    var appIcon by setting("appIcon", String::class, {
-        store.getString("appIcon")?.let { name -> AppIcon.entries.firstOrNull { it.name == name } } ?: AppIcon.Purple
-    }) { store.putString("appIcon", it.name) }
+    /** Which launcher icon shows (`AppIcon.apply`), from [appIconName]. */
+    var appIcon: AppIcon
+        get() = AppIcon.entries.firstOrNull { it.name == appIconName } ?: AppIcon.Purple
+        set(value) { appIconName = value.name }
 
     companion object {
         /** Sung words grow and lift this much more than the desktop amount, which reads better on a phone. */

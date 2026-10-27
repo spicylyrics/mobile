@@ -153,6 +153,13 @@ open class CommonAppSettings(
     var bigCoverCanvas by boolean("bigCoverCanvas", true)
     /** While the stage or the big cover shows a Canvas, the background is that Canvas, blurred. */
     var canvasBackdrop by boolean("canvasBackdrop", true)
+    /**
+     * The loops that hold their frame while the music is paused, by [LOOP_KINDS] name; both kinds
+     * by default. Unknown names are dropped; the app reads it as `AppSettings.pauseWithMusic`.
+     */
+    var pauseWithMusicKinds by setting("pauseWithMusic", String::class, {
+        store.getString("pauseWithMusic")?.let(::parseLoopKinds) ?: LOOP_KINDS.map { it.name }.toSet()
+    }) { kinds -> store.putString("pauseWithMusic", storeLoopKinds(kinds)) }
     /** Cover Art background: the record's looping Apple Music cover in place of the still one. */
     var animatedBackground by boolean("animatedBackground", false)
     /**
@@ -244,6 +251,11 @@ open class CommonAppSettings(
     /** How Settings and the pop-ups are dressed. */
     var settingsTheme by enum("settingsTheme", ChromeTheme.Purple)
     var popupTheme by enum("popupTheme", ChromeTheme.Purple)
+
+    /** The launcher icon, by [APP_ICONS] name; the app reads it as `AppSettings.appIcon`. */
+    var appIconName by setting("appIcon", String::class, {
+        store.getString("appIcon")?.takeIf { name -> APP_ICONS.any { it.name == name } } ?: APP_ICONS.first().name
+    }) { store.putString("appIcon", it) }
 
     /** Anonymous usage stats; nothing is sent until the notice has been answered. */
     var usageStats by boolean(KEY_USAGE_STATS, true)
@@ -384,6 +396,21 @@ enum class LyricsSize(val percent: Int, val label: String) {
 
 /** How far the lyrics' size goes either way, in percent of the default. */
 val LYRICS_SIZE_RANGE = 60..250
+
+/** A choice the shared settings store by [name] while its type lives in the app, with its [label]. */
+class NamedChoice(val name: String, val label: String)
+
+/** The kinds of looping cover art, in the app's `LoopKind` order. */
+val LOOP_KINDS = listOf(NamedChoice("AnimatedCover", "Animated covers"), NamedChoice("Canvas", "Spotify Canvas"))
+
+/** The launcher icons, in the app's `AppIcon` order; the first is the default. */
+val APP_ICONS = listOf(NamedChoice("Purple", "Purple"), NamedChoice("Pride", "Pride"))
+
+/** Loop kinds stored as names joined by commas; an unknown name is dropped. */
+internal fun parseLoopKinds(stored: String): Set<String> =
+    stored.split(',').map { it.trim() }.filter { name -> LOOP_KINDS.any { it.name == name } }.toSet()
+
+internal fun storeLoopKinds(kinds: Set<String>): String = LOOP_KINDS.map { it.name }.filter { it in kinds }.joinToString(",")
 
 /** The Lyrics Font setting. */
 enum class LyricsFont(val label: String) {
