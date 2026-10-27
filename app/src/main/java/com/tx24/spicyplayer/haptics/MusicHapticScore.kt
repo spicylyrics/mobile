@@ -5,6 +5,12 @@ import com.tx24.spicyplayer.network.data.spotify.Rhythm
 import kotlin.math.abs
 import kotlin.math.sqrt
 
+/**
+ * What a music haptic marks. The first three follow the drums ([MusicHapticsStyle.Drums]), [Note]
+ * the notes where there are no drums; [Beat] and [Downbeat] are the steady beat
+ * ([MusicHapticsStyle.Beat]); [Accent] and [Drop] are the big moments in either.
+ */
+enum class MusicPulse { Kick, Snare, Note, Beat, Downbeat, Accent, Drop }
 
 /**
  * One vibration in a song, at [atMs] into it, [strength] 0..1, with [roomMs] of quiet before the

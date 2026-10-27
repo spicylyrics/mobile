@@ -34,8 +34,6 @@ kotlin {
             api("dev.chrisbanes.haze:haze:1.7.3")
             implementation("org.jetbrains.compose.animation:animation:$composeVersion")
             implementation("org.jetbrains.compose.material3:material3:1.9.0")
-            // The settings rows' icons (Icons.Rounded), the same set the app already ships.
-            implementation("org.jetbrains.compose.material:material-icons-extended:1.7.3")
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
         }
         getByName("desktopTest").dependencies {
