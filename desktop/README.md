@@ -4,7 +4,7 @@ A lyrics window for whatever plays in the system's media controls. On Windows it
 
 ## Desktop
 
-You need JDK 17 and Rust (`cargo`). Gradle builds the helper with `cargo build --release` itself.
+You need JDK 17, and on Windows Rust (`cargo`): Gradle builds the helper with `cargo build --release` itself. Linux needs `playerctl` instead.
 
 ```
 .\gradlew.bat :desktop:run                    # run from the checkout
