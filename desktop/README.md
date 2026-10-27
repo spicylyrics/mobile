@@ -29,3 +29,7 @@ The app follows other players through a `MediaSource` (`MediaSource.kt`): a flow
 | macOS | `macMediaSource()` | Not supported; it reports nothing. The likely routes are the MediaRemote framework through a helper, or AppleScript for Spotify and Music. |
 
 To add a platform, implement `MediaSource`, keep the line parsing in a pure function with tests in `src/test/kotlin`, and add it to `mediaSource()`.
+
+## Updates
+
+An installed build checks GitHub's releases for a newer `desktop-vX.Y.Z` tag at most once a day (`update/UpdateCheck.kt`) and shows a dismissible banner that opens the release page. Drafts and the phone app's `v*` tags are ignored; prereleases count while the version is below 1.0.0. The last check is kept in `%APPDATA%\Spicy Lyrics Desktop\update-check.json` (Windows) or `~/.config/spicy-lyrics-desktop/` (elsewhere). Runs from the checkout report their version as `dev` and never check; pass `-Djpackage.app-version=0.0.1` to try the banner. Offline, it shows the last answer or nothing.
