@@ -1,6 +1,6 @@
 // The Android Font(resId) overloads, reading the app's font files from the classpath. Without
 // default arguments these win over Compose Desktop's own Font(resId), which can't load a file.
-// Variable fonts draw at their default instance here: the spike's lyrics are Latin.
+// Variable fonts draw at their default instance here.
 @file:Suppress("PackageDirectoryMismatch", "UNUSED_PARAMETER")
 
 package androidx.compose.ui.text.font

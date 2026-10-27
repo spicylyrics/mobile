@@ -1,4 +1,4 @@
-package com.tx24.spicyplayer.spike
+package com.tx24.spicyplayer.desktop
 
 /** Frame intervals from the renderer's own frame loop, against the monitor's refresh interval. */
 class FrameStats(refreshRate: Float) {

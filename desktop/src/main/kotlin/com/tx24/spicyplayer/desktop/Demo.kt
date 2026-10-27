@@ -1,4 +1,4 @@
-package com.tx24.spicyplayer.spike
+package com.tx24.spicyplayer.desktop
 
 import android.view.Display
 import android.view.View
@@ -41,7 +41,7 @@ import kotlinx.coroutines.delay
 import kotlin.system.exitProcess
 
 /**
- * Usage: run [--ttml file.ttml] [--seconds N] [--simple] [--apple] [--no-glow] [--maximized] [--no-vsync] [--no-kawarp]
+ * Usage: run --demo [--ttml file.ttml] [--seconds N] [--simple] [--apple] [--no-glow] [--maximized] [--no-vsync] [--no-kawarp]
  *   [--credits] [--size WxH] [--start-ms MS]
  *   [--snap file.png --snap-at S]
  *
@@ -49,7 +49,7 @@ import kotlin.system.exitProcess
  * seconds. With --seconds it prints a summary and exits after that long; --snap saves what the
  * window shows S seconds in.
  */
-fun main(args: Array<String>) {
+fun runDemo(args: Array<String>) {
     fun flag(name: String) = name in args
     fun value(name: String) = args.indexOf(name).takeIf { it >= 0 }?.let { args.getOrNull(it + 1) }
 
@@ -93,7 +93,7 @@ fun main(args: Array<String>) {
             placement = if (flag("--maximized")) WindowPlacement.Maximized else WindowPlacement.Floating,
         )
         var hud by remember { mutableStateOf("") }
-        Window(onCloseRequest = { stats.printSummary(); exitApplication() }, state = state, title = "Renderer spike") {
+        Window(onCloseRequest = { stats.printSummary(); exitApplication() }, state = state, title = "Spicy Lyrics renderer demo") {
             CompositionLocalProvider(LocalView provides View(Display(refreshRate))) {
                 Box(Modifier.fillMaxSize().background(Color.Black)) {
                     if (flag("--no-kawarp")) Box(Modifier.fillMaxSize().background(
@@ -123,14 +123,7 @@ fun main(args: Array<String>) {
                         modifier = Modifier.align(Alignment.TopStart).padding(12.dp))
                 }
             }
-            if (snap != null) LaunchedEffect(Unit) {
-                // The capture reads the screen, so nothing may cover the window.
-                window.isAlwaysOnTop = true
-                delay(snapAtMs)
-                val bounds = window.contentPane.let { java.awt.Rectangle(it.locationOnScreen, it.size) }
-                ImageIO.write(Robot().createScreenCapture(bounds), "png", snap)
-                println("snap ${snap.absolutePath} ${bounds.width}x${bounds.height}")
-            }
+            if (snap != null) SnapAfter(window, snap, snapAtMs)
             if (runSeconds != null) LaunchedEffect(Unit) {
                 delay(runSeconds * 1000L)
                 stats.printSummary()
@@ -138,4 +131,16 @@ fun main(args: Array<String>) {
             }
         }
     }
+}
+
+/** Saves what [window] shows [afterMs] in, for checking a change without touching the desktop. */
+@androidx.compose.runtime.Composable
+fun SnapAfter(window: java.awt.Window, file: File, afterMs: Long) = LaunchedEffect(Unit) {
+    // The capture reads the screen, so nothing may cover the window.
+    window.isAlwaysOnTop = true
+    delay(afterMs)
+    val content = (window as javax.swing.JFrame).contentPane
+    val bounds = java.awt.Rectangle(content.locationOnScreen, content.size)
+    ImageIO.write(Robot().createScreenCapture(bounds), "png", file)
+    println("snap ${file.absolutePath} ${bounds.width}x${bounds.height}")
 }

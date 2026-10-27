@@ -1,4 +1,4 @@
-// No image loading in the spike: every avatar comes back as the same placeholder disc.
+// No image loading yet: every avatar comes back as the same placeholder disc.
 @file:Suppress("PackageDirectoryMismatch", "UNUSED_PARAMETER")
 
 package coil

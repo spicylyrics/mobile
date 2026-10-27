@@ -18,4 +18,3 @@ rootProject.name = "Spicy Lyrics Mobile"
 include(":app")
 include(":core")
 include(":desktop")
-include(":desktop-spike")

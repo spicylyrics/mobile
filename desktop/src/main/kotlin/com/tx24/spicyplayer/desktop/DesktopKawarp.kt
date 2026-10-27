@@ -1,4 +1,4 @@
-package com.tx24.spicyplayer.spike
+package com.tx24.spicyplayer.desktop
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.BoxWithConstraints
