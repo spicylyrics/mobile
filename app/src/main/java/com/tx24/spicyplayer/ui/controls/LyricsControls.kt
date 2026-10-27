@@ -115,7 +115,6 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
@@ -887,7 +886,7 @@ internal val SessionCustomAction.kind: ActionKind
 private fun ActionIcon(action: SessionCustomAction, modifier: Modifier) {
     val bitmap = action.icon
     if (bitmap != null) {
-        val painter = remember(bitmap) { BitmapPainter(bitmap.asImageBitmap()) }
+        val painter = remember(bitmap) { BitmapPainter(bitmap) }
         Image(painter, null, modifier, colorFilter = ColorFilter.tint(SpicyColors.TextPrimary))
     } else {
         Text(action.name.take(2), style = TimeStyle.copy(color = SpicyColors.TextPrimary))
@@ -986,7 +985,7 @@ private fun SideAction(action: SessionCustomAction?, controls: PlaybackControlsS
         Spacer(slot ?: Modifier.size(TOUCH_SIZE))
         return
     }
-    val painter = remember(bitmap) { BitmapPainter(bitmap.asImageBitmap()) }
+    val painter = remember(bitmap) { BitmapPainter(bitmap) }
     PressableGlyph(
         painter, width, 1f, action.name,
         colorFilter = ColorFilter.tint(SpicyColors.TextPrimary),

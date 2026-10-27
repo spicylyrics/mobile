@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
@@ -90,7 +91,6 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.Constraints
 import com.tx24.spicyplayer.ui.controls.SpicyIcons
 import com.tx24.spicyplayer.ui.controls.keepsControlsHidden
-import com.tx24.spicyplayer.ui.settings.ReleaseYearPosition
 import androidx.compose.foundation.layout.Row
 
 /** CSS's default `ease` timing, for a plain `transition: opacity 0.24s`. */
@@ -114,7 +114,7 @@ private val CoverEnterEasing = CubicBezierEasing(0.835f, -0.008f, 0.149f, 0.866f
  * With [animatedCover] on, a record that has an animated cover on Apple Music loops it in place
  * of the still one.
  *
- * [releaseYear] shows the song's year before or after the artists, where set.
+ * [releaseYear] shows the song's year before or after the artists; null shows none.
  *
  * With [hidden] on there is no compact bar: the expanded view fades in and out in place instead
  * of growing out of it. [interactive] off lets touches through to the lyrics.
@@ -149,16 +149,16 @@ fun CompactNowPlayingHeader(
     /** Portrait, while the song's Canvas fills the screen (0..1): the big cover and its text give way to it. */
     immersive: () -> Float = { 0f },
 ) {
-    val year = releaseYear?.takeIf { it.position != ReleaseYearPosition.Off }?.let { y ->
+    val year = releaseYear?.let { y ->
         when {
-            y.year != null -> YearLabel(y.year, y.position == ReleaseYearPosition.Left, shown = true)
+            y.year != null -> YearLabel(y.year, y.before, shown = true)
             // `.ArtistYear.pending { visibility: hidden }` with a stand-in year holding its room.
-            y.pending -> YearLabel("0000", y.position == ReleaseYearPosition.Left, shown = false)
+            y.pending -> YearLabel("0000", y.before, shown = false)
             else -> null
         }
     }
     val density = LocalDensity.current
-    val artwork = rememberSessionArtwork(info.artwork, info.artworkUri, maxDimension = ARTWORK_MAX_PX, hasSession = info.hasSession)
+    val artwork = rememberSessionArtwork(info.artwork?.asAndroidBitmap(), info.artworkUri, maxDimension = ARTWORK_MAX_PX, hasSession = info.hasSession)
     val motionQuery = MotionCoverQuery(info.artists, info.album, info.title)
     val motion = rememberMotionCover(animatedCover, motionQuery)
     // Everything moves in the layout and draw phases, so the transition doesn't recompose the header.

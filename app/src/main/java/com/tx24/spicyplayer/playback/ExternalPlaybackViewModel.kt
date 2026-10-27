@@ -20,6 +20,8 @@ import android.provider.Settings
 import android.util.Log
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.drawable.toBitmap
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tx24.spicyplayer.BuildConfig
@@ -631,7 +633,8 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     // Which way our own skip buttons last moved, so the next track change can say so.
     private var pendingSkip: Pair<TrackDirection, Long>? = null
     private var lastQueueIndex = -1
-    private val actionIcons = HashMap<Pair<String, Int>, Bitmap?>()
+    // Converted once, so an icon keeps one ImageBitmap and the controls keep their painter for it.
+    private val actionIcons = HashMap<Pair<String, Int>, ImageBitmap?>()
     private val observedSessions = mutableMapOf<MediaSession.Token, MediaController>()
     private val observedCallbacks = mutableMapOf<MediaSession.Token, MediaController.Callback>()
     private var lyricsJob: Job? = null
@@ -1781,10 +1784,10 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     }
 
     /** A custom action's icon, which lives in the player's own resources. */
-    private fun actionIcon(packageName: String, iconRes: Int): Bitmap? = actionIcons.getOrPut(packageName to iconRes) {
+    private fun actionIcon(packageName: String, iconRes: Int): ImageBitmap? = actionIcons.getOrPut(packageName to iconRes) {
         try {
             val resources = getApplication<Application>().packageManager.getResourcesForApplication(packageName)
-            ResourcesCompat.getDrawable(resources, iconRes, null)?.toBitmap()
+            ResourcesCompat.getDrawable(resources, iconRes, null)?.toBitmap()?.asImageBitmap()
         } catch (_: Exception) {
             null
         }

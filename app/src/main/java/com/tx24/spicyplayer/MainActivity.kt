@@ -187,7 +187,10 @@ import com.tx24.spicyplayer.ui.nowplaying.PipDock
 import com.tx24.spicyplayer.ui.settings.PipWithoutLyrics
 import com.tx24.spicyplayer.ui.settings.debugReport
 import com.tx24.spicyplayer.ui.nowplaying.MotionCoverQuery
-import com.tx24.spicyplayer.ui.nowplaying.NowPlayingInfo
+import com.tx24.spicyplayer.ui.nowplaying.ViewModelNowPlaying
+import com.tx24.spicyplayer.ui.nowplaying.nowPlayingState
+import com.tx24.spicyplayer.ui.nowplaying.skip
+import androidx.compose.ui.graphics.asImageBitmap
 import com.tx24.spicyplayer.ui.nowplaying.CoverStage
 import com.tx24.spicyplayer.ui.nowplaying.CoverStageDock
 import com.tx24.spicyplayer.ui.nowplaying.SlidingAlignment
@@ -208,7 +211,6 @@ import com.tx24.spicyplayer.ui.nowplaying.MotionCovers
 import com.tx24.spicyplayer.ui.controls.controlsContentStartPx
 import com.tx24.spicyplayer.ui.nowplaying.PortraitCanvasDock
 import com.tx24.spicyplayer.ui.background.CanvasAmbient
-import com.tx24.spicyplayer.ui.nowplaying.TrackDirection
 import androidx.compose.animation.core.spring
 import com.tx24.spicyplayer.ui.settings.AppSettings
 import com.tx24.spicyplayer.ui.settings.SystemBarsMode
@@ -519,6 +521,11 @@ private fun LyricsApp(
     keyInput: KeyInput = remember { KeyInput() },
 ) {
     val state by viewModel.state.collectAsState()
+    // The player as the shared screen sees it: the cover converted once per picture, so the
+    // header's cover loader only restarts when the player sends a new one.
+    val transport = remember(viewModel) { ViewModelNowPlaying(viewModel) }
+    val artwork = remember(state.artwork) { state.artwork?.asImageBitmap() }
+    val nowPlaying = state.nowPlayingState(artwork)
     val context = LocalContext.current
     val lowPerformance = settings.lowPerformance
     val hideHeader = settings.hideHeader
@@ -1149,7 +1156,7 @@ private fun LyricsApp(
                 val immersive = { immersiveShown * expansion }
                 var failedFollowMotionUrl by remember { mutableStateOf<String?>(null) }
                 val motionScope = rememberCoroutineScope()
-                val stageInfo = NowPlayingInfo(state.title, state.artist, state.album, state.artwork, state.artworkUri, state.trackDirection, hasSession = state.sourcePackage != null)
+                val stageInfo = nowPlaying.info
                 // Everything the glass controls blur.
                 Box(Modifier.fillMaxSize().then(backdrop?.let { Modifier.hazeSource(it) } ?: Modifier)) {
                     SpicySessionBackground(
@@ -1348,15 +1355,17 @@ private fun LyricsApp(
                     if (landscape) landscapeMetrics.centred else headerMetrics.expanded(pageHeight - controlsHeightPx)
                 }
                 CompactNowPlayingHeader(
-                    info = NowPlayingInfo(state.title, state.artist, state.album, state.artwork, state.artworkUri, state.trackDirection, hasSession = state.sourcePackage != null),
-                    releaseYear = ReleaseYear(state.releaseYear, state.releaseYearPending, settings.releaseYearPosition),
+                    info = nowPlaying.info,
+                    releaseYear = settings.releaseYearPosition.takeIf { it != ReleaseYearPosition.Off }?.let { position ->
+                        ReleaseYear(state.releaseYear, state.releaseYearPending, before = position == ReleaseYearPosition.Left)
+                    },
                     metrics = headerMetrics,
                     modifier = Modifier.padding(belowTop).graphicsLayer { alpha = 1f - ambientFade.value },
                     expansion = { expansion },
                     expanded = expandedHeader,
                     isPlaying = state.isPlaying,
                     onPlayPause = viewModel::playPause,
-                    onSkip = { direction -> if (direction == TrackDirection.Forward) viewModel.skipNext() else viewModel.skipPrevious() },
+                    onSkip = transport::skip,
                     animatedCover = settings.animatedCover && !lowPerformance && (!hideHeader || headerShowing) && !stageCovers,
                     hidden = hideHeader,
                     // Under the stage its gestures would sit over the dock.

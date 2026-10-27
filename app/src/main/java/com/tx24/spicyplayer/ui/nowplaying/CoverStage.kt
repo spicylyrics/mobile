@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -69,7 +70,7 @@ fun CoverStage(
     centred: () -> Float,
     modifier: Modifier = Modifier,
 ) {
-    val artwork = rememberSessionArtwork(info.artwork, info.artworkUri, maxDimension = STAGE_ARTWORK_MAX_PX, hasSession = info.hasSession)
+    val artwork = rememberSessionArtwork(info.artwork?.asAndroidBitmap(), info.artworkUri, maxDimension = STAGE_ARTWORK_MAX_PX, hasSession = info.hasSession)
     // The last cover stays up while the player has none to show.
     var resting by remember { mutableStateOf<SessionArtwork?>(null) }
     LaunchedEffect(artwork?.fingerprint) { if (artwork != null) resting = artwork }

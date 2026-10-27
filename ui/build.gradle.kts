@@ -34,7 +34,8 @@ kotlin {
             api("dev.chrisbanes.haze:haze:1.7.3")
             implementation("org.jetbrains.compose.animation:animation:$composeVersion")
             implementation("org.jetbrains.compose.material3:material3:1.9.0")
-            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
+            // NowPlaying's state is a StateFlow.
+            api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
         }
         getByName("desktopTest").dependencies {
             implementation("junit:junit:4.13.2")
