@@ -236,6 +236,4 @@ private val LegacyFilter = ColorFilter.colorMatrix(
 )
 
 private const val LEGACY_LOOP_MS = 45_000L
-/** The layers' blur(40px). */
-const val LEGACY_BLUR_DP = 40
 private const val LAYER_HEIGHT_PX = 128f
