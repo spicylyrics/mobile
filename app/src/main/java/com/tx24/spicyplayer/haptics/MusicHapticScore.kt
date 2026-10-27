@@ -12,9 +12,6 @@ import kotlin.math.sqrt
  */
 enum class MusicPulse { Kick, Snare, Note, Beat, Downbeat, Accent, Drop }
 
-/** What the music haptics follow. */
-enum class MusicHapticsStyle(val label: String) { Drums("The drums"), Beat("The beat") }
-
 /**
  * One vibration in a song, at [atMs] into it, [strength] 0..1, with [roomMs] of quiet before the
  * next one (a long effect only fits where there is room for it). A [MusicPulse.Drop] starts its
