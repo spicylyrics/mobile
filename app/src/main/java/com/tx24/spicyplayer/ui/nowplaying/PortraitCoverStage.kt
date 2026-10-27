@@ -26,19 +26,17 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Constraints
 import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 /**
  * Portrait, with the big cover up: the record's animated cover, or its still cover, spread edge to
- * edge as a square centred on [centreYPx] (where the big cover's art is), its top and bottom
- * melting into the background behind. The song is docked under it ([PortraitCanvasDock]). The
+ * edge as a square from the top of the screen, as Apple Music shows it, its bottom melting into the
+ * background behind. The song is docked under it ([PortraitCanvasDock]). The
  * still cover stays beneath the loop, so a loop that's slow to start, or fails, shows the cover.
  */
 @Composable
 fun PortraitCoverStage(
     info: NowPlayingInfo,
     picture: StagePicture,
-    centreYPx: Float,
     modifier: Modifier = Modifier,
 ) {
     val artwork = rememberSessionArtwork(info.artwork, info.artworkUri, maxDimension = ARTWORK_MAX_PX, hasSession = info.hasSession)
@@ -56,19 +54,18 @@ fun PortraitCoverStage(
                     val side = constraints.maxWidth
                     val placeable = measurable.measure(Constraints.fixed(side, side))
                     layout(constraints.maxWidth, constraints.maxHeight) {
-                        placeable.place(0, (centreYPx - side / 2f).roundToInt())
+                        placeable.place(0, 0)
                     }
                 }
-                // Melts into the background at the top and bottom, on eased stops: a straight ramp
-                // leaves a visible line where it reaches full strength.
+                // Melts into the background at the bottom, on eased stops: a straight ramp leaves a
+                // visible line where it reaches full strength.
                 .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
                 .drawWithContent {
                     drawContent()
                     // Dimmed a little, like the stage, so the docked song and the controls read over
                     // it: only where there's picture, or the melted edges would show grey.
                     drawRect(Color.Black.copy(alpha = VEIL), blendMode = BlendMode.SrcAtop)
-                    val stops = FEATHER_STOPS.map { (at, a) -> at * FEATHER to Color.Black.copy(alpha = a) } +
-                        FEATHER_STOPS.reversed().map { (at, a) -> 1f - at * FEATHER to Color.Black.copy(alpha = a) }
+                    val stops = FEATHER_STOPS.reversed().map { (at, a) -> 1f - at * FEATHER to Color.Black.copy(alpha = a) }
                     drawRect(Brush.verticalGradient(*stops.toTypedArray()), blendMode = BlendMode.DstIn)
                 },
         ) {
@@ -92,8 +89,8 @@ fun PortraitCoverStage(
     }
 }
 
-/** How much of the square's height each edge melts over: little, or the square reads as a wide band. */
-private const val FEATHER = 0.1f
+/** How much of the square's height its bottom melts over. */
+private const val FEATHER = 0.3f
 /** Across the feather, from the edge in: (share of it, opacity). */
 private val FEATHER_STOPS = listOf(0f to 0f, 0.18f to 0.10f, 0.38f to 0.36f, 0.72f to 0.85f, 1f to 1f)
 private const val VEIL = 0.12f

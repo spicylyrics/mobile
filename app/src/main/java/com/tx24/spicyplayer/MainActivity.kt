@@ -1223,12 +1223,9 @@ private fun LyricsApp(
                                 modifier = Modifier.fillMaxSize().graphicsLayer { alpha = immersive() },
                             )
                         } else {
-                            // Where the big cover's art is, so it grows out of it.
-                            val art = remember(headerMetrics, controlsHeightPx, pageHeight) { headerMetrics.expanded(pageHeight - controlsHeightPx) }
                             PortraitCoverStage(
                                 info = stageInfo,
                                 picture = picture,
-                                centreYPx = art.artTopPx + art.artSizePx / 2f,
                                 modifier = Modifier.fillMaxSize().graphicsLayer { alpha = immersive() },
                             )
                         }
@@ -1450,7 +1447,8 @@ private fun LyricsApp(
                         widthPx = pageWidth - gutter * 2f,
                         gutterPx = gutter,
                         bottomPx = gutter,
-                        alpha = immersive,
+                        // Ambient mode docks the song itself, below; this one goes with the cover.
+                        alpha = { immersive() * (1f - ambientFade.value) },
                     )
                 }
                 // Ambient mode: the song and its timeline docked at the bottom, as over the Canvas.
