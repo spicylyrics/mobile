@@ -1,8 +1,5 @@
 package com.tx24.spicyplayer.ui.components
 
-import com.tx24.spicyplayer.R
-import androidx.compose.ui.res.vectorResource
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.Color
@@ -40,6 +37,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.tx24.spicyplayer.ui.resources.Res
+import com.tx24.spicyplayer.ui.resources.app_glyph
 import com.tx24.spicyplayer.ui.theme.SpicyMotion
 import com.tx24.spicyplayer.ui.theme.SpicyRadii
 import com.tx24.spicyplayer.ui.theme.SpicySpacing
@@ -47,6 +46,7 @@ import com.tx24.spicyplayer.ui.theme.SpicyType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
+import org.jetbrains.compose.resources.vectorResource
 
 /**
  * A short note at the top of the screen on what an action did, one at a time: it slides and
@@ -61,8 +61,7 @@ fun SpicyToastHost(messages: Flow<String>, modifier: Modifier = Modifier) {
             if (text != null) shown.animateTo(0f, tween(120))
             text = message
             shown.animateTo(1f, tween(SpicyMotion.MODAL_MS, easing = SpicyMotion.Modal))
-            // Long ones stay up long enough to be read.
-            delay((TOAST_MS + (message.length - 60).coerceAtLeast(0) * MS_PER_CHAR).coerceAtMost(MAX_TOAST_MS))
+            delay(toastHoldMs(message.length))
             shown.animateTo(0f, tween(SpicyMotion.MODAL_MS, easing = SpicyMotion.Standard))
             text = null
         }
@@ -104,7 +103,7 @@ fun SpicyToastHost(messages: Flow<String>, modifier: Modifier = Modifier) {
                 horizontalArrangement = Arrangement.spacedBy(SpicySpacing.S2),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(ImageVector.vectorResource(R.drawable.app_glyph), null, Modifier.size(16.dp), tint = brand.inkMuted)
+                Icon(vectorResource(Res.drawable.app_glyph), null, Modifier.size(16.dp), tint = brand.inkMuted)
                 Text(message, style = SpicyType.Caption.copy(color = brand.ink, fontWeight = FontWeight.SemiBold),
                     maxLines = MAX_LINES, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(vertical = SpicySpacing.S2))
             }
@@ -124,6 +123,10 @@ fun SpicyToastHost(messages: Flow<String>, modifier: Modifier = Modifier) {
         }
     }
 }
+
+/** How long a message of [length] characters holds: long ones stay up long enough to be read. */
+internal fun toastHoldMs(length: Int): Long =
+    (TOAST_MS + (length - 60).coerceAtLeast(0) * MS_PER_CHAR).coerceAtMost(MAX_TOAST_MS)
 
 private const val TOAST_MS = 3_000L
 private const val MS_PER_CHAR = 40L
