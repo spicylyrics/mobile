@@ -45,6 +45,7 @@ import com.tx24.spicyplayer.network.data.spotify.AudioAnalysis
 import com.tx24.spicyplayer.network.data.spotify.LocalTrackMetadata
 import com.tx24.spicyplayer.network.data.spotify.SharedSpotify
 import com.tx24.spicyplayer.platform.CoreLog
+import com.tx24.spicyplayer.ui.settings.FileSettingsStore
 import java.awt.GraphicsEnvironment
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -81,7 +82,8 @@ fun main(args: Array<String>) {
     source.unavailableReason?.let { error(it) }
     CoreLog.sink = { level, tag, message -> if (level >= CoreLog.Level.WARN) System.err.println("[$tag] $message") }
 
-    val session = MediaSession(opts["--app"], opts["--offset"]?.toLongOrNull() ?: 0L)
+    val delays = SyncDelays(FileSettingsStore.default(), opts["--offset"]?.toLongOrNull())
+    val session = MediaSession(opts["--app"], delays::offsetFor)
     val lookup = LyricsLookup()
     val screen = MutableStateFlow<Screen>(Screen.Waiting)
     val playing = MutableStateFlow(false)

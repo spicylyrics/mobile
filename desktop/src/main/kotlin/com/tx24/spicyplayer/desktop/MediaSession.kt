@@ -43,8 +43,16 @@ sealed interface SessionEvent {
  *   the helper's seek requests.
  * - Windows Media Player Legacy (wmplayer.exe): has no media session, so it is never seen.
  */
-class MediaSession(private val appFilter: String? = null, private val offsetMs: Long = 0L) {
+class MediaSession(private val appFilter: String? = null, private val offsetFor: (app: String) -> Long = { 0L }) {
+    /** One offset for every player, as `--offset` gives it. */
+    constructor(appFilter: String? = null, offsetMs: Long) : this(appFilter, { offsetMs })
+
     val clock = LyricClock(monoMs())
+
+    /** The offset in use, read again whenever the followed player changes and on [offsetChanged]. */
+    @Volatile var offsetMs = 0L
+        private set
+    private var offsetApp: String? = null
     private val filter = ReportFilter()
 
     @Volatile var track: Track? = null
@@ -66,6 +74,10 @@ class MediaSession(private val appFilter: String? = null, private val offsetMs: 
         val app = snapshot.app
         val picked = if (appFilter != null) app.contains(appFilter, ignoreCase = true) else snapshot.current
         if (!picked) return null
+        if (app != offsetApp) {
+            offsetApp = app
+            offsetMs = offsetFor(app)
+        }
 
         val title = snapshot.title
         cover = snapshot.cover
@@ -120,6 +132,18 @@ class MediaSession(private val appFilter: String? = null, private val offsetMs: 
         val before = clock.positionAt(receivedMono)
         val outcome = clock.onReport(report, receivedMono)
         return SessionEvent.Moved(snapshot.event, status.name, report.positionMs, receivedWall - stamp, before, outcome)
+    }
+
+    /** Reads the current player's offset again and moves the clock by the change now, not on the next report. */
+    fun offsetChanged() {
+        val app = offsetApp ?: return
+        val next = offsetFor(app)
+        val delta = next - offsetMs
+        offsetMs = next
+        if (delta != 0L) {
+            val now = monoMs()
+            clock.seekTo(clock.positionAt(now) + delta, now)
+        }
     }
 
     /**
