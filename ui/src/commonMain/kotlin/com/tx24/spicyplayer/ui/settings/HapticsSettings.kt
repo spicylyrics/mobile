@@ -9,13 +9,11 @@ import androidx.compose.material.icons.rounded.Vibration
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.tx24.spicyplayer.ui.components.SpicyButton
 import com.tx24.spicyplayer.ui.theme.SpicySpacing
-import com.tx24.spicyplayer.haptics.HapticPlayer
+import com.tx24.spicyplayer.haptics.MusicHapticsPlayer
 import com.tx24.spicyplayer.haptics.MusicHapticsStyle
 import com.tx24.spicyplayer.haptics.MusicPulse
 import com.tx24.spicyplayer.ui.components.SettingRow
@@ -24,11 +22,9 @@ import com.tx24.spicyplayer.ui.components.SpicyBipolarSlider
 import com.tx24.spicyplayer.ui.components.SpicySelect
 import com.tx24.spicyplayer.ui.components.ToggleRow
 
-/** Device → Haptics: touch feedback, and vibrating with the music. */
+/** Device → Haptics: touch feedback, and vibrating with the music through [player]. */
 @Composable
-internal fun HapticsSection(settings: AppSettings) {
-    val context = LocalContext.current
-    val player = remember { HapticPlayer(context) }
+fun HapticsSection(settings: CommonAppSettings, player: MusicHapticsPlayer) {
     SettingsSection("Haptics") {
         ToggleRow(
             label = "Touch haptics",

@@ -2,7 +2,6 @@ package com.tx24.spicyplayer.ui.components
 
 import androidx.compose.ui.composed
 import androidx.compose.runtime.ReadOnlyComposable
-import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
@@ -51,7 +50,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
@@ -485,7 +483,7 @@ private val MENU_MAX_HEIGHT = 360.dp
  * of either, ignoring case and accents, so "fil" finds Filipino and "tl" finds its code. A blank
  * query matches everything.
  */
-internal fun matchingOptions(query: String, options: List<String>, labels: List<String>): List<Int> {
+fun matchingOptions(query: String, options: List<String>, labels: List<String>): List<Int> {
     val words = foldForSearch(query).split(' ').filter(String::isNotEmpty)
     if (words.isEmpty()) return options.indices.toList()
     return options.indices.filter { i ->
@@ -495,7 +493,7 @@ internal fun matchingOptions(query: String, options: List<String>, labels: List<
 }
 
 private fun foldForSearch(text: String): String =
-    java.text.Normalizer.normalize(text.lowercase(), java.text.Normalizer.Form.NFD).replace(COMBINING_MARKS, "").trim()
+    decomposeAccents(text.lowercase()).replace(COMBINING_MARKS, "").trim()
 
 private val COMBINING_MARKS = Regex("\\p{Mn}+")
 
@@ -518,7 +516,7 @@ private fun SelectMenu(
     // without this it would open again at once.
     var closedAt by remember { mutableStateOf(0L) }
     val close = {
-        if (menu.targetState) closedAt = SystemClock.uptimeMillis()
+        if (menu.targetState) closedAt = uptimeMillis()
         menu.targetState = false
     }
     val open = menu.targetState
@@ -544,7 +542,7 @@ private fun SelectMenu(
                 .border(1.dp, if (pressed || open) SpicyColors.HairlineStrong else SpicyColors.Hairline, shape)
                 .focusRing(shape)
                 .clickable(interaction, indication = null, enabled = enabled, role = Role.DropdownList) {
-                    if (open || SystemClock.uptimeMillis() - closedAt < REOPEN_GUARD_MS) return@clickable
+                    if (open || uptimeMillis() - closedAt < REOPEN_GUARD_MS) return@clickable
                     haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                     menu.targetState = true
                 }
@@ -570,7 +568,7 @@ private fun SelectMenu(
             // The menu gets a slot as tall as it could ever be on the roomier side of the pill,
             // and sits at the slot's end nearest the pill. Narrowed by a search, it shrinks toward
             // the pill instead of leaving it behind.
-            val bottom = LocalView.current.rootView.height - keyboard
+            val bottom = windowHeightPx() - keyboard
             val gap = margin / 2
             val tallest = with(density) { MENU_MAX_HEIGHT.roundToPx() }
             val roomBelow = bottom - margin - (pillBottom + gap)
@@ -679,7 +677,7 @@ private fun SelectOption(label: String, selected: Boolean, enabled: Boolean = tr
  * pill: always when [fixedAbove] is true, never when false, and when it doesn't fit below when
  * null ([above] then says which). Always [margin] inside the window and clear of the [keyboard].
  */
-internal class SelectMenuPosition(
+class SelectMenuPosition(
     private val margin: Int,
     private val keyboard: Int = 0,
     private val fixedAbove: Boolean? = null,
@@ -701,7 +699,7 @@ internal class SelectMenuPosition(
     }
 }
 
-internal val MENU_FILL = Color(30, 30, 34).copy(alpha = 0.98f)
+val MENU_FILL = Color(30, 30, 34).copy(alpha = 0.98f)
 private const val REOPEN_GUARD_MS = 300L
 
 /** A flat tinted pill that shrinks to 0.97 while held. */

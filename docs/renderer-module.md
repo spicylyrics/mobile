@@ -87,11 +87,11 @@ The next step after the renderer: a `:ui` module (same targets, same package nam
 - `nowplaying/` `CompactHeaderMetrics`, `LandscapeMetrics`, `HeaderMarquee`, `StageArt`
 - `background/CoverColors.kt`; `settings/SystemBarsMode.kt`
 
-`components/SettingsSkeleton.kt` stayed in `:app`: it draws its rows with `outlinedCard` from `SettingsControls.kt`, so it moves with the settings controls. The glyphs `:app` draws (`SpicyGlyphs`, `SkipGlyph`, `PlayPauseGlyph`) went from `internal` to public to be reachable across the module line. No drawables were needed, so `:ui` has no Compose resources yet.
+`components/SettingsSkeleton.kt` waited for the settings controls, whose `outlinedCard` it draws with; both moved in step 2. The glyphs `:app` draws (`SpicyGlyphs`, `SkipGlyph`, `PlayPauseGlyph`) went from `internal` to public to be reachable across the module line. No drawables were needed, so `:ui` has no Compose resources yet.
 
 **Movable behind an interface:**
 - `controls/LyricsControls.kt`, `nowplaying/CompactNowPlayingHeader.kt`, `LyricsNotice.kt`, `NowPlayingInfo.kt`, `PipSongCard.kt`, `PortraitCanvas.kt`, `CoverStage.kt` (also the animated-cover view, below), and the lyrics screen composable in `MainActivity.kt` (`LyricsApp` and below): **now-playing state + transport** (track, artwork, position clock, playing, play/pause/skip/seek), today read straight from `ExternalPlaybackViewModel`.
-- `settings/AppSettings.kt` (`SharedPreferences`) and every settings page reading it: a **settings store** (key-value; `SharedPreferences` on Android, `java.util.prefs` or a file on desktop).
+- `settings/AppSettings.kt` (`SharedPreferences`) and every settings page reading it: a **settings store**. Done in step 2, below.
 - `settings/` `SettingsScreen`, `SettingsPages`, `QuickSettings`, `Queue`, `CustomSources`, `DelayCalibration`, `HapticsSettings`, `SourcePicker`, `TranslationSettings`, `spotifysearch/SpotifySearch.kt`: the same **app-state interface** over the view model's lyrics/source/translation actions, plus **platform actions** (open a URL, open the system's notification-access or app settings, pick a file or folder).
 - Images in the header, queue and search (Coil 2): an **image loader** like the renderer's `LyricsImageLoader`, or Coil 3 (multiplatform) on both platforms once the phone is checked on it.
 - `components/SpicyModal.kt`, `SettingsControls.kt`, `background/SpicySessionBackground.kt`: `Build.VERSION` checks become a **platform capabilities** expect (backdrop blur, `RenderEffect`).
@@ -107,10 +107,27 @@ The next step after the renderer: a `:ui` module (same targets, same package nam
 
 **Order:**
 1. `:ui` with the movable-as-is group. No behaviour change; `:app` only changes its dependency. Done.
-2. The settings store, then `AppSettings` and the settings pages that need only it.
+2. The settings store, then `AppSettings` and the settings pages that need only it. Done; see "Settings in `:ui`" below.
 3. The now-playing state + transport interface; the header, controls, notices and the lyrics screen composable; `MainActivity` shrinks to the Android shell.
 4. Backgrounds (blurred-image expect) and image loading (Coil 3 or the loader interface), each checked for smoothness on the phone.
 5. Desktop counterparts for the Android-only list as wanted: video covers, file pickers, opening profiles in the browser.
+
+### Settings in `:ui`
+
+Step 2 added these seams, all in `com.tx24.spicyplayer.ui.settings` unless named:
+
+- **`SettingsStore`** (commonMain): typed get and put for booleans, ints, longs, floats, strings and string sets, `remove`, `keys`, and a change listener (`changes()` as a `Flow`). A getter returns null for a key that is unset or holds another type, so callers fall back to their default instead of crashing on an old or hand-edited backup. `SharedPreferencesStore` (androidMain) wraps the app's `SharedPreferences` and writes them the way the app always did, so the `ui` file and its keys carry on. `FileSettingsStore` (desktopMain) keeps a properties file, each value tagged with its type, in `%APPDATA%\Spicy Lyrics\settings.properties`; a file rather than `java.util.prefs`, which on Windows is the registry, with its own escaping and value limits. `InMemorySettingsStore` is for tests.
+- **`CommonAppSettings`** (commonMain): every setting of the lyrics screen whose type `:ui` has, over a `SettingsStore`, with the same keys, defaults and Compose-state reads as before. The two defaults that depend on the platform (the floating-window button, pre-release updates) come from its constructor. `AppSettings` in `:app` extends it with the settings whose types still live in the app (`appIcon`: launcher aliases and drawables; `pauseWithMusic`: `LoopKind`, beside the animated-cover player), and keeps the `AppSettings(prefs)` constructor, so no call site changed. The enums the settings use moved with them, in their packages: `BackgroundType`, `PipShape` and the rest, `LyricsFont`, `ChromeTheme`, `MusicHapticsStyle` and `MusicPulse`, plus `LEGACY_BLUR_DP`. `CommonAppSettingsTest` pins every key and default.
+- **`PlatformActions`** (commonMain, `LocalPlatformActions`): open a URL, the system's notification-access page and the app's own settings page, pick a file or a folder. `rememberAndroidPlatformActions()` in `:app` does it with intents and the Storage Access Framework; `DesktopPlatformActions` (desktopMain) with the default browser and AWT's and Swing's pickers, and says no to the two system pages Windows lacks. Nothing provides it yet: the first moved page that needs it adds the provider in `SettingsScreen`.
+- **`MusicHapticsPlayer`** (`com.tx24.spicyplayer.haptics`): plays one music haptic, for the Haptics section's try-out buttons. `NoMusicHaptics` on the desktop; the phone wraps `HapticPlayer`.
+- The controls: `components/SettingsControls.kt` and `SettingsSkeleton.kt` moved as they were, behind three `internal expect` functions (`ControlsPlatform.kt`: an uptime clock, accent folding for search, the window's height for placing menus). `SelectMenuPosition`, `MENU_FILL` and `matchingOptions` went from `internal` to public for the app's controls. They draw `Icons.Rounded`, so `:ui` depends on Compose's extended icon set, the one the app already ships.
+
+Moved pages: `settings/HapticsSettings.kt` (`HapticsSection(settings, player)`); `:app` keeps a one-argument `HapticsSection(settings)` that hands it the phone's motor.
+
+Stayed in `:app`, and why:
+- `SettingsScreen`, `SettingsPages`, `QuickSettings`, `Queue`, `CustomSources`, `DelayCalibration`, `SourcePicker`, `TranslationSettings`, `spotifysearch/`: each reads `PlayerUiState` and calls `ExternalPlaybackViewModel`, both in `:app`. They need the **app-state interface** (step 3's now-playing state, plus the lyrics, source and translation actions). `SettingsPages` also holds the Android-only rows below.
+- `components/SpicyModal.kt` (and so every pop-up page): the brand glyph is an `R.drawable` (until **CMP resources**), back is `androidx.activity`'s `BackHandler`, and its shadow draws through an Android `Paint` shadow layer.
+- `settings/AppIcon.kt` (launcher aliases), `LyricsFontFile.kt` (the Storage Access Framework and `Typeface`), `DebugReport.kt`, Gemini Nano translation (ML Kit): Android-only.
 
 iOS stays blocked on `:core` until its models, detectors and translation presentation are multiplatform; nothing in the plan above adds a new blocker.
 
