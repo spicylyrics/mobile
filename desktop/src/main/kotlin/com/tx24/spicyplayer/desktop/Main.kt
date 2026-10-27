@@ -121,6 +121,7 @@ fun main(args: Array<String>) {
             }
         }
         screen.value = Screen.Waiting
+        nowPlaying.clear()
     }
 
     val refreshRate = GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.displayMode.refreshRate

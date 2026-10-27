@@ -42,6 +42,11 @@ class DesktopNowPlaying(private val source: MediaSource, private val session: Me
         )
     }
 
+    /** Back to nothing playing, once the source has stopped reporting. */
+    fun clear() {
+        current.value = NowPlayingState(NowPlayingTrack("", ""))
+    }
+
     private fun cover(file: File?): ImageBitmap? {
         if (file == null) return null
         val key = file.path to file.lastModified()
