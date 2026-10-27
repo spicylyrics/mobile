@@ -1143,7 +1143,11 @@ private fun LyricsApp(
                 // holds still once it's hidden.
                 val stageAmbientUrl = (shownStagePicture as? StagePicture.Canvas)?.url?.takeIf { stageOn && settings.canvasBackdrop }
                     ?: (shownPortrait as? StagePicture.Canvas)?.url?.takeIf { headerExpanded && settings.canvasBackdrop }
-                val backgroundAmbientUrl = heldCanvasUrl?.takeIf { canvasBackground }
+                // While the stage or the big cover shows the record's own cover, it melts into the
+                // background's colours, which are the cover's: the Canvas background steps aside.
+                val coverOnStage = (stageOn && shownStagePicture !is StagePicture.Canvas) ||
+                    (headerExpanded && shownPortrait != null && shownPortrait !is StagePicture.Canvas)
+                val backgroundAmbientUrl = heldCanvasUrl?.takeIf { canvasBackground && !coverOnStage }
                 val ambientShown by animateFloatAsState(
                     if (stageAmbientUrl != null || backgroundAmbientUrl != null) 1f else 0f,
                     tween(STAGE_FADE_MS, easing = StageEaseOut),
