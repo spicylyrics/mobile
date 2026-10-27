@@ -2,6 +2,7 @@ package com.tx24.spicyplayer.desktop
 
 import com.google.gson.JsonObject
 import com.tx24.spicyplayer.playback.LyricClock
+import com.tx24.spicyplayer.playback.ReportFilter
 import java.io.File
 
 /** A track as Windows' media session names it. */
@@ -25,10 +26,27 @@ sealed interface SessionEvent {
 
 /**
  * Follows one of Windows' media sessions through the gsmtc helper's JSON lines: the current one,
- * or the first whose app id contains [appFilter]. Keeps [clock] on its position.
+ * or the first whose app id contains [appFilter]. Keeps [clock] on its position, [offsetMs] ahead
+ * of what the player reports (positive shows the lyrics earlier).
+ *
+ * How each player reports, as measured through the helper:
+ * - Spotify (playing on this PC) and Screenbox: the position to the ms, every 4.5-5 s and on every
+ *   change. Taken as it comes.
+ * - Spotify showing a Spotify Connect device: as honest while playing, but a pause or seek shows up
+ *   0.7-1.1 s late, so the clock overruns a pause by that much before stepping back. A position
+ *   that stops moving under a fresh stamp while playing is a stalled relay, and the clock carries on.
+ * - Chrome and other Chromium browsers (YouTube Music): a report only on play, pause and seek,
+ *   so the clock runs on its own in between. The report after a seek or a new song counts from
+ *   before the audio is heard and runs ~65 ms ahead ([CHROMIUM_LEAD_MS]); a pause report is
+ *   ~85 ms short of where the audio stops, and the resume report has it right.
+ * - Apple Music: the position rounded down to the second, about twice a second; [ReportFilter]
+ *   narrows it to a window a few hundred ms wide and holds the clock steady inside it. It ignored
+ *   the helper's seek requests.
+ * - Windows Media Player Legacy (wmplayer.exe): has no media session, so it is never seen.
  */
-class MediaSession(private val appFilter: String? = null) {
+class MediaSession(private val appFilter: String? = null, private val offsetMs: Long = 0L) {
     val clock = LyricClock(monoMs())
+    private val filter = ReportFilter()
 
     @Volatile var track: Track? = null
         private set
@@ -41,6 +59,8 @@ class MediaSession(private val appFilter: String? = null) {
     private var lastStatus = ""
     /** Whether the status changed since the stamp did: every later report with that stamp is stale. */
     private var stampOutlived = false
+    /** The last report as the helper sent it, to drop the copies some players send. */
+    private var lastRaw: List<Any?>? = null
 
     /** Takes one helper line, received at [receivedMono] (monotonic) and [receivedWall] (epoch) ms. */
     fun feed(line: JsonObject, receivedMono: Long, receivedWall: Long): SessionEvent? {
@@ -71,19 +91,33 @@ class MediaSession(private val appFilter: String? = null) {
         stampOutlived = stamp == lastStampMs && (stampOutlived || status != lastStatus)
         lastStampMs = stamp
         lastStatus = status
-        if (stampOutlived && track?.key == "$title\u001f$artist") {
+        val speed = if (playing) (line["rate"]?.takeUnless { it.isJsonNull }?.asFloat ?: 1f) else 0f
+        val next = Track(app, title, artist, album, line["durationMs"].asLong)
+        val newTrack = next.key != track?.key && title.isNotBlank()
+        val raw = listOf(app, next.key, status, positionMs, stamp, speed)
+        if (raw == lastRaw && !newTrack) return null
+        lastRaw = raw
+        if (stampOutlived && !newTrack) {
             positionMs = clock.positionAt(receivedMono)
             updatedAtMono = receivedMono
+        } else {
+            filter.leadAfterJumpMs = if (isChromium(app)) CHROMIUM_LEAD_MS else 0L
+            val clockMs = if (newTrack) 0L else clock.positionAt(receivedMono) - offsetMs
+            val filtered = filter.positionAt(positionMs, updatedAtMono, playing, speed, clockMs, receivedMono, newTrack)
+            if (filtered != null) {
+                positionMs = filtered
+                updatedAtMono = receivedMono
+            }
+            positionMs += offsetMs
         }
         val report = LyricClock.Report(
             state = when (status) { "Playing" -> 3; "Paused" -> 2; "Stopped" -> 1; else -> 0 },
             playing = playing,
             positionMs = positionMs,
             updatedAtMs = updatedAtMono,
-            speed = if (playing) (line["rate"]?.takeUnless { it.isJsonNull }?.asFloat ?: 1f) else 0f,
+            speed = speed,
         )
-        val next = Track(app, title, artist, album, line["durationMs"].asLong)
-        if (next.key != track?.key && title.isNotBlank()) {
+        if (newTrack) {
             track = next
             clock.startTrack(receivedMono, report.speed, playing)
             clock.onReport(report, receivedMono, snap = true)
@@ -99,7 +133,7 @@ class MediaSession(private val appFilter: String? = null) {
     fun seek(helper: File, positionMs: Long) {
         val app = track?.app ?: return
         clock.seekTo(positionMs, monoMs())
-        ProcessBuilder(helper.path, "ctl", app, "seek", positionMs.toString()).redirectErrorStream(true).start()
+        ProcessBuilder(helper.path, "ctl", app, "seek", (positionMs - offsetMs).coerceAtLeast(0L).toString()).redirectErrorStream(true).start()
     }
 }
 
@@ -114,3 +148,10 @@ fun defaultHelper(): File = System.getProperty("compose.application.resources.di
 fun monoMs() = System.nanoTime() / 1_000_000
 
 internal fun JsonObject.str(name: String) = get(name)?.takeUnless { it.isJsonNull }?.asString.orEmpty()
+
+/** How far a Chromium browser's report after a seek or a new song runs ahead of the audio. */
+const val CHROMIUM_LEAD_MS = 65L
+
+/** Chrome, Edge and the like, and the apps they install (a 16-digit hex id). */
+fun isChromium(app: String) =
+    Regex("chrome|msedge|brave|opera|vivaldi", RegexOption.IGNORE_CASE).containsMatchIn(app) || Regex("[0-9A-F]{16}").matches(app)
