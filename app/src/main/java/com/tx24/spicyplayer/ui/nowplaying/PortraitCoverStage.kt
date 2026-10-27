@@ -92,8 +92,8 @@ fun PortraitCoverStage(
     }
 }
 
-/** How much of the square's height each edge melts over. */
-private const val FEATHER = 0.24f
+/** How much of the square's height each edge melts over: little, or the square reads as a wide band. */
+private const val FEATHER = 0.1f
 /** Across the feather, from the edge in: (share of it, opacity). */
 private val FEATHER_STOPS = listOf(0f to 0f, 0.18f to 0.10f, 0.38f to 0.36f, 0.72f to 0.85f, 1f to 1f)
 private const val VEIL = 0.12f
