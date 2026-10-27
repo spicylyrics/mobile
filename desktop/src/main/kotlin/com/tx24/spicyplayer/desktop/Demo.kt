@@ -43,7 +43,7 @@ import kotlin.system.exitProcess
 /**
  * Usage: run --demo [--ttml file.ttml] [--seconds N] [--simple] [--apple] [--no-glow] [--maximized] [--no-vsync] [--no-kawarp]
  *   [--credits] [--size WxH] [--start-ms MS]
- *   [--snap file.png --snap-at S]
+ *   [--snap file.png --snap-at S] [--record dir]
  *
  * Plays the lyrics on a fake clock from 0, looping, and prints frame-time stats every five
  * seconds. With --seconds it prints a summary and exits after that long; --snap saves what the
@@ -124,6 +124,23 @@ fun runDemo(args: Array<String>) {
                 }
             }
             if (snap != null) SnapAfter(window, snap, snapAtMs)
+            value("--record")?.let { dir -> LaunchedEffect(Unit) {
+                // Frames as PNGs every 50 ms, for finding what a single snap misses.
+                window.isAlwaysOnTop = true
+                val out = File(dir).apply { mkdirs() }
+                val robot = Robot()
+                var n = 0
+                while (!window.contentPane.isShowing) delay(50)
+                delay(1_000)
+                while (true) {
+                    val content = window.contentPane
+                    val bounds = java.awt.Rectangle(content.locationOnScreen, content.size)
+                    val t = (System.nanoTime() - startNs) / 1_000_000L + startOffsetMs
+                    val image = robot.createScreenCapture(bounds)
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ImageIO.write(image, "png", File(out, "%05d_%06d.png".format(n++, t))) }
+                    delay(50)
+                }
+            } }
             if (runSeconds != null) LaunchedEffect(Unit) {
                 delay(runSeconds * 1000L)
                 stats.printSummary()

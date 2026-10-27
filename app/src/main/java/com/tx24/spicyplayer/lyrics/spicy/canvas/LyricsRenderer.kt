@@ -229,10 +229,17 @@ private fun DrawScope.drawInactiveText(
     suppressBlur: Boolean,
     cssPx: Float,
 ) {
+    val shadow = inactiveShadow(plan, suppressBlur, cssPx)
+    // Unblurred, the text itself carries the colour: Skia drops a shadow with no blur and no
+    // offset, which would leave nothing drawn (Compose on Android nudges the radius instead).
+    if (shadow.blurRadius <= 0f) {
+        drawText(layoutResult, color = shadow.color, shadow = Shadow.None, topLeft = Offset(xPos, yPos))
+        return
+    }
     drawText(
         textLayoutResult = layoutResult,
         color = Color.Transparent,
-        shadow = inactiveShadow(plan, suppressBlur, cssPx),
+        shadow = shadow,
         topLeft = Offset(xPos, yPos),
     )
 }
