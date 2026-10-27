@@ -128,12 +128,14 @@ fun main(args: Array<String>) {
         .takeIf { it > 0 }?.toFloat() ?: 60f
     application {
         val windowState = rememberWindowState(size = DpSize(1100.dp, 760.dp))
+        val settingsWindow = remember { SettingsWindowState() }
         var page by remember { mutableStateOf(BigScreenState()) }
         LaunchedEffect(page.mode) {
             windowState.placement = if (page.mode == ViewMode.Fullscreen) WindowPlacement.Fullscreen else WindowPlacement.Floating
         }
         Window(
             onCloseRequest = { source.close(); exitApplication() },
+            onPreviewKeyEvent = settingsWindow::onKey,
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
@@ -191,6 +193,7 @@ fun main(args: Array<String>) {
             }
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
         }
+        SettingsWindow(settingsWindow)
     }
 }
 
