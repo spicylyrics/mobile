@@ -129,8 +129,10 @@ fun main(args: Array<String>) {
     val refreshRate = GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.displayMode.refreshRate
         .takeIf { it > 0 }?.toFloat() ?: 60f
     application {
+        val settingsWindow = remember { SettingsWindowState() }
         Window(
             onCloseRequest = { process.destroy(); exitApplication() },
+            onPreviewKeyEvent = settingsWindow::onKey,
             state = rememberWindowState(size = DpSize(1100.dp, 760.dp)),
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
@@ -164,6 +166,7 @@ fun main(args: Array<String>) {
             }
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
         }
+        SettingsWindow(settingsWindow)
     }
 }
 
