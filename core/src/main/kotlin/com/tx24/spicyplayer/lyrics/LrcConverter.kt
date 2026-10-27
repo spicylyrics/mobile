@@ -11,8 +11,8 @@ object LrcConverter {
     data class Tags(val title: String?, val artist: String?)
 
     private val tag = Regex("""^\[([a-zA-Z]+):(.*)]\s*$""")
-    private val lineStamp = Regex("""\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?]""")
-    private val wordStamp = Regex("""<(\d{1,3}):(\d{1,2})(?:[.:](\d{1,3}))?>""")
+    private val lineStamp = Regex("""\[(\d{1,3}):(\d{1,2})(?:[.:](\d{1,4}))?]""")
+    private val wordStamp = Regex("""<(\d{1,3}):(\d{1,2})(?:[.:](\d{1,4}))?>""")
 
     /** What the file says it is, from its `[ti:]` and `[ar:]` tags. */
     fun tags(lrc: String): Tags {
@@ -49,8 +49,9 @@ object LrcConverter {
         val paragraphs = StringBuilder()
         raws.forEachIndexed { index, raw ->
             if (raw.body.replace(wordStamp, "").isBlank()) return@forEachIndexed
-            // A line ends where the next one (or a blank stamp) starts.
-            val next = raws.getOrNull(index + 1)?.start
+            // A line ends where the next one (or a blank stamp) starts. A line stamped the same as
+            // this one (a translation under it) doesn't end it.
+            val next = raws.asSequence().drop(index + 1).map { it.start }.firstOrNull { it > raw.start }
             if (wordTimed) {
                 val words = words(raw, next, ::time)
                 if (words.isEmpty()) return@forEachIndexed
@@ -76,7 +77,8 @@ object LrcConverter {
 
     /**
      * The line's pieces: each runs from its stamp to the next stamp. A last piece with no closing
-     * stamp runs to the next line, for at most [LAST_WORD_MS].
+     * stamp runs to the next line, for at most [LAST_WORD_MS]; a line with no word stamps at all
+     * is one piece timed as a line.
      */
     private fun words(raw: Raw, next: Long?, time: (MatchResult) -> Long): List<Piece> {
         // (text before the stamp, the stamp) pairs, then the text after the last stamp.
@@ -98,8 +100,10 @@ object LrcConverter {
             pieces += Piece(text.trim(), start, end, spaceBefore || text.first().isWhitespace())
             spaceBefore = text.last().isWhitespace()
         }
+        val lineOnly = stamps.isEmpty()
         return pieces.map { piece ->
-            val end = piece.end ?: minOf(next ?: Long.MAX_VALUE, piece.start + LAST_WORD_MS)
+            val end = piece.end ?: if (lineOnly) next ?: (piece.start + LAST_LINE_MS)
+                else minOf(next ?: Long.MAX_VALUE, piece.start + LAST_WORD_MS)
             Piece(piece.text, piece.start, end.coerceAtLeast(piece.start + 1), piece.spaceBefore)
         }
     }

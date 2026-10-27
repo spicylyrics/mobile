@@ -62,4 +62,19 @@ class LrcConverterTest {
         assertFalse(LrcConverter.isLrc("<tt xmlns=\"http://www.w3.org/ns/ttml\"/>"))
         assertNull(LrcConverter.toTtml("[ti:Only tags]\n[00:01.00]"))
     }
+
+    @Test fun aLineStampedTheSameAsTheNextIsNotEndedByIt() {
+        val parsed = parse("[00:01.00]こんにちは\n[00:01.00]Hello\n[00:05.00]Next")
+        assertEquals(listOf(5_000L, 5_000L, 10_000L), parsed.lines.map { it.endMs })
+    }
+
+    @Test fun aPlainLineInEnhancedLrcRunsToTheNextLine() {
+        val parsed = parse("[00:01.00]<00:01.00>Hi<00:02.00>\n[00:10.00]plain line\n[00:20.00]<00:20.00>End<00:21.00>")
+        assertEquals(20_000L, parsed.lines[1].endMs)
+    }
+
+    @Test fun fourDigitFractionsAreRead() {
+        val parsed = parse("[00:01.1234]One\n[00:02.00]Two")
+        assertEquals(listOf(1_123L, 2_000L), parsed.lines.map { it.startMs })
+    }
 }

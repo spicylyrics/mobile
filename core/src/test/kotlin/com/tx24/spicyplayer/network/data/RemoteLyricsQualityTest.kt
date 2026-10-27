@@ -107,4 +107,23 @@ class RemoteLyricsQualityTest {
         assertEquals(payload, payload.withoutFakeTiming())
         assertEquals(RemoteLyricsQuality.LINE_SYNCED, payload.withoutFakeTiming().measuredQuality())
     }
+
+    @Test
+    fun `enhanced lrc in the synced field becomes word timed ttml`() {
+        val payload = RemoteLyricsPayload(syncedLyrics = "[00:01.00]<00:01.00>Hello <00:01.50>world<00:02.00>\n[00:03.00]<00:03.00>Next<00:04.00>")
+            .withoutFakeTiming().withWordTimingAsTtml()
+
+        assertEquals(RemoteLyricsQuality.WORD_SYNCED, payload.measuredQuality())
+        val words = com.tx24.spicyplayer.lyrics.spicy.parser.TtmlLyricsParser.parse(payload.ttmlLyrics!!.byteInputStream())
+            .lines.first().words.map { it.text.trim() }
+        assertEquals(listOf("Hello", "world"), words)
+    }
+
+    @Test
+    fun `plain lrc and existing ttml are left alone by the word timing step`() {
+        val lrc = RemoteLyricsPayload(syncedLyrics = "[00:01.00]One\n[00:02.00]Two")
+        assertEquals(lrc, lrc.withWordTimingAsTtml())
+        val ttml = RemoteLyricsPayload(ttmlLyrics = "<tt/>", syncedLyrics = "[00:01.00]<00:01.00>One")
+        assertEquals(ttml, ttml.withWordTimingAsTtml())
+    }
 }
