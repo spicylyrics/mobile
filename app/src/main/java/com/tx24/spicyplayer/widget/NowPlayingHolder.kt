@@ -422,12 +422,13 @@ internal object NowPlayingHolder {
             return
         }
         val playing = playback.state == PlaybackState.STATE_PLAYING
+        val speed = LyricClock.playingSpeed(playing, playback.playbackSpeed)
         val relayed = session.playbackInfo?.playbackType == MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE
-        val report = LyricClock.Report(playback.state, playing, playback.position, playback.lastPositionUpdateTime, playback.playbackSpeed, relayed)
+        val report = LyricClock.Report(playback.state, playing, playback.position, playback.lastPositionUpdateTime, speed, relayed)
         val fresh = clock.isFresh(report)
         if (newSong && !fresh) {
             // The report is the last song's: the new one starts from 0 until the player reports.
-            clock.startTrack(now, playback.playbackSpeed, playing)
+            clock.startTrack(now, speed, playing)
             awaitingReport = true
             return
         }

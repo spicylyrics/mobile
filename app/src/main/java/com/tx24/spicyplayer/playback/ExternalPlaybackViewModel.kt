@@ -663,6 +663,10 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     // Players fill metadata in over several updates (YouTube Music adds length and album after
     // the title), so lyrics follow title + artist only; the clock follows the full identity.
     private var currentLyricsKey: String? = null
+    /** Spotify's report at a song's end, which the clock ran past ([reconcileClock]). */
+    private var endBufferingReport: LyricClock.Report? = null
+    /** Whether [currentLyricsKey] is the followed player's, not left from before it ([detachController]). */
+    private var lyricsKeyTaken = false
     private var pendingCommand: PendingCommand? = null
     private val clock = LyricClock(SystemClock.elapsedRealtime())
     private var lastPeriodicCheckMs = 0L
@@ -1845,8 +1849,15 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         controller = null
         currentTrackIdentity = null
         currentLyricsKey = null
+        // A player that says nothing about its song has the same key (none): without this, the
+        // last player's song would stay up under it.
+        lyricsKeyTaken = false
         manualSpotifyId = null
+        // Commands sent to the last player are no answer to wait for from this one.
+        pendingCommand = null
+        pendingSkip = null
         lyricsJob?.cancel()
+        extrasJob?.cancel()
         clock.reset(SystemClock.elapsedRealtime())
         awaitingTrackReport = false
     }
@@ -1886,6 +1897,9 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         val trackIdentity = metadata.trackIdentity()
         val trackChanged = trackIdentity != currentTrackIdentity
         val refreshArtwork = metadataChanged || trackChanged
+        // A new song settles a seek: the player moved on (a seek to the end rolls into the next
+        // song at 0), and the new song's reports are the ones to follow.
+        if (trackChanged && pendingCommand is PendingCommand.Seek) pendingCommand = null
         val waitingForSeek = pendingCommand is PendingCommand.Seek &&
             pendingCommand?.acknowledged(playback, trackIdentity) != true &&
             SystemClock.elapsedRealtime() - pendingCommand!!.issuedAtMs < 1_500L
@@ -1939,8 +1953,9 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
             SessionCustomAction(custom.action, custom.name.toString(), actionIcon(active.packageName, custom.icon))
         }.ifEmpty { if (inBetween) previous.customActions else emptyList() }
         val lyricsKey = metadata.lyricsKey()
-        val lyricsChanged = lyricsKey != currentLyricsKey
+        val lyricsChanged = !lyricsKeyTaken || lyricsKey != currentLyricsKey
         if (lyricsChanged) {
+            lyricsKeyTaken = true
             clearTranslation()
             guessedDocument = null
             currentLyricsKey = lyricsKey
@@ -2280,6 +2295,9 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     private fun reconcileClock(playback: PlaybackState, force: Boolean = false, trackChanged: Boolean = false, snap: Boolean = trackChanged) {
         if (playback.position < 0L) return
         val playing = playback.state == PlaybackState.STATE_PLAYING
+        val speed = LyricClock.playingSpeed(playing, playback.playbackSpeed)
+        val relayed = controller?.playbackInfo?.playbackType == MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE
+        val report = LyricClock.Report(playback.state, playing, playback.position, playback.lastPositionUpdateTime, speed, relayed)
         // Spotify reports buffering at its end position about a second before the next song
         // starts. Stopping the clock there freezes a line that runs to the end halfway through,
         // so the clock carries on until the next song's report.
@@ -2288,11 +2306,11 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
             duration > 0L && playback.position >= duration - END_BUFFERING_MS
         ) {
             SyncTrace.add(SystemClock.elapsedRealtime(), "buffering at the end (pos=${playback.position} of $duration): clock runs on")
+            endBufferingReport = report
             return
         }
-        val relayed = controller?.playbackInfo?.playbackType == MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE
-        val report = LyricClock.Report(playback.state, playing, playback.position, playback.lastPositionUpdateTime, playback.playbackSpeed, relayed)
-        val fresh = clock.isFresh(report)
+        // The end report skipped above is the last song's, not news for the next one.
+        val fresh = clock.isFresh(report) && report != endBufferingReport
         val now = SystemClock.elapsedRealtime()
         if (trackChanged && !fresh && now - lastReportAt > TRACK_REPORT_FRESH_MS) {
             // No report for the new song yet: the one we have is the previous song's position.
@@ -2300,7 +2318,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
             // song starts from 0 until the player reports.
             Log.d(SYNC_TAG, "track changed before its report; clock starts at 0")
             SyncTrace.add(now, "new song, no report yet: clock at 0")
-            clock.startTrack(now, playback.playbackSpeed, playing)
+            clock.startTrack(now, speed, playing)
             awaitingTrackReport = true
             return
         }
