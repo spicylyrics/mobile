@@ -90,6 +90,7 @@ fun main(args: Array<String>) {
     val cover = MutableStateFlow<File?>(null)
     // The playing song's audio analysis, which the background's speed follows.
     val analysis = MutableStateFlow<AudioAnalysis?>(null)
+    SyncDelay.attach(session, delays, analysis) { (screen.value as? Screen.Track)?.lyrics }
     val spotify = SharedSpotify.extras(cacheDir)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var fetch: Job? = null
@@ -127,6 +128,7 @@ fun main(args: Array<String>) {
     application {
         Window(
             onCloseRequest = { source.close(); exitApplication() },
+            onKeyEvent = SyncDelay::onKey,
             state = rememberWindowState(size = DpSize(1100.dp, 760.dp)),
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
