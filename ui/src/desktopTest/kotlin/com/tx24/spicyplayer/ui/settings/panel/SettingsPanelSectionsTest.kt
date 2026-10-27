@@ -17,7 +17,7 @@ class SettingsPanelSectionsTest {
 
     @Test
     fun `tabs are in sidebar order with About and Advanced below the divider`() {
-        assertEquals(PanelSectionId.entries.toList(), sections.map { it.id })
+        assertEquals(PanelSectionId.entries - PanelSectionId.Device, sections.map { it.id })
         assertEquals(listOf(PanelSectionId.Advanced, PanelSectionId.About), sections.filter { it.secondary }.map { it.id })
     }
 
@@ -99,6 +99,15 @@ class SettingsPanelSectionsTest {
         assertEquals("Turn on Early Scroll to change this.", leadTime.disabled())
         settings.scrollLeadEnabled = true
         assertNull(leadTime.disabled())
+    }
+
+    @Test
+    fun `the device tab shows only when the platform gives rows`() {
+        val row = PanelRow.Toggle("keepScreenOn", "Keep the Screen On", null, checked = { true }, onChange = {})
+        assertTrue(settingsPanelSections(settings, deviceGroups = listOf(PanelGroup("Screen", emptyList()))).none { it.id == PanelSectionId.Device })
+        val withDevice = settingsPanelSections(settings, deviceGroups = listOf(PanelGroup("Screen", listOf(row))))
+        assertEquals(PanelSectionId.entries.toList(), withDevice.map { it.id })
+        assertEquals(listOf(row), withDevice.single { it.id == PanelSectionId.Device }.rows)
     }
 
     @Test

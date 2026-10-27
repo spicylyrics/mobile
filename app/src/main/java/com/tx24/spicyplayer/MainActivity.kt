@@ -217,7 +217,7 @@ import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsLayoutCalculator
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.platform.LocalView
-import com.tx24.spicyplayer.ui.settings.SettingsScreen
+import com.tx24.spicyplayer.ui.settings.AdaptiveSettings
 import com.tx24.spicyplayer.ui.intro.IntroScreen
 import com.tx24.spicyplayer.ui.theme.SpicyColors
 import com.tx24.spicyplayer.ui.theme.SpicyMotion
@@ -1607,7 +1607,7 @@ private fun LyricsApp(
                 .focusProperties { onEnter = { if (overSettings) cancelFocusChange() } }
                 .focusGroup(),
         ) {
-            SettingsScreen(
+            AdaptiveSettings(
                 state = state,
                 viewModel = viewModel,
                 updater = updater,
