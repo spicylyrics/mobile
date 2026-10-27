@@ -50,7 +50,7 @@ jobs:
             echo 'Set the UMAMI_WEBSITE_ID repository variable before releasing' >&2
             exit 1
           fi
-          ./gradlew --no-daemon assembleRelease testDebugUnitTest :renderer:desktopTest lintRelease
+          ./gradlew --no-daemon assembleRelease testDebugUnitTest :renderer:desktopTest :ui:desktopTest lintRelease
       - name: Verify and name APK
         run: |
           apk=app/build/outputs/apk/release/app-release.apk

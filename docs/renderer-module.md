@@ -4,7 +4,7 @@ The word-synced lyrics renderer and the Kawarp background engine, shared by the 
 
 Files keep the app's package names (as `:core` does), so moving one doesn't change its imports.
 
-The modules stay flat beside each other: `:core` (JVM), `:renderer` (multiplatform), later `:ui` (multiplatform, shared screens), and the two apps `:app` and `:desktop` on top. Dependencies run one way, `:core` ← `:renderer` ← `:ui` ← apps. A `:shared:*` group would only add a folder level and longer project paths in every build file and CI command; the module names already say what is shared.
+The modules stay flat beside each other: `:core` (JVM), `:renderer` (multiplatform), `:ui` (multiplatform, the shared chrome and, later, the shared screens), and the two apps `:app` and `:desktop` on top. Dependencies run one way, `:core` ← `:renderer` ← `:ui` ← apps. A `:shared:*` group would only add a folder level and longer project paths in every build file and CI command; the module names already say what is shared.
 
 ## Layout
 
@@ -71,21 +71,23 @@ Compose comes from Compose Multiplatform 1.12.2, which resolves to the androidx 
 
 ## Tests
 
-`./gradlew :renderer:desktopTest` runs the renderer's tests (animation, layout, scroll, blur, letter synthesis) on the JVM. The full check is
+`./gradlew :renderer:desktopTest` runs the renderer's tests (animation, layout, scroll, blur, letter synthesis) on the JVM, and `./gradlew :ui:desktopTest` the shared UI's (header and landscape metrics, marquee, stage art, cover colours). Each module has its own `CommonMainPlatformApiTest`. The full check is
 
 ```
-.\gradlew.bat assembleDebug testDebugUnitTest :core:test :renderer:desktopTest lintDebug
+.\gradlew.bat assembleDebug testDebugUnitTest :core:test :renderer:desktopTest :ui:desktopTest lintDebug
 ```
 
 ## Sharing the UI
 
 The next step after the renderer: a `:ui` module (same targets, same package names) holding the lyrics screen and its chrome, so `:app` keeps the Android shell and `:desktop` a window. A survey of `app/.../ui/` and `MainActivity.kt` at the time of the renderer move:
 
-**Movable as they are** (Compose only; `haze` and Material 3 both exist for Compose Multiplatform):
-- `theme/SpicyTokens.kt`; `components/` `KeyFocus`, `LyricsSkeleton`, `SettingsSkeleton`, `ScreenSlide`, `ScrollHints`, `SpicyGlyphs`, `GlassButton`, `Backdrop`
+**Moved as they were** (step 1, done; Compose only, with the multiplatform `haze` and Material 3):
+- `theme/SpicyTokens.kt`; `components/` `KeyFocus`, `LyricsSkeleton`, `ScreenSlide`, `ScrollHints`, `SpicyGlyphs`, `GlassButton`, `Backdrop`
 - `controls/TransportGlyphs.kt`
 - `nowplaying/` `CompactHeaderMetrics`, `LandscapeMetrics`, `HeaderMarquee`, `StageArt`
 - `background/CoverColors.kt`; `settings/SystemBarsMode.kt`
+
+`components/SettingsSkeleton.kt` stayed in `:app`: it draws its rows with `outlinedCard` from `SettingsControls.kt`, so it moves with the settings controls. The glyphs `:app` draws (`SpicyGlyphs`, `SkipGlyph`, `PlayPauseGlyph`) went from `internal` to public to be reachable across the module line. No drawables were needed, so `:ui` has no Compose resources yet.
 
 **Movable behind an interface:**
 - `controls/LyricsControls.kt`, `nowplaying/CompactNowPlayingHeader.kt`, `LyricsNotice.kt`, `NowPlayingInfo.kt`, `PipSongCard.kt`, `PortraitCanvas.kt`, `CoverStage.kt` (also the animated-cover view, below), and the lyrics screen composable in `MainActivity.kt` (`LyricsApp` and below): **now-playing state + transport** (track, artwork, position clock, playing, play/pause/skip/seek), today read straight from `ExternalPlaybackViewModel`.
@@ -104,7 +106,7 @@ The next step after the renderer: a `:ui` module (same targets, same package nam
 - `profile/ProfileModal.kt` (WebView), `settings/AppIcon.kt` (launcher aliases), `settings/DebugReport.kt`, `controls/KeyInput.kt` (Android key events), `PictureInPicture.kt`, the activity shell (window, keyguard, brightness, refresh rate), `widget/`, the notification listener in `playback/`, Gemini Nano translation (ML Kit).
 
 **Order:**
-1. `:ui` with the movable-as-is group, drawables in CMP resources. No behaviour change; `:app` only changes its dependency.
+1. `:ui` with the movable-as-is group. No behaviour change; `:app` only changes its dependency. Done.
 2. The settings store, then `AppSettings` and the settings pages that need only it.
 3. The now-playing state + transport interface; the header, controls, notices and the lyrics screen composable; `MainActivity` shrinks to the Android shell.
 4. Backgrounds (blurred-image expect) and image loading (Coil 3 or the loader interface), each checked for smoothness on the phone.

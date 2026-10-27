@@ -19,7 +19,7 @@ import androidx.compose.ui.util.lerp
  * triangle shrinks away ahead, the back one slides into its place, and a new one grows in behind.
  * At 0 and 1 it's the plain glyph. Drawn, not recomposed: [progress] is read while drawing.
  */
-internal class SkipGlyph(private val progress: () -> Float) : Painter() {
+class SkipGlyph(private val progress: () -> Float) : Painter() {
     override val intrinsicSize = Size(WIDTH, HEIGHT)
 
     override fun DrawScope.onDraw() {
@@ -76,7 +76,7 @@ internal class SkipGlyph(private val progress: () -> Float) : Painter() {
  * from 0 (play) to 1 (pause). Each shape keeps the size the plain glyphs are drawn at, so the
  * frame is the pause glyph's (15 x 20) and the play triangle sits in it as it always has.
  */
-internal class PlayPauseGlyph(private val pause: () -> Float) : Painter() {
+class PlayPauseGlyph(private val pause: () -> Float) : Painter() {
     override val intrinsicSize = Size(PAUSE_WIDTH, HEIGHT)
     private val paint = Paint()
     private val path = Path()

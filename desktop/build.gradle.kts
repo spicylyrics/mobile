@@ -53,6 +53,7 @@ sourceSets.main {
 dependencies {
     implementation(project(":core"))
     implementation(project(":renderer"))
+    implementation(project(":ui"))
     implementation(compose.desktop.currentOs)
     // :core compiles against the XmlPull API that Android ships.
     runtimeOnly("net.sf.kxml:kxml2:2.3.0")

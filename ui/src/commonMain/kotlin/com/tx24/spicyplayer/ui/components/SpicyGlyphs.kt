@@ -134,10 +134,10 @@ private const val DIM = 0.4f
 private const val LATIN_A = "M2.5 18 6.75 6 11 18M4 14h5.5"
 private const val KANA_A = "M13.5 6.5h8L19 9.75M17.25 9.75v1.75c0 2.75-1.25 5-3.75 6.5"
 
-internal val GlyphEase = CubicBezierEasing(0.23f, 1f, 0.32f, 1f)
+val GlyphEase = CubicBezierEasing(0.23f, 1f, 0.32f, 1f)
 
 /** Each glyph's rest pose, for rows and menus that take a plain [ImageVector]. */
-internal object SpicyGlyphs {
+object SpicyGlyphs {
     val Resync = glyph(Paths.Resync)
     val Expand = glyph(*Paths.ExpandCorners.map { it.first }.toTypedArray())
     val QuickSettings = glyph(Paths.sliders(Paths.TOP_KNOB, Paths.BOTTOM_KNOB))
@@ -190,7 +190,7 @@ private fun heldProgress(ms: Int, label: String): Float {
 
 /** The gear, turning an eighth while its button is held. */
 @Composable
-internal fun SettingsGlyph(modifier: Modifier) {
+fun SettingsGlyph(modifier: Modifier) {
     val turn = 45f * heldProgress(300, "gear")
     Image(lineGlyph { _, _ ->
         Group(rotation = turn, pivotX = 12f, pivotY = 12f) { LinePath(Paths.Gear) }
@@ -200,7 +200,7 @@ internal fun SettingsGlyph(modifier: Modifier) {
 
 /** Corners out to show the cover, in to go back; each nudges its own way while held. */
 @Composable
-internal fun ExpandGlyph(expanded: Boolean, modifier: Modifier) {
+fun ExpandGlyph(expanded: Boolean, modifier: Modifier) {
     val nudge = heldProgress(200, "corners")
     val corners = if (expanded) Paths.CollapseCorners else Paths.ExpandCorners
     Image(lineGlyph { _, _ ->
@@ -215,7 +215,7 @@ internal fun ExpandGlyph(expanded: Boolean, modifier: Modifier) {
  * moves, it slides across and the arrow turns to point back.
  */
 @Composable
-internal fun SwapSideGlyph(coverOnRight: Boolean, modifier: Modifier) {
+fun SwapSideGlyph(coverOnRight: Boolean, modifier: Modifier) {
     val side by animateFloatAsState(if (coverOnRight) 1f else 0f, tween(250, easing = GlyphEase), label = "swapSide")
     Image(lineGlyph { _, _ ->
         LinePath(Paths.Screen)
@@ -229,7 +229,7 @@ internal fun SwapSideGlyph(coverOnRight: Boolean, modifier: Modifier) {
  * drawing, so they only ever turn forward, and a quick tap still finishes its turn.
  */
 @Composable
-internal fun ResyncGlyph(modifier: Modifier) {
+fun ResyncGlyph(modifier: Modifier) {
     val pressed = LocalGlyphPressed.current
     val turn = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
@@ -243,7 +243,7 @@ internal fun ResyncGlyph(modifier: Modifier) {
 
 /** 文 and A, each leaning a unit toward the other while held. */
 @Composable
-internal fun TranslateGlyph(modifier: Modifier) {
+fun TranslateGlyph(modifier: Modifier) {
     val lean = heldProgress(200, "translate")
     Image(lineGlyph { _, _ ->
         Group(translationX = lean, translationY = lean) { LinePath(Paths.Han) }
@@ -253,7 +253,7 @@ internal fun TranslateGlyph(modifier: Modifier) {
 
 /** The front lyric sheet slides a unit out of the stack while held. */
 @Composable
-internal fun LyricsManagerGlyph(modifier: Modifier) {
+fun LyricsManagerGlyph(modifier: Modifier) {
     val pull = heldProgress(200, "lyricsManager")
     Image(lineGlyph { _, _ ->
         LinePath(Paths.BackSheet)
@@ -263,7 +263,7 @@ internal fun LyricsManagerGlyph(modifier: Modifier) {
 
 /** The list of sources; the picked one steps a unit forward while held. */
 @Composable
-internal fun SourceGlyph(modifier: Modifier) {
+fun SourceGlyph(modifier: Modifier) {
     val step = heldProgress(200, "source")
     Image(lineGlyph { _, _ ->
         LinePath(Paths.SourceOthers)
@@ -273,7 +273,7 @@ internal fun SourceGlyph(modifier: Modifier) {
 
 /** The songs to come; the play mark nudges a unit forward while held. */
 @Composable
-internal fun QueueGlyph(modifier: Modifier) {
+fun QueueGlyph(modifier: Modifier) {
     val nudge = heldProgress(200, "queue")
     Image(lineGlyph { _, _ ->
         LinePath(Paths.QueueLines)
@@ -283,7 +283,7 @@ internal fun QueueGlyph(modifier: Modifier) {
 
 /** The screen with the floating window in its corner, which nudges further into it while held. */
 @Composable
-internal fun PictureInPictureGlyph(modifier: Modifier) {
+fun PictureInPictureGlyph(modifier: Modifier) {
     val nudge = heldProgress(200, "pip")
     Image(lineGlyph { _, _ ->
         LinePath(Paths.Screen)
@@ -293,7 +293,7 @@ internal fun PictureInPictureGlyph(modifier: Modifier) {
 
 /** Two sliders whose knobs slide toward each other while held. */
 @Composable
-internal fun QuickSettingsGlyph(modifier: Modifier) {
+fun QuickSettingsGlyph(modifier: Modifier) {
     val slide = 2f * heldProgress(250, "sliders")
     Image(lineGlyph { _, _ ->
         LinePath(Paths.sliders(Paths.TOP_KNOB + slide, Paths.BOTTOM_KNOB - slide))
@@ -305,7 +305,7 @@ internal fun QuickSettingsGlyph(modifier: Modifier) {
  * turns a quarter between the two. While held it leans a little toward the way it'll turn.
  */
 @Composable
-internal fun RotateGlyph(rotated: Boolean, modifier: Modifier) {
+fun RotateGlyph(rotated: Boolean, modifier: Modifier) {
     val side by animateFloatAsState(if (rotated) 90f else 0f, tween(300, easing = GlyphEase), label = "rotate")
     val lean = 12f * heldProgress(200, "rotateLean") * (if (rotated) -1f else 1f)
     Image(lineGlyph { _, _ ->
@@ -316,7 +316,7 @@ internal fun RotateGlyph(rotated: Boolean, modifier: Modifier) {
 
 /** Three dots, the outer two stepping a unit apart while held. */
 @Composable
-internal fun MoreGlyph(modifier: Modifier) {
+fun MoreGlyph(modifier: Modifier) {
     val spread = heldProgress(200, "more")
     Image(lineGlyph { _, _ ->
         Paths.MoreDots.forEach { (nodes, way) ->
