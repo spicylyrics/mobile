@@ -94,11 +94,12 @@ compose.desktop {
 
         nativeDistributions {
             // MSI over EXE: jpackage's EXE is the same MSI behind a bootstrapper, and the MSI on
-            // its own upgrades in place (upgradeUuid), repairs and suits winget.
-            targetFormats(TargetFormat.Msi)
+            // its own upgrades in place (upgradeUuid), repairs and suits winget. Each format builds
+            // only on its own OS.
+            targetFormats(TargetFormat.Msi, TargetFormat.Deb, TargetFormat.Dmg)
             packageName = "Spicy Lyrics Desktop"
             packageVersion = project.version.toString()
-            description = "Word-synced lyrics for whatever Windows is playing"
+            description = "Word-synced lyrics for whatever your computer is playing"
             vendor = "TX24"
             appResourcesRootDir = layout.buildDirectory.dir("appResources")
             // suggestRuntimeModules, plus jdk.crypto.ec, which jdeps can't see but TLS needs.
@@ -112,6 +113,18 @@ compose.desktop {
                 dirChooser = true
                 // Never change: it is how a new MSI finds and replaces the installed one.
                 upgradeUuid = "bb2eb161-512c-4044-9a54-796f963d1b13"
+            }
+            linux {
+                packageName = "spicy-lyrics-desktop"
+                iconFile = file("src/main/resources/icon.png")
+                menuGroup = "Spicy Lyrics"
+                appCategory = "AudioVideo"
+                debMaintainer = "TX24"
+            }
+            macOS {
+                bundleID = "com.tx24.spicylyrics.desktop"
+                // A macOS app's version can't start with 0, so 0.y.z ships as 1.y.z there.
+                packageVersion = macPackageVersion(project.version.toString())
             }
         }
     }
@@ -129,3 +142,6 @@ tasks.register<JavaExec>("console") {
     workingDir = rootDir
     standardInput = System.`in`
 }
+
+/** [version] for macOS, which refuses a major version of 0: 0.y.z becomes 1.y.z, anything else stays. */
+fun macPackageVersion(version: String): String = if (version.startsWith("0.")) "1." + version.removePrefix("0.") else version

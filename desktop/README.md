@@ -36,11 +36,16 @@ An installed build checks GitHub's releases for a newer `desktop-vX.Y.Z` tag at 
 
 ## CI builds
 
-`.github/workflows/desktop-build.yml` builds the MSI on a Windows runner for pull requests that touch `desktop/`, for `desktop-vX.Y.Z` tags and on demand (Actions → Desktop installer → Run workflow). The installer is a workflow artifact; nothing is released.
+`.github/workflows/desktop-build.yml` builds the MSI on a Windows runner, a `.deb` on Ubuntu and a `.dmg` on macOS for pull requests that touch `desktop/`, for `desktop-vX.Y.Z` tags and on demand (Actions → Desktop installer → Run workflow). The installers are workflow artifacts; nothing is released.
 
 - A `desktop-vX.Y.Z` tag sets the version through `-PdesktopVersion=X.Y.Z`. Other runs use the default in `build.gradle.kts`.
 - The Spicy Lyrics key comes from the `SPICY_LYRICS_CLIENT_KEY` repository secret, or the variable of that name. Without either, the build leaves that source out.
+- macOS won't take a version starting with 0, so the `.dmg` of 0.y.z says 1.y.z (`macPackageVersion` in `build.gradle.kts`).
 
 ## Sync delay
 
 Ctrl+D in the lyrics window opens the sync-delay window (`SyncDelayWindow.kt`; `openSyncDelay()` for a menu). It nudges the followed player's offset in 10 or 50 ms steps with the current line in view, or works it out from taps along to the song's beats (`TapSync`, from the Spotify analysis). Positive shows the lyrics earlier. Offsets are saved per player app id in `sync-delay.properties` beside the settings file, as `desktop.offset.<app id>` and move the lyrics at once; `--offset` overrides them for every player while given.
+
+## Linux
+
+`./gradlew :desktop:packageDeb` builds a `.deb` (package `spicy-lyrics-desktop`) in `desktop/build/compose/binaries/main/deb/`. It installs the app under `/opt` with a menu entry. The app reads players through `playerctl`, so install that too (`sudo apt install playerctl`): without it the app stops at launch, naming what's missing. No Rust is needed on Linux.
