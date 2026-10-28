@@ -101,3 +101,6 @@ fun mediaSource(helper: File? = null, osName: String = System.getProperty("os.na
     }
 
 fun monoMs() = System.nanoTime() / 1_000_000
+
+/** How long to wait before starting a source again after its [failures]th failure in a row: 1 s, doubling, at most 30 s. */
+fun retryDelayMs(failures: Int): Long = (1000L shl (failures - 1).coerceIn(0, 5)).coerceAtMost(30_000L)

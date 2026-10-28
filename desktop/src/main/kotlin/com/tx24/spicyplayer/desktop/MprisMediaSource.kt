@@ -29,11 +29,13 @@ class MprisMediaSource(private val playerctl: String = "playerctl", private val 
         val process = ProcessBuilder(playerctlFollowArgs(playerctl)).redirectErrorStream(true).start()
         running.getAndSet(process)?.destroy()
         try {
+            var last: String? = null
             process.inputStream.bufferedReader().useLines { lines ->
                 for (raw in lines) {
                     val receivedMono = monoMs()
                     val receivedWall = System.currentTimeMillis()
-                    val update = parsePlayerctlLine(raw, receivedWall) ?: continue
+                    val update = parsePlayerctlLine(raw, receivedWall, last) ?: continue
+                    last = (update as? MediaUpdate.Snapshot)?.snapshot?.app
                     emit(Received(update, receivedMono, receivedWall, raw))
                 }
             }
@@ -78,10 +80,13 @@ fun playerctlArgs(playerctl: String, app: String, action: Transport, positionMs:
 
 /**
  * One line of `playerctl --follow` in [PLAYERCTL_FORMAT], received at [receivedWall] (epoch ms), or
- * null for a blank line (no player left) or one that isn't in the format.
+ * null for one that isn't in the format. playerctl prints a blank line (or "No players found") when
+ * the last player quits: that removes [lastApp], the player of the line before.
  */
-fun parsePlayerctlLine(raw: String, receivedWall: Long): MediaUpdate? {
-    val fields = raw.trimEnd('\r', '\n').split(SEP)
+fun parsePlayerctlLine(raw: String, receivedWall: Long, lastApp: String? = null): MediaUpdate? {
+    val line = raw.trimEnd('\r', '\n')
+    if (line.isBlank() || line.trim() == "No players found") return lastApp?.let { MediaUpdate.Removed(it) }
+    val fields = line.split(SEP)
     if (fields.size != 8) return null
     val (app, status, position, length, title) = fields
     if (app.isBlank()) return null

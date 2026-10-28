@@ -66,4 +66,17 @@ class MediaSessionTest {
         session.seek(Fake(setOf(Transport.SEEK)), 50_000)
         assertEquals(listOf(Transport.SEEK to 49_700L), seen)
     }
+
+    @Test
+    fun `clear forgets the track and stops the clock`() {
+        val session = MediaSession()
+        session.feed(snap("Spotify.exe", "One"), mono, wall)
+        session.clear()
+        assertNull(session.track)
+        assertNull(session.cover)
+        assertEquals(false, session.clock.isPlaying)
+        assertEquals(0L, session.clock.positionAt(monoMs() + 5_000))
+        // The same song coming back is a new track again.
+        assertTrue(session.feed(snap("Spotify.exe", "One"), mono + 1_000, wall + 1_000) is SessionEvent.NewTrack)
+    }
 }
