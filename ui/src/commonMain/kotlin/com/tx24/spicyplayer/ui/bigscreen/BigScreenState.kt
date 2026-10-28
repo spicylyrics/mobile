@@ -77,7 +77,7 @@ data class BigScreenState(
         if (immersive) copy(compactOverride = !isCompact(widthDp, heightDp)) else this
     fun toggleRomanization(): BigScreenState = copy(romanized = !romanized)
 
-    /** What [control] does when clicked; [ViewControl.More] and [ViewControl.Settings] open menus instead. */
+    /** What [control] does when clicked; [ViewControl.More], [ViewControl.PictureInPicture] and [ViewControl.Settings] are the app's to carry out. */
     fun click(control: ViewControl, widthDp: Float, heightDp: Float, capabilities: PlayerCapabilities): BigScreenState =
         when (control) {
             ViewControl.CinemaView -> toggleCinema()
@@ -87,7 +87,7 @@ data class BigScreenState(
             ViewControl.NowBarSide -> swapSides()
             ViewControl.Fullscreen -> toggleFullscreen(capabilities)
             ViewControl.Close -> close()
-            ViewControl.More, ViewControl.Settings -> this
+            ViewControl.More, ViewControl.PictureInPicture, ViewControl.Settings -> this
         }
 
     fun onKey(key: PageKey, capabilities: PlayerCapabilities): BigScreenState = when (key) {
@@ -106,7 +106,7 @@ data class BigScreenState(
 
 /** The round buttons along the page's view-control row, in the order they appear. */
 enum class ViewControl {
-    CinemaView, CompactMode, Romanization, NowBar, NowBarSide, Fullscreen, More, Settings, Close,
+    CinemaView, CompactMode, Romanization, NowBar, NowBarSide, Fullscreen, More, PictureInPicture, Settings, Close,
 }
 
 /**
@@ -114,7 +114,7 @@ enum class ViewControl {
  * off it, the now-playing toggle on the page, the side swap whenever the bar is open, and the
  * fullscreen button in cinema and fullscreen where the platform has fullscreen. Close only shows
  * off the page; on the page the window's own close does that. [ViewControl.More] holds the
- * mobile app's extras.
+ * mobile app's extras, and the floating window's button shows where the platform has one.
  */
 fun viewControls(state: BigScreenState, capabilities: PlayerCapabilities): List<ViewControl> = buildList {
     if (!state.immersive) add(ViewControl.CinemaView) else add(ViewControl.CompactMode)
@@ -123,6 +123,7 @@ fun viewControls(state: BigScreenState, capabilities: PlayerCapabilities): List<
     if (state.nowBarOpen) add(ViewControl.NowBarSide)
     if (state.immersive && capabilities.fullscreen) add(ViewControl.Fullscreen)
     add(ViewControl.More)
+    if (capabilities.pictureInPicture) add(ViewControl.PictureInPicture)
     add(ViewControl.Settings)
     if (state.immersive) add(ViewControl.Close)
 }
@@ -136,9 +137,24 @@ fun tooltip(control: ViewControl, state: BigScreenState, widthDp: Float, heightD
     ViewControl.NowBarSide -> "Swap NowBar Side"
     ViewControl.Fullscreen -> if (state.mode == ViewMode.Cinema) "Fullscreen" else "Cinema View"
     ViewControl.More -> "More"
+    ViewControl.PictureInPicture -> "Popup Lyrics"
     ViewControl.Settings -> "Spicy Lyrics Settings"
     ViewControl.Close -> "Close Page"
 }
 
 /** The keys that move the page: F11, and Escape (or a tablet's back). */
 enum class PageKey { F11, Escape }
+
+/**
+ * Whether a window this size gets the big-screen page rather than the phone's: at least 840dp
+ * wide (a tablet held sideways, DeX, an unfolded foldable) and 480dp tall, so a phone in either
+ * orientation and a tablet held upright keep the phone layout.
+ *
+ * The same numbers as the big-screen settings panel's threshold; the two become one function
+ * once both are in.
+ */
+fun usesBigScreenLayout(widthDp: Float, heightDp: Float): Boolean =
+    widthDp >= BIG_SCREEN_MIN_WIDTH_DP && heightDp >= BIG_SCREEN_MIN_HEIGHT_DP
+
+const val BIG_SCREEN_MIN_WIDTH_DP = 840f
+const val BIG_SCREEN_MIN_HEIGHT_DP = 480f
