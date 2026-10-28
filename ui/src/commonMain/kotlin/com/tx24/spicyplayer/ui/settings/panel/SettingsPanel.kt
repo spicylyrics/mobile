@@ -184,7 +184,7 @@ private val ROW_HEIGHT = 34.dp
 private val SmallShape = RoundedCornerShape(SpicyRadii.Sm)
 private val CardShape = RoundedCornerShape(SpicyRadii.Md)
 
-private val titleStyle @Composable get() = SpicyType.Body.copy(
+internal val titleStyle @Composable get() = SpicyType.Body.copy(
     fontSize = 24.sp, fontWeight = FontWeight.Bold, lineHeight = 1.15.em, letterSpacing = (-0.025).em,
 )
 
@@ -249,7 +249,7 @@ private fun BrandLine() {
 }
 
 @Composable
-private fun SearchBar(query: String, onQuery: (String) -> Unit, focus: FocusRequester) {
+internal fun SearchBar(query: String, onQuery: (String) -> Unit, focus: FocusRequester, placeholder: String = "Search settings") {
     val hover = remember { MutableInteractionSource() }
     val hovered by hover.collectIsHoveredAsState()
     var focused by remember { mutableStateOf(false) }
@@ -281,7 +281,7 @@ private fun SearchBar(query: String, onQuery: (String) -> Unit, focus: FocusRequ
                 .onFocusChanged { focused = it.isFocused },
             decorationBox = { field ->
                 Box(contentAlignment = Alignment.CenterStart) {
-                    if (query.isEmpty()) BasicText("Search settings", style = style.copy(color = SpicyColors.TextSecondary), maxLines = 1)
+                    if (query.isEmpty()) BasicText(placeholder, style = style.copy(color = SpicyColors.TextSecondary), maxLines = 1)
                     field()
                 }
             },
@@ -406,7 +406,7 @@ private fun Pane(
 
 /** A 30dp round tinted button: close, and back on a single pane ([mirrored] turns the chevron). */
 @Composable
-private fun RoundButton(icon: ImageVector, iconSize: Dp, onClick: () -> Unit, mirrored: Boolean = false) {
+internal fun RoundButton(icon: ImageVector, iconSize: Dp, onClick: () -> Unit, mirrored: Boolean = false) {
     val hover = remember { MutableInteractionSource() }
     val hovered by hover.collectIsHoveredAsState()
     Box(
@@ -842,7 +842,7 @@ private fun LinkButton(label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun Glyph(icon: ImageVector, color: Color, size: Dp) {
+internal fun Glyph(icon: ImageVector, color: Color, size: Dp) {
     Image(icon, null, Modifier.size(size), colorFilter = ColorFilter.tint(color))
 }
 

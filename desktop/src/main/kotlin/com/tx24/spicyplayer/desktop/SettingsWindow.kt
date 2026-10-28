@@ -28,7 +28,7 @@ import com.tx24.spicyplayer.ui.settings.panel.settingsPanelSections
 
 /** The app's settings, in the user's app data folder; read once, saved as they change. */
 val desktopSettings: CommonAppSettings by lazy {
-    CommonAppSettings(FileSettingsStore.default(), pipButtonByDefault = false, prereleasesByDefault = false)
+    CommonAppSettings(FileSettingsStore.default(), pipButtonByDefault = false, prereleasesByDefault = true)
 }
 
 /** Whether the settings window is open; Ctrl+, (Cmd+, on a Mac) opens it. */
