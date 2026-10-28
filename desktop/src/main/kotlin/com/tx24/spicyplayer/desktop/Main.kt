@@ -157,7 +157,7 @@ fun main(args: Array<String>) {
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
-            onKeyEvent = { event -> SyncDelay.onKey(event) || pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: false },
+            onKeyEvent = { event -> MiniLyrics.onKey(event) || SyncDelay.onKey(event) || pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: false },
         ) {
             CompositionLocalProvider(
                 LocalDisplayRefreshRate provides refreshRate,
@@ -245,6 +245,36 @@ fun main(args: Array<String>) {
         }
         SettingsWindow(settingsWindow)
         LyricsManagerWindow(lyricsManager, lyricsLibrary, songLyrics)
+
+        // Ctrl+M: the lyrics in a small window that stays on top.
+        val miniShown by screen.collectAsState()
+        val miniTranslated by songLyrics.shown.collectAsState()
+        val miniPlaying by playing.collectAsState()
+        val miniTrack = miniShown as? Screen.Track
+        MiniLyricsWindow(nowPlaying, miniTrack?.lyrics ?: LyricsState.Idle) { modifier, fontSizeScale ->
+            val ready = miniTrack?.lyrics as? LyricsState.Ready
+            if (miniTrack != null && ready != null) {
+                val display = desktopSettings.desktopLyrics(ready, miniTrack.track.durationMs, 1f, 1f)
+                // A window of its own: it doesn't see the main window's locals.
+                CompositionLocalProvider(LocalDisplayRefreshRate provides refreshRate, LocalLyricsImageLoader provides PlaceholderAvatars) {
+                Lyrics(
+                    lyrics = ready,
+                    trackKey = miniTrack.track.key,
+                    currentTimeMs = { session.clock.positionAt(monoMs()) },
+                    onSeek = {},
+                    isPlaying = miniPlaying,
+                    modifier = modifier,
+                    romanize = display.romanize,
+                    activeLineTopPx = null,
+                    config = display.config,
+                    translation = miniTranslated?.takeIf { it.lyrics === ready }?.translation,
+                    translationMode = desktopSettings.translationMode,
+                    fontSizeScale = fontSizeScale,
+                    romanizationMode = display.romanizationMode,
+                )
+                }
+            }
+        }
     }
 }
 
