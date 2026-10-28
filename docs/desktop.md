@@ -32,7 +32,7 @@ The `:ui` packages the desktop and the big-screen UI lean on:
 
 - **Windows:** `GsmtcMediaSource` runs the `gsmtc` helper, a Rust program in `desktop/gsmtc` built by cargo, Windows only. It handles play, pause, next, previous and seek.
 - **Linux:** `MprisMediaSource` follows `playerctl`. Without `playerctl` on the PATH, the app won't start and says what to install.
-- **macOS:** `UnsupportedMediaSource`, a stub. The app opens to the waiting page.
+- **macOS:** `MacMediaSource` polls Spotify and Music about once a second through `osascript`. It only asks players that are already running, so it never launches one. It handles play, pause, next, previous and seek. macOS asks for Automation permission for each player on first use. Music's artwork isn't read.
 
 `MediaSession` turns snapshots into the lyric clock the same way on every platform, with the per-player corrections and sync delay.
 
