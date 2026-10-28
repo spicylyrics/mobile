@@ -31,6 +31,7 @@ import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalDisplayRefreshRate
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalLyricsImageLoader
 import com.tx24.spicyplayer.lyrics.spicy.canvas.CjkFonts
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsView
+import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsViewState
 import com.tx24.spicyplayer.lyrics.spicy.models.Line
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsCredit
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsFooter
@@ -177,6 +178,8 @@ fun main(args: Array<String>) {
         // The screen the main window is on, again whenever it moves: the primary one may run at another rate.
         var refreshRate by remember { mutableStateOf(60f) }
         val windowState = rememberWindowState(size = DpSize(1100.dp, 760.dp))
+        val mainLyricsView = remember { LyricsViewState() }
+        val miniLyricsView = remember { LyricsViewState() }
         val settingsWindow = remember { SettingsWindowState() }
         var page by remember { mutableStateOf(BigScreenState(romanized = desktopSettings.romanize)) }
         // The page's romanize button and the Romanize setting are one switch.
@@ -193,6 +196,8 @@ fun main(args: Array<String>) {
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
             onKeyEvent = { event -> MiniLyrics.onKey(event) || SyncDelay.onKey(event) || pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: false },
         ) {
+            // Back from another window, the lyrics jump to the line being sung, wherever they were scrolled.
+            OnWindowFocus(window) { mainLyricsView.scrollToActive() }
             DisposableEffect(window) {
                 refreshRate = refreshRateOf(window)
                 val listener = object : ComponentAdapter() {
@@ -275,6 +280,7 @@ fun main(args: Array<String>) {
                             translationMode = desktopSettings.translationMode,
                             fontSizeScale = display.fontSizeScale,
                             romanizationMode = display.romanizationMode,
+                            viewState = mainLyricsView,
                         )
                     },
                     renderConfig = display.config,
@@ -289,7 +295,12 @@ fun main(args: Array<String>) {
         val miniTranslated by songLyrics.shown.collectAsState()
         val miniPlaying by playing.collectAsState()
         val miniTrack = miniShown as? Screen.Track
-        MiniLyricsWindow(nowPlaying, miniTrack?.lyrics ?: LyricsState.Idle) { modifier, fontSizeScale ->
+        MiniLyricsWindow(
+            nowPlaying,
+            capabilities,
+            miniTrack?.lyrics ?: LyricsState.Idle,
+            onFocus = { miniLyricsView.scrollToActive() },
+        ) { modifier, fontSizeScale ->
             val ready = miniTrack?.lyrics as? LyricsState.Ready
             if (miniTrack != null && ready != null) {
                 val display = desktopSettings.desktopLyrics(ready, miniTrack.track.durationMs, 1f, 1f)
@@ -309,6 +320,7 @@ fun main(args: Array<String>) {
                     translationMode = desktopSettings.translationMode,
                     fontSizeScale = fontSizeScale,
                     romanizationMode = display.romanizationMode,
+                    viewState = miniLyricsView,
                 )
                 }
             }
@@ -335,6 +347,7 @@ private fun Lyrics(
     translationMode: TranslationMode,
     fontSizeScale: Float,
     romanizationMode: RomanizationMode,
+    viewState: LyricsViewState? = null,
 ) {
     val original = remember(lyrics.lines) {
         lyrics.lines.map { line ->
@@ -377,6 +390,7 @@ private fun Lyrics(
         lyricsType = lyrics.lyricsType,
         config = config,
         fontSizeScale = fontSizeScale,
+        viewState = viewState,
         footer = remember(lyrics) {
             LyricsFooter(
                 songwriters = lyrics.songwriters,

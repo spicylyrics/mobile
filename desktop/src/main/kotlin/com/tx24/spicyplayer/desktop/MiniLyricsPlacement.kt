@@ -15,10 +15,10 @@ data class WindowBounds(val x: Int, val y: Int, val width: Int, val height: Int)
  * whole on a screen that still exists; the first time, the primary screen's bottom right corner.
  */
 object MiniLyricsPlacement {
-    const val MIN_WIDTH = 220
-    const val MIN_HEIGHT = 110
-    const val DEFAULT_WIDTH = 360
-    const val DEFAULT_HEIGHT = 200
+    const val MIN_WIDTH = 260
+    const val MIN_HEIGHT = 180
+    const val DEFAULT_WIDTH = 390
+    const val DEFAULT_HEIGHT = 379
     /** The first place's distance from the screen's edges. */
     const val MARGIN = 24
 
