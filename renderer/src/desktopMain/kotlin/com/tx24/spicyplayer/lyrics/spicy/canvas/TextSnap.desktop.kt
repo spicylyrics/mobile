@@ -45,14 +45,18 @@ internal actual fun DrawScope.drawLyricText(layout: TextLayoutResult, color: Col
  * - `spicy.textBlur`: `gpu` (default) blurs a glyph mask with an image filter on the GPU; `cpu`
  *   draws Compose's text-shadow, which Skia blurs on the CPU; `off` draws blurred text sharp.
  * - `spicy.textMasks=off`: words drawn as plain text, without glyph masks.
+ * - `spicy.maskStats=<file>`: every 2 s, writes how the mask cache is doing to that file.
  */
 internal object DesktopDrawFlags {
     val textBlur: String = System.getProperty("spicy.textBlur") ?: "gpu"
     val textMasks: Boolean = System.getProperty("spicy.textMasks") != "off"
+    val maskStats: String? = System.getProperty("spicy.maskStats")
 }
 
 /** A layout's glyph coverage, [pad] px of room on every side for glyphs that reach past its box. */
-private class Mask(val image: Image, val pad: Int)
+private class Mask(val image: Image, val pad: Int) {
+    val bytes: Long get() = image.width.toLong() * image.height
+}
 
 /** Keyed by the layout itself: a re-measured layout is a new one and gets a new mask. */
 private class LayoutKey(val layout: TextLayoutResult) {
@@ -60,10 +64,24 @@ private class LayoutKey(val layout: TextLayoutResult) {
     override fun hashCode() = System.identityHashCode(layout)
 }
 
-// Masks of the layouts drawn most recently. Drawing happens on the UI thread only.
-private const val MAX_MASKS = 400
-private val masks = object : LinkedHashMap<LayoutKey, Mask>(64, 0.75f, true) {
-    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<LayoutKey, Mask>) = size > MAX_MASKS
+/**
+ * Masks of the layouts drawn most recently, up to [MASK_BYTES] of pixels. Drawing happens on the
+ * UI thread only. A budget in bytes rather than a count of masks: one frame can draw well over a
+ * few hundred layouts (a translation and a romanization under each line, held words split into
+ * letters), and a cache smaller than one frame's worth makes, uploads and drops every mask on
+ * every frame.
+ */
+private const val MASK_BYTES = 160L * 1024 * 1024
+private var maskBytes = 0L
+private val masks = object : LinkedHashMap<LayoutKey, Mask>(256, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<LayoutKey, Mask>): Boolean {
+        if (maskBytes <= MASK_BYTES) return false
+        maskBytes -= eldest.value.bytes
+        MaskStats.evicted++
+        // A picture recorded this frame holds its own reference to the image.
+        eldest.value.image.close()
+        return true
+    }
 }
 private val maskPaint = Paint()
 
@@ -87,8 +105,13 @@ private fun maskOf(layout: TextLayoutResult): Mask? {
         budgetSince = now
         budgetUsed = 0L
     }
-    if (budgetUsed >= MASK_BUDGET_NS) return null
+    if (budgetUsed >= MASK_BUDGET_NS) {
+        MaskStats.deferred++
+        return null
+    }
     return makeMask(layout).also {
+        maskBytes += it.bytes
+        MaskStats.created++
         masks[key] = it
         budgetUsed += System.nanoTime() - now
     }
@@ -131,7 +154,9 @@ private inline fun DrawScope.drawMask(layout: TextLayoutResult, topLeft: Offset,
         val h = mask.image.height.toFloat()
         skia.save()
         skia.translate(topLeft.x - pad, topLeft.y - pad)
-        skia.drawImageRect(mask.image, Rect.makeWH(w, h), Rect.makeWH(w, h), SamplingMode.LINEAR, skiaPaint, true)
+        // Not strict: the mask's transparent border already keeps the filter inside it.
+        skia.drawImageRect(mask.image, Rect.makeWH(w, h), Rect.makeWH(w, h), SamplingMode.LINEAR, skiaPaint, false)
+        MaskStats.drawn++
         skia.restore()
     }
     return true
@@ -164,4 +189,28 @@ private val blurFilters = object : LinkedHashMap<Int, ImageFilter>(16, 0.75f, tr
 private fun blurFilter(sigma: Float): ImageFilter {
     val quarters = (sigma * 4f).toInt().coerceAtLeast(1)
     return blurFilters.getOrPut(quarters) { ImageFilter.makeBlur(quarters / 4f, quarters / 4f, FilterTileMode.DECAL) }
+}
+
+/** Counts for `spicy.maskStats`: what the mask cache did since the last report. Written on the UI thread. */
+private object MaskStats {
+    @Volatile var created = 0L
+    @Volatile var evicted = 0L
+    @Volatile var deferred = 0L
+    @Volatile var drawn = 0L
+
+    init {
+        DesktopDrawFlags.maskStats?.let { path ->
+            Thread({
+                val file = java.io.File(path)
+                while (true) {
+                    Thread.sleep(2_000)
+                    val line = "${java.time.LocalTime.now()} drawn=$drawn created=$created evicted=$evicted deferred=$deferred " +
+                        "cached=${masks.size} bytes=${maskBytes / 1024}KB"
+                    drawn = 0; created = 0; evicted = 0; deferred = 0
+                    runCatching { file.appendText(line + "
+") }
+                }
+            }, "spicy-mask-stats").apply { isDaemon = true }.start()
+        }
+    }
 }
