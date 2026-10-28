@@ -57,4 +57,41 @@ class DesktopBackgroundsTest {
         val dir = Files.createTempDirectory("bg").toFile()
         assertNull(DesktopImageCache(dir).bytes("http://127.0.0.1:1/none"))
     }
+
+    @Test
+    fun `under both caps nothing is pruned`() {
+        val entries = listOf(CacheEntry("a", 10, 1), CacheEntry("b", 10, 2))
+        assertEquals(emptyList<String>(), filesToPrune(entries, maxBytes = 20, maxFiles = 2))
+    }
+
+    @Test
+    fun `over the size cap the least recently used go first`() {
+        val entries = listOf(CacheEntry("new", 40, 300), CacheEntry("old", 40, 100), CacheEntry("mid", 40, 200))
+        assertEquals(listOf("old"), filesToPrune(entries, maxBytes = 80, maxFiles = 10))
+        assertEquals(listOf("old", "mid"), filesToPrune(entries, maxBytes = 50, maxFiles = 10))
+    }
+
+    @Test
+    fun `over the file cap the oldest go until it holds`() {
+        val entries = (1..5).map { CacheEntry("f$it", 1, it.toLong()) }
+        assertEquals(listOf("f1", "f2"), filesToPrune(entries, maxBytes = 1_000, maxFiles = 3))
+    }
+
+    @Test
+    fun `a fresh hit counts as use`() {
+        val dir = Files.createTempDirectory("bg").toFile()
+        val url = "http://127.0.0.1:1/used"
+        val file = File(dir, imageCacheName(url)).apply { writeBytes(byteArrayOf(7)); setLastModified(1_000_000L) }
+        DesktopImageCache(dir).bytes(url, now = 2_000_000L)
+        assertEquals(2_000_000L, file.lastModified())
+    }
+
+    @Test
+    fun `an offline stale copy stays stale`() {
+        val dir = Files.createTempDirectory("bg").toFile()
+        val url = "http://127.0.0.1:1/old"
+        val file = File(dir, imageCacheName(url)).apply { writeBytes(byteArrayOf(8)); setLastModified(0L) }
+        DesktopImageCache(dir).bytes(url)
+        assertEquals(0L, file.lastModified())
+    }
 }
