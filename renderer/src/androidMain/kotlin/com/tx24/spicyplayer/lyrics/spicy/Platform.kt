@@ -11,3 +11,5 @@ internal actual fun String.codePointBeforeIndex(index: Int): Int = codePointBefo
 internal actual fun charCount(codePoint: Int): Int = Character.charCount(codePoint)
 
 internal actual fun roundHalfUp(value: Float): Int = Math.round(value)
+
+internal actual val resizeSnapsToLine: Boolean = false

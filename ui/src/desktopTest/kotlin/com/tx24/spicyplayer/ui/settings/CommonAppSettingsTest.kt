@@ -45,6 +45,7 @@ class CommonAppSettingsTest {
         s.smoothScrolling = s.smoothScrolling
         s.staticAutoScroll = s.staticAutoScroll
         s.seekFadeCompensation = s.seekFadeCompensation
+        s.lineHoverBackground = s.lineHoverBackground
         s.distanceBlur = s.distanceBlur
         s.glow = s.glow
         s.lowPerformance = s.lowPerformance
@@ -141,6 +142,7 @@ class CommonAppSettingsTest {
             "smoothScrolling" to false,
             "staticAutoScroll" to true,
             "seekFadeCompensation" to true,
+            "lineHoverBackground" to true,
             "distanceBlur" to true,
             "glow" to true,
             "lowPerformance" to false,

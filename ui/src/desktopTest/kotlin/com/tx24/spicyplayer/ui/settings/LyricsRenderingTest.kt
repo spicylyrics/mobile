@@ -64,6 +64,7 @@ class LyricsRenderingTest {
         assertTrue(flipped { smoothScrolling = true }.scroll.smooth)
         assertFalse(flipped { seekFadeCompensation = false }.scroll.seekFadeCompensation)
         assertEquals(0L, flipped { staticAutoScroll = false }.scroll.staticSongMs)
+        assertFalse(flipped { lineHoverBackground = false }.scroll.lineHoverBackground)
     }
 
     @Test

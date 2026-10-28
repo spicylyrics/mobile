@@ -25,6 +25,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.PointerType
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -45,6 +55,7 @@ import com.tx24.spicyplayer.lyrics.spicy.animation.LineAnimState
 import com.tx24.spicyplayer.lyrics.spicy.animation.LineSweepGeometry
 import com.tx24.spicyplayer.lyrics.spicy.animation.LyricsAnimator
 import com.tx24.spicyplayer.lyrics.spicy.animation.AppleMusicMotion
+import com.tx24.spicyplayer.lyrics.spicy.resizeSnapsToLine
 import com.tx24.spicyplayer.lyrics.spicy.models.Line
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
 import com.tx24.spicyplayer.lyrics.spicy.models.FooterLine
@@ -180,6 +191,17 @@ fun LyricsView(
     // Wakes a resting frame loop at once (a drag or tap), rather than at its next look.
     val wake = remember(shownId) { Channel<Unit>(Channel.CONFLATED) }
     val haptics by rememberUpdatedState(LocalHapticFeedback.current)
+    // The mouse: where it is over the lyrics, the line it's over, and the scrollbar it may hold.
+    // Touch never moves any of it, so on a touch screen none of it shows.
+    val pointer = remember { LyricsPointer() }
+    val hover = remember(shownId) { LineHover() }
+    // Bumped when a hovered line's look changes, so a paused view redraws it too.
+    var hoverFrame by remember { mutableIntStateOf(0) }
+    var overSeekable by remember { mutableStateOf(false) }
+    var overCredit by remember { mutableStateOf(false) }
+    var pointerInside by remember { mutableStateOf(false) }
+    var holdingThumb by remember { mutableStateOf(false) }
+    val isStaticUpdated by rememberUpdatedState(isStatic)
 
     BoxWithConstraints(modifier = modifier.fillMaxSize().clipToBounds()) {
         val canvasWidth = constraints.maxWidth.toFloat()
@@ -198,6 +220,17 @@ fun LyricsView(
         // The lyrics fade out over the last 64dp; credits brought into view stay clear of it.
         val bottomFadeUpdated by rememberUpdatedState(canvasHeight * (1f - lyricsMaskStops(canvasHeight, density.density * maskScale).innerBottom))
         LaunchedEffect(centerY, alignTop) { wake.trySend(Unit) }
+        // A resized window brings the line being sung back into view, as a new width (which lays
+        // the lines out again) already does.
+        val lastHeight = remember(shownId) { FloatArray(1) { Float.NaN } }
+        LaunchedEffect(canvasHeight) {
+            val before = lastHeight[0]
+            lastHeight[0] = canvasHeight
+            if (resizeSnapsToLine && !before.isNaN() && before != canvasHeight) {
+                scrollManager.onRelayout()
+                wake.trySend(Unit)
+            }
+        }
         val footerMetrics = remember(canvasWidth, density.density, fontSizeScale, lyricsType) {
             LyricsLayoutMetrics(canvasWidth, density.density, lyricsType, fontSizeScale)
         }
@@ -291,6 +324,22 @@ fun LyricsView(
         var dynamicYOffsets by remember { mutableStateOf(FloatArray(0)) }
         var lastFrameTimeNanos by remember { mutableLongStateOf(0L) }
         val refreshRate = rememberRefreshRate()
+
+        // The line a tap at view height [y] seeks to, among [layouts] as drawn now: none for an
+        // interlude or a songwriter row, nor a folded background line (the line under it takes it).
+        fun seekableLineAt(y: Float, layouts: List<LineLayout>, offsets: FloatArray, states: List<LineAnimState>): Int? {
+            val adjusted = y - (centerYUpdated + scrollManager.animScrollY)
+            for (i in layouts.indices) {
+                val layout = layouts[i]
+                val top = offsets.getOrElse(i) { layout.yOffset } + (if (refreshedUpdated) ripple.offset(i) else 0f)
+                if (adjusted >= top && adjusted <= top + layout.height) {
+                    if (layout.isInterlude || layout.isSongwriter) continue
+                    if ((states.getOrNull(i)?.presence ?: 1f) < 0.5f) continue
+                    return i.takeIf { layout.line.words.isNotEmpty() }
+                }
+            }
+            return null
+        }
         
         // The high-frequency animation loop, restarted with each new document's animator and scroll.
         LaunchedEffect(shownId, ripple) {
@@ -553,10 +602,19 @@ fun LyricsView(
                             val now = if (behind) frameTimeNanos else 0L
                             if (trailNow != now) trailNow = now
                         } else if (trailNow != 0L) trailNow = 0L
+
+                        // The line under the mouse, found again each frame as the lines move under it.
+                        val hovered = if (pointer.inside && !pointer.holdingThumb && !isStaticUpdated && !scrollManager.isUserScrolling) {
+                            seekableLineAt(pointer.y, currentLayouts, dynamicYOffsets, animStates)
+                        } else null
+                        hover.hover(hovered)
+                        if (overSeekable != (hovered != null)) overSeekable = hovered != null
                     }
+                    val hoverMoved = hover.step(deltaTime)
+                    if (hoverMoved) hoverFrame++
                     val still = !isPlayingUpdated && !scrollManager.isUserScrolling &&
                         animStates == previousStates && dynamicYOffsets === previousOffsets &&
-                        scrollManager.animScrollY == previousScroll && trailNow == 0L
+                        scrollManager.animScrollY == previousScroll && trailNow == 0L && !hoverMoved
                     stillFrames = if (still) stillFrames + 1 else 0
                 }
             }
@@ -568,6 +626,9 @@ fun LyricsView(
         val maskStops = lyricsMaskStops(canvasHeight, density.density * maskScale)
         val fadeBrush = remember(maskStops) { maskBrush(maskStops) }
         val pinnedFadePx = PINNED_FADE_DP * density.density
+        val scrollbarAlpha by animateFloatAsState(
+            if (pointerInside || holdingThumb) 1f else 0f, tween(SCROLLBAR_FADE_MS), label = "scrollbar",
+        )
 
         // Where each credit row sits below the last line, in content space (before scrolling).
         // Shared by drawing and tapping so a tap always lands on what was drawn.
@@ -593,6 +654,79 @@ fun LyricsView(
                         ),
                     )
                     drawRect(brush = brush, blendMode = BlendMode.DstIn)
+                    // The scrollbar sits over the edge fade, not under it.
+                    if (scrollbarAlpha > 0f) {
+                        scrollbarThumb(scrollManager.scrollbar(contentHeightForDrag[0], size.height), size, density.density)?.let { thumb ->
+                            drawRoundRect(
+                                color = Color.White,
+                                topLeft = thumb.topLeft,
+                                size = thumb.size,
+                                cornerRadius = CornerRadius(thumb.width / 2f),
+                                alpha = scrollbarAlpha * if (holdingThumb) SCROLLBAR_HELD_ALPHA else SCROLLBAR_ALPHA,
+                            )
+                        }
+                    }
+                }
+                .pointerHoverIcon(if (overSeekable || overCredit) PointerIcon.Hand else PointerIcon.Default)
+                .pointerInput(scrollManager, footerLayouts, footerAlignEnd, ripple) {
+                    // The mouse alone: hover, the wheel and the scrollbar. Seen before the drag and
+                    // tap handlers, so a press on the scrollbar is the scrollbar's.
+                    awaitPointerEventScope {
+                        var thumbGrabY = 0f
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull() ?: continue
+                            if (change.type != PointerType.Mouse) continue
+                            val position = change.position
+                            val viewSize = Size(size.width.toFloat(), size.height.toFloat())
+                            when (event.type) {
+                                PointerEventType.Enter, PointerEventType.Move -> {
+                                    if (pointer.holdingThumb) {
+                                        val span = scrollManager.scrollbar(contentHeightForDrag[0], viewSize.height)
+                                        val travel = span?.let { scrollbarTravelPx(it, viewSize.height, density.density) } ?: 0f
+                                        if (span != null && travel > 0f) {
+                                            scrollManager.onScrollbarDrag(-(position.y - thumbGrabY) * span.rangePx / travel, contentHeightForDrag[0])
+                                        }
+                                        thumbGrabY = position.y
+                                        change.consume()
+                                    }
+                                    pointer.moveTo(position.y)
+                                    overCredit = footerProfileAt(footerLayouts, footerRowTops(), position.y - (centerYUpdated + scrollManager.animScrollY) -
+                                        (if (refreshedUpdated) ripple.offset(lineLayoutsUpdated.size) else 0f),
+                                        position.x, footerSlot.startPx, footerSlot.startPx + footerSlot.widthPx, footerAlignEnd) != null
+                                }
+                                PointerEventType.Exit -> if (!pointer.holdingThumb) {
+                                    pointer.leave()
+                                    overCredit = false
+                                }
+                                PointerEventType.Scroll -> {
+                                    val notches = event.changes.fold(0f) { sum, c -> sum + c.scrollDelta.y }
+                                    if (notches != 0f) {
+                                        scrollManager.onWheel(-notches * WHEEL_NOTCH_REFERENCE_PX * scrollManager.pxPerReferencePx, contentHeightForDrag[0])
+                                        event.changes.forEach { it.consume() }
+                                    }
+                                }
+                                PointerEventType.Press -> {
+                                    val thumb = scrollbarThumb(scrollManager.scrollbar(contentHeightForDrag[0], viewSize.height), viewSize, density.density)
+                                    if (thumb != null && pointerInside && scrollbarHit(thumb, position.x, position.y, density.density)) {
+                                        pointer.holdingThumb = true
+                                        holdingThumb = true
+                                        thumbGrabY = position.y
+                                        scrollManager.onDragStart()
+                                        change.consume()
+                                    }
+                                }
+                                PointerEventType.Release -> if (pointer.holdingThumb) {
+                                    pointer.holdingThumb = false
+                                    holdingThumb = false
+                                    scrollManager.onScrollbarRelease()
+                                    change.consume()
+                                }
+                            }
+                            if (pointerInside != pointer.inside) pointerInside = pointer.inside
+                            wake.trySend(Unit)
+                        }
+                    }
                 }
                 .pointerInput(scrollManager) {
                     // Interaction: Dragging.
@@ -628,33 +762,24 @@ fun LyricsView(
                         // Tapping a line seeks to it. Static lyrics are not seekable.
                         if (isStatic) return@detectTapGestures
 
-                        for (i in lineLayouts.indices) {
-                            val layout = lineLayouts[i]
-                            val layoutDynamicY = dynamicYOffsets.getOrElse(i) { layout.yOffset } +
-                                (if (refreshedUpdated) ripple.offset(i) else 0f)
-                            if (adjustedTapY >= layoutDynamicY && adjustedTapY <= layoutDynamicY + layout.height) {
-                                if (layout.isInterlude || layout.isSongwriter) continue
-                                // Folded background vocals sit under the next line: that one takes the tap.
-                                if ((animStates.getOrNull(i)?.presence ?: 1f) < 0.5f) continue
-                                if (layout.line.words.isNotEmpty()) {
-                                    // From the first sung word, which can come after the line's own start.
-                                    val start = layout.line.words.first().startMs
-                                    haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                    onSeekWord(
-                                        if (scrollConfigUpdated.seekFadeCompensation) {
-                                            (start - ScrollConfig.SEEK_FADE_COMPENSATION_MS).coerceAtLeast(0L)
-                                        } else start
-                                    )
-                                    scrollManager.onSeek()
-                                    wake.trySend(Unit)
-                                }
-                                return@detectTapGestures
-                            }
-                        }
+                        // Folded background vocals sit under the next line: that one takes the tap.
+                        val index = seekableLineAt(tapOffset.y, lineLayouts, dynamicYOffsets, animStates) ?: return@detectTapGestures
+                        // From the first sung word, which can come after the line's own start.
+                        val start = lineLayouts[index].line.words.first().startMs
+                        haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                        onSeekWord(
+                            if (scrollConfigUpdated.seekFadeCompensation) {
+                                (start - ScrollConfig.SEEK_FADE_COMPENSATION_MS).coerceAtLeast(0L)
+                            } else start
+                        )
+                        scrollManager.onSeek()
+                        wake.trySend(Unit)
                     }
                 }
         ) {
             val viewScrollOffset = centerY + scrollManager.animScrollY
+            // Reading hoverFrame redraws the lyrics while a hovered line eases, paused or not.
+            val hoverPill = hoverFrame >= 0 && config.scroll.lineHoverBackground && !isStatic
             // Where a line is drawn: with the view, or a little behind it while it catches up.
             val trailTime = trailNow
             fun scrollOffsetFor(index: Int) = if (config.isRefreshedSimple) viewScrollOffset + ripple.offset(index)
@@ -663,11 +788,11 @@ fun LyricsView(
 
             lineLayouts.forEachIndexed { lineIdx, layout ->
                 val scrollOffset = scrollOffsetFor(lineIdx)
-                val lineAnim = animStates.getOrNull(lineIdx) ?: return@forEachIndexed
+                val restingAnim = animStates.getOrNull(lineIdx) ?: return@forEachIndexed
                 val dynamicY = dynamicYOffsets.getOrElse(lineIdx) { layout.yOffset }
 
                 // Optimization: Don't draw invisible lines.
-                if (lineAnim.opacity <= 0.01f) return@forEachIndexed
+                if (restingAnim.opacity <= 0.01f) return@forEachIndexed
 
                 // Optimization: Don't draw lines off-screen.
                 val lineScreenY = scrollOffset + dynamicY
@@ -676,6 +801,15 @@ fun LyricsView(
                 }
 
                 val lineStartX = getLineStartX(layout)
+                // Under the mouse: a pill behind the line, and the line at full opacity, unblurred.
+                val look = hover.look(lineIdx)
+                if (look != null && hoverPill && look.pillAlpha > 0f) {
+                    drawHoverPill(layout, dynamicY + scrollOffset, size.width, look, scrollManager.pxPerReferencePx)
+                }
+                val lineAnim = if (look == null) restingAnim else restingAnim.copy(
+                    opacity = restingAnim.opacity + (1f - restingAnim.opacity) * look.line,
+                    blur = restingAnim.blur * (1f - look.line),
+                )
 
                 when {
                     layout.isInterlude -> drawInterludeGroup(layout, lineAnim, lineStartX, scrollOffset, dynamicY)
@@ -772,4 +906,43 @@ private fun getLineStartX(
     } else {
         layout.contentStartX
     }
+}
+
+/** Where the mouse is over the lyrics, read by the frame loop; touch never moves it. */
+private class LyricsPointer {
+    var inside = false
+        private set
+    var y = 0f
+        private set
+    /** The scrollbar's thumb is held; the pointer may wander off the lyrics meanwhile. */
+    var holdingThumb = false
+
+    fun moveTo(y: Float) {
+        inside = true
+        this.y = y
+    }
+
+    fun leave() {
+        inside = false
+    }
+}
+
+/** A wheel notch scrolls this far against 56px lyrics: about a line, like a browser's 100px. */
+private const val WHEEL_NOTCH_REFERENCE_PX = 100f
+
+private const val SCROLLBAR_FADE_MS = 200
+private const val SCROLLBAR_ALPHA = 0.3f
+private const val SCROLLBAR_HELD_ALPHA = 0.55f
+
+/** The pill behind hovered line [layout], [topPx] down the view, at [look]'s opacity and scale. */
+private fun DrawScope.drawHoverPill(layout: LineLayout, topPx: Float, viewWidthPx: Float, look: HoverLook, pxPerReferencePx: Float) {
+    val rect = hoverPillRect(layout.contentStartX, layout.contentWidth, topPx, layout.height, viewWidthPx)
+    val scaled = Size(rect.width * look.pillScale, rect.height * look.pillScale)
+    drawRoundRect(
+        color = Color.White,
+        topLeft = Offset(rect.center.x - scaled.width / 2f, rect.center.y - scaled.height / 2f),
+        size = scaled,
+        cornerRadius = CornerRadius(hoverPillRadiusPx(pxPerReferencePx) * look.pillScale),
+        alpha = HOVER_PILL_ALPHA * look.pillAlpha,
+    )
 }
