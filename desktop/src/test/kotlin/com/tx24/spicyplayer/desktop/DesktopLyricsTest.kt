@@ -124,7 +124,7 @@ class DesktopLyricsTest {
     }
 
     @Test fun translationFollowsTheSwitchAndTheLanguage() = runBlocking {
-        val s = setup()
+        val s = setup(consented())
         s.lyrics.load(song)
         s.lyrics.settle()
         assertNull(s.lyrics.shown.value?.translation)
@@ -148,7 +148,7 @@ class DesktopLyricsTest {
     }
 
     @Test fun aSongAlreadyInTheLanguageSaysSo() = runBlocking {
-        val s = setup()
+        val s = setup(consented())
         s.translator.outcome = { TranslationOutcome.Skipped("ja") }
         s.lyrics.load(song)
         s.lyrics.settle()
@@ -161,6 +161,75 @@ class DesktopLyricsTest {
         s.lyrics.setTargetLanguage("de")
         s.lyrics.settle()
         assertEquals("Couldn't translate: offline", s.lyrics.options.value.message)
+    }
+
+    /** A store where Google Translate was already allowed. */
+    private fun consented() = InMemorySettingsStore(mapOf(DesktopLyrics.KEY_DISCLOSED to setOf("translation_google")))
+
+    @Test fun translatingFirstAsksAndSendsNothing() = runBlocking {
+        val s = setup()
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        s.lyrics.setTranslating(true)
+        s.lyrics.settle()
+        val request = s.lyrics.options.value.pendingConsent
+        assertEquals("translation_google", request?.id)
+        assertEquals("Turn on translation?", request?.title)
+        assertTrue(request!!.description.startsWith("Translation sends the song's original lyric lines"))
+        assertTrue("Google Translate" in request.description)
+        assertFalse(s.lyrics.options.value.translating)
+        assertTrue(s.translator.targets.isEmpty())
+        assertNull(s.store.getBoolean(DesktopLyrics.KEY_TRANSLATE))
+        // A language change while it waits sends nothing either.
+        s.lyrics.setTargetLanguage("fr")
+        s.lyrics.settle()
+        assertTrue(s.translator.targets.isEmpty())
+    }
+
+    @Test fun allowingTranslatesAndIsRemembered() = runBlocking {
+        val s = setup()
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        s.lyrics.setTranslating(true)
+        s.lyrics.answerConsent("translation_google", allowed = true)
+        s.lyrics.settle()
+        assertNull(s.lyrics.options.value.pendingConsent)
+        assertTrue(s.lyrics.options.value.translating)
+        assertEquals(1, s.translator.targets.size)
+        assertEquals(setOf("translation_google"), s.store.getStringSet(DesktopLyrics.KEY_DISCLOSED))
+
+        // Next run: on, with nothing to ask.
+        val again = setup(s.store)
+        assertTrue(again.lyrics.options.value.translating)
+        again.lyrics.setTranslating(false)
+        again.lyrics.setTranslating(true)
+        assertNull(again.lyrics.options.value.pendingConsent)
+    }
+
+    @Test fun notNowLeavesItOff() = runBlocking {
+        val s = setup()
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        s.lyrics.setTranslating(true)
+        s.lyrics.answerConsent("someone_else", allowed = true)
+        assertEquals("translation_google", s.lyrics.options.value.pendingConsent?.id)
+        s.lyrics.answerConsent("translation_google", allowed = false)
+        s.lyrics.settle()
+        assertNull(s.lyrics.options.value.pendingConsent)
+        assertFalse(s.lyrics.options.value.translating)
+        assertEquals("Translation stays off; nothing was sent.", s.lyrics.options.value.message)
+        assertTrue(s.translator.targets.isEmpty())
+        assertNull(s.store.getStringSet(DesktopLyrics.KEY_DISCLOSED))
+    }
+
+    @Test fun onFromBeforeConsentStaysOffUntilAllowed() = runBlocking {
+        val s = setup(InMemorySettingsStore(mapOf(DesktopLyrics.KEY_TRANSLATE to true)))
+        assertFalse(s.lyrics.options.value.translating)
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        assertTrue(s.translator.targets.isEmpty())
+        // The phone's consent with Genius covers Google alone too.
+        assertTrue(DesktopLyrics.googleConsented(InMemorySettingsStore(mapOf(DesktopLyrics.KEY_DISCLOSED to setOf("translation_google_genius")))))
     }
 
     @Test fun displayModesAreTheSharedSettings() = runBlocking {
@@ -214,7 +283,7 @@ class DesktopLyricsTest {
     }
 
     @Test fun theShownLyricsAreTheOnesTranslated() = runBlocking {
-        val s = setup()
+        val s = setup(consented())
         s.lyrics.load(song)
         s.lyrics.settle()
         val first = s.lyrics.shown.value?.lyrics
