@@ -24,6 +24,7 @@ import com.tx24.spicyplayer.ui.bigscreen.BigScreenState
 import com.tx24.spicyplayer.ui.bigscreen.LocalLyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.LocalTooltipHost
 import com.tx24.spicyplayer.ui.bigscreen.ViewMode
+import com.tx24.spicyplayer.ui.bigscreen.bigScreenOptions
 import com.tx24.spicyplayer.ui.bigscreen.pageKeyOf
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
@@ -279,6 +280,7 @@ fun main(args: Array<String>) {
                     },
                     renderConfig = display.config,
                     blurGlass = !desktopSettings.lowPerformance,
+                    options = desktopSettings.bigScreenOptions(),
                 )
             }
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
