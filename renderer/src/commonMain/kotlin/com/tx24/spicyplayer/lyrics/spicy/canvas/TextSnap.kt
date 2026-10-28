@@ -1,5 +1,7 @@
 package com.tx24.spicyplayer.lyrics.spicy.canvas
 
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -33,4 +35,16 @@ internal expect val UnsnapTextDegrees: Float
 internal inline fun DrawScope.unsnapped(layout: TextLayoutResult, topLeft: Offset, block: DrawScope.() -> Unit) {
     if (UnsnapTextDegrees == 0f) return block()
     rotate(UnsnapTextDegrees, Offset(topLeft.x + layout.size.width / 2f, topLeft.y + layout.size.height / 2f), block)
+}
+
+/**
+ * Draws [layout] as its text-shadow alone: the glyphs blurred by [shadow]'s radius, in its
+ * colour, the platform's own way. False leaves it to the caller's text-shadow ([drawShadowOnly]).
+ */
+internal expect fun DrawScope.drawLyricShadow(layout: TextLayoutResult, shadow: Shadow, topLeft: Offset): Boolean
+
+/** [layout]'s text-shadow alone, with nothing drawn over it: a glow, or an inactive line's distance blur. */
+internal fun DrawScope.drawShadowOnly(layout: TextLayoutResult, shadow: Shadow, topLeft: Offset) {
+    if (drawLyricShadow(layout, shadow, topLeft)) return
+    unsnapped(layout, topLeft) { drawText(layout, color = Color.Transparent, shadow = shadow, topLeft = topLeft) }
 }

@@ -15,7 +15,9 @@ import androidx.compose.ui.graphics.skiaPaint
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.drawText
 import kotlin.math.ceil
+import org.jetbrains.skia.FilterTileMode
 import org.jetbrains.skia.Image
+import org.jetbrains.skia.ImageFilter
 import org.jetbrains.skia.ImageInfo
 import org.jetbrains.skia.Matrix33
 import org.jetbrains.skia.Rect
@@ -35,6 +37,18 @@ internal actual fun DrawScope.drawLyricText(layout: TextLayoutResult, color: Col
     if (!drawMask(layout, topLeft) { it.color = if (alpha.isNaN()) color else color.copy(alpha = color.alpha * alpha) }) {
         drawText(layout, color = color, topLeft = topLeft, alpha = if (alpha.isNaN()) 1f else alpha, shadow = Shadow.None)
     }
+}
+
+/**
+ * Desktop switches for comparing ways of drawing, set as JVM system properties (in the installed
+ * app, a `java-options=-D...` line in its launcher's `.cfg`):
+ * - `spicy.textBlur`: `gpu` (default) blurs a glyph mask with an image filter on the GPU; `cpu`
+ *   draws Compose's text-shadow, which Skia blurs on the CPU; `off` draws blurred text sharp.
+ * - `spicy.textMasks=off`: words drawn as plain text, without glyph masks.
+ */
+internal object DesktopDrawFlags {
+    val textBlur: String = System.getProperty("spicy.textBlur") ?: "gpu"
+    val textMasks: Boolean = System.getProperty("spicy.textMasks") != "off"
 }
 
 /** A layout's glyph coverage, [pad] px of room on every side for glyphs that reach past its box. */
@@ -65,6 +79,7 @@ private var budgetUsed = 0L
 
 /** [layout]'s mask, made now if this frame's budget allows; null when it has to wait. */
 private fun maskOf(layout: TextLayoutResult): Mask? {
+    if (!DesktopDrawFlags.textMasks) return null
     val key = LayoutKey(layout)
     masks[key]?.let { return it }
     val now = System.nanoTime()
@@ -102,6 +117,7 @@ private inline fun DrawScope.drawMask(layout: TextLayoutResult, topLeft: Offset,
     val paint = maskPaint
     paint.shader = null
     paint.skiaPaint.shader = null
+    paint.skiaPaint.imageFilter = null
     paint.color = Color.White
     paint.alpha = 1f
     setUp(paint)
@@ -119,4 +135,33 @@ private inline fun DrawScope.drawMask(layout: TextLayoutResult, topLeft: Offset,
         skia.restore()
     }
     return true
+}
+
+/**
+ * The text-shadow as the glyph mask blurred by an image filter, which the GPU does. Compose's own
+ * text-shadow is a blur mask filter that Skia works out on the CPU for every glyph, at every new
+ * text size and every new blur radius, inside the frame's flush: after a resize, seconds of it.
+ * The radius is the shadow's blur sigma, as Compose hands it to Skia, so the look is the same.
+ */
+internal actual fun DrawScope.drawLyricShadow(layout: TextLayoutResult, shadow: Shadow, topLeft: Offset): Boolean {
+    if (DesktopDrawFlags.textBlur == "cpu") return false
+    val sigma = if (DesktopDrawFlags.textBlur == "off") 0f else shadow.blurRadius
+    val at = topLeft + shadow.offset
+    val drawn = drawMask(layout, at) { paint ->
+        paint.color = shadow.color
+        if (sigma > 0f) paint.skiaPaint.imageFilter = blurFilter(sigma)
+    }
+    // Its mask waits for a later frame's budget: sharp for now, never the CPU blur.
+    if (!drawn) drawText(layout, color = shadow.color, topLeft = at, shadow = Shadow.None)
+    return true
+}
+
+// Blur filters by sigma, rounded to a quarter: radii animate, and each new filter is a native object.
+private val blurFilters = object : LinkedHashMap<Int, ImageFilter>(16, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, ImageFilter>) = size > 64
+}
+
+private fun blurFilter(sigma: Float): ImageFilter {
+    val quarters = (sigma * 4f).toInt().coerceAtLeast(1)
+    return blurFilters.getOrPut(quarters) { ImageFilter.makeBlur(quarters / 4f, quarters / 4f, FilterTileMode.DECAL) }
 }

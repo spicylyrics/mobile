@@ -17,3 +17,6 @@ internal actual fun DrawScope.drawLyricText(layout: TextLayoutResult, color: Col
     drawText(layout, color = color, alpha = alpha, shadow = Shadow.None, topLeft = topLeft)
 
 internal actual val UnsnapTextDegrees = 0f
+
+// The text-shadow as Compose draws it.
+internal actual fun DrawScope.drawLyricShadow(layout: TextLayoutResult, shadow: Shadow, topLeft: Offset): Boolean = false

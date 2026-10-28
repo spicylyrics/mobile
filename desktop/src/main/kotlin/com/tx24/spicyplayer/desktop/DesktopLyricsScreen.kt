@@ -33,6 +33,8 @@ import com.tx24.spicyplayer.ui.lyrics.LyricsOverlays
 import com.tx24.spicyplayer.ui.lyrics.LyricsScreenContext
 import com.tx24.spicyplayer.ui.lyrics.LyricsScreenHost
 import com.tx24.spicyplayer.ui.lyrics.ScreenKeys
+import com.tx24.spicyplayer.ui.nowplaying.BasicNowPlayingPlatform
+import com.tx24.spicyplayer.ui.nowplaying.NowPlayingPlatform
 import com.tx24.spicyplayer.ui.nowplaying.PlaybackTransport
 import com.tx24.spicyplayer.ui.settings.QuickScreen
 import kotlin.math.roundToInt
@@ -179,6 +181,7 @@ const val SCALE_SETTLE_MS = 250L
  */
 @Composable
 fun WarmOtherLayout(widthDp: Dp, heightDp: Dp, quiet: Boolean, content: @Composable () -> Unit) {
+    if (!DesktopSwitches.warmUp) return
     var composing by remember { mutableStateOf(false) }
     var done by remember { mutableStateOf(false) }
     LaunchedEffect(quiet, done) {
@@ -207,3 +210,21 @@ fun WarmOtherLayout(widthDp: Dp, heightDp: Dp, quiet: Boolean, content: @Composa
 
 /** How long it stays composed: long enough for its lyrics to lay out and a few frames to draw. */
 const val WARM_UP_FOR_MS = 2_500L
+
+/**
+ * Switches for comparing on the installed app without a rebuild, set as JVM system properties (a
+ * `java-options=-D...` line in the launcher's `.cfg`). The renderer has its own (`spicy.textBlur`,
+ * `spicy.textMasks`).
+ * - `spicy.warmUp=off`: no out-of-sight composition of the other layout.
+ * - `spicy.glass=off`: the glass and pop-ups don't blur the page behind them.
+ */
+object DesktopSwitches {
+    val warmUp: Boolean = System.getProperty("spicy.warmUp") != "off"
+    val glass: Boolean = System.getProperty("spicy.glass") != "off"
+}
+
+/** The now-playing services on the desktop: the basic ones, without blur where [DesktopSwitches.glass] is off. */
+val desktopNowPlayingPlatform: NowPlayingPlatform =
+    if (DesktopSwitches.glass) BasicNowPlayingPlatform() else object : BasicNowPlayingPlatform() {
+        override val blursLayers: Boolean get() = false
+    }

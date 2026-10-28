@@ -41,6 +41,7 @@ import com.tx24.spicyplayer.ui.bigscreen.ScrollToActiveButton
 import com.tx24.spicyplayer.ui.bigscreen.ViewMode
 import com.tx24.spicyplayer.ui.bigscreen.onPlaybackKey
 import com.tx24.spicyplayer.ui.lyrics.LyricsOverlays
+import com.tx24.spicyplayer.ui.nowplaying.LocalNowPlayingPlatform
 import com.tx24.spicyplayer.ui.lyrics.LyricsScreen
 import com.tx24.spicyplayer.ui.lyrics.LyricsScreenState
 import com.tx24.spicyplayer.ui.bigscreen.bigScreenOptions
@@ -307,6 +308,7 @@ fun main(args: Array<String>) {
                 LocalLyricsActions provides songLyrics,
                 LocalPopupPalette provides popupPalette,
                 LocalUiAnimations provides (desktopSettings.uiAnimations && !desktopSettings.lowPerformance),
+                LocalNowPlayingPlatform provides desktopNowPlayingPlatform,
             ) {
                 val shown by screen.collectAsState()
                 val translated by songLyrics.shown.collectAsState()
