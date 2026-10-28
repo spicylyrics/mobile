@@ -94,4 +94,13 @@ class DesktopBackgroundsTest {
         DesktopImageCache(dir).bytes(url)
         assertEquals(0L, file.lastModified())
     }
+
+    @Test
+    fun `a cache write replaces the old copy and leaves no temporary file`() {
+        val dir = Files.createTempDirectory("bg").toFile()
+        val file = File(dir, "a.img").apply { writeBytes(byteArrayOf(1, 1, 1, 1)) }
+        writeAtomically(file, byteArrayOf(9, 9))
+        assertArrayEquals(byteArrayOf(9, 9), file.readBytes())
+        assertEquals(listOf("a.img"), dir.list()!!.toList())
+    }
 }
