@@ -46,6 +46,12 @@ class LyricsActionsTest {
 
         assertEquals("Under each line", romanizationSummary(LyricsOptions(romanizationMode = RomanizationMode.UnderLine)))
 
+        assertEquals("None here", blendSummary(LyricsOptions()))
+        val blends = listOf(BlendChoice("x", "QQ Music timing", false), BlendChoice("y", "Kugou timing", false))
+        assertEquals("Off", blendSummary(LyricsOptions(blends = blends)))
+        assertEquals("Kugou timing", blendSummary(LyricsOptions(blends = blends.map { it.copy(on = it.id == "y") })))
+        assertEquals("2 on", blendSummary(LyricsOptions(blends = blends.map { it.copy(on = true) })))
+
         assertEquals("Automatic", spotifySummary(LyricsOptions()))
         assertEquals("Set by hand · 4uLU6hMCjMI75M1A2tKUQC", spotifySummary(LyricsOptions(spotifyTrackId = "4uLU6hMCjMI75M1A2tKUQC")))
     }

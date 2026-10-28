@@ -3,6 +3,7 @@ package com.tx24.spicyplayer.desktop
 import androidx.compose.runtime.snapshotFlow
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
+import com.tx24.spicyplayer.network.data.LyricsBlendDefinition
 import com.tx24.spicyplayer.network.data.LyricsSourceDescriptor
 import com.tx24.spicyplayer.network.data.ProviderResult
 import com.tx24.spicyplayer.network.data.RemoteLyricsQuality
@@ -21,6 +22,7 @@ import com.tx24.spicyplayer.translation.TranslationPreferences
 import com.tx24.spicyplayer.translation.TranslationProvider
 import com.tx24.spicyplayer.translation.TranslationResult
 import com.tx24.spicyplayer.translation.languageCode
+import com.tx24.spicyplayer.ui.bigscreen.BlendChoice
 import com.tx24.spicyplayer.ui.bigscreen.LanguageChoice
 import com.tx24.spicyplayer.ui.bigscreen.LyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.LyricsOptions
@@ -52,6 +54,12 @@ interface SongLookup {
      * alone; with [spotifyId], matched to that Spotify track.
      */
     suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, spotifyId: String? = null): LyricsLookup.Found
+
+    /** The blends that can be switched on, in the menu's order. */
+    val blends: List<LyricsBlendDefinition> get() = emptyList()
+
+    /** Builds the blends in [ids] from now on, and no others. */
+    fun useBlends(ids: Set<String>) = Unit
 }
 
 /** Translates a song's lyrics into a language. */
@@ -86,6 +94,12 @@ class DesktopLyrics(
             romanizationMode = settings.romanizationMode,
         ),
     )
+
+    init {
+        val on = storedBlends()
+        lookup.useBlends(on)
+        optionsState.update { it.copy(blends = blendChoices(lookup.blends, on)) }
+    }
     override val options: StateFlow<LyricsOptions> = optionsState.asStateFlow()
 
     private var track: Track? = null
@@ -133,6 +147,19 @@ class DesktopLyrics(
         store.remove(spotifyKey(track))
         rematch(track, null)
     }
+
+    override fun setBlend(id: String, on: Boolean) {
+        if (lookup.blends.none { it.id == id }) return
+        val ids = if (on) storedBlends() + id else storedBlends() - id
+        if (ids.isEmpty()) store.remove(KEY_BLENDS) else store.putString(KEY_BLENDS, ids.sorted().joinToString(","))
+        lookup.useBlends(ids)
+        optionsState.update { it.copy(blends = blendChoices(lookup.blends, ids), message = null) }
+        // Blends are built from the answers already in hand, so nothing is asked twice.
+        track?.let(::lookUp)
+    }
+
+    private fun storedBlends(): Set<String> =
+        store.getString(KEY_BLENDS)?.split(',')?.filter(String::isNotBlank)?.toSet().orEmpty()
 
     /** The answers so far were for the old match, so every source is asked again. */
     private fun rematch(track: Track, spotifyId: String?) {
@@ -260,6 +287,8 @@ class DesktopLyrics(
     companion object {
         const val KEY_TRANSLATE = "translate"
         const val KEY_TARGET = "targetLanguage"
+        /** The blends switched on, comma-separated. */
+        const val KEY_BLENDS = "blends"
         private const val SOURCE_PREFIX = "source:"
         private const val SPOTIFY_PREFIX = "spotify:"
 
@@ -288,6 +317,10 @@ class DesktopLyrics(
         fun defaultStore(): FileSettingsStore = sharedStore
     }
 }
+
+/** Each blend [blends] offers, and whether it is in [on]. */
+fun blendChoices(blends: List<LyricsBlendDefinition>, on: Set<String>): List<BlendChoice> =
+    blends.map { BlendChoice(it.id, it.displayName.removePrefix("Blend: "), it.id in on) }
 
 /** The sources as the menu lists them, with what each had for the song in [known]. */
 fun sourceChoices(sources: List<LyricsSourceDescriptor>, known: Map<String, ProviderResult>, shownId: String?): List<LyricsSourceChoice> =

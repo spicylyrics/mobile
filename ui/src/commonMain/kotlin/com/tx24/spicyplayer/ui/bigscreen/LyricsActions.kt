@@ -17,6 +17,9 @@ data class LyricsSourceChoice(
     val shown: Boolean,
 )
 
+/** A blend: one source's word timing laid under the lines, switched on or off for every song. */
+data class BlendChoice(val id: String, val name: String, val on: Boolean)
+
 /** A language a translation can go into. */
 data class LanguageChoice(val code: String, val name: String)
 
@@ -32,6 +35,8 @@ data class LyricsOptions(
     val languages: List<LanguageChoice> = emptyList(),
     val translationMode: TranslationMode = TranslationMode.UnderLine,
     val romanizationMode: RomanizationMode = RomanizationMode.Replace,
+    /** The blends that can be built, each on or off. */
+    val blends: List<BlendChoice> = emptyList(),
     /** The Spotify track this song is matched to by hand, or null for the automatic match. */
     val spotifyTrackId: String? = null,
     /** How the last choice went, when it needs saying ("Translating…", a source with nothing). */
@@ -62,6 +67,9 @@ interface LyricsActions {
 
     /** Back to the automatic Spotify match for this song. */
     fun clearSpotifyLink() = Unit
+
+    /** Builds blend [id] for every song from now on, or stops. */
+    fun setBlend(id: String, on: Boolean) = Unit
 }
 
 /** The page's lyrics choices; none leaves the More menu's entries unavailable. */
@@ -104,5 +112,15 @@ fun translationSummary(options: LyricsOptions): String {
 }
 
 fun romanizationSummary(options: LyricsOptions): String = options.romanizationMode.label
+
+fun blendSummary(options: LyricsOptions): String {
+    val on = options.blends.count { it.on }
+    return when {
+        options.blends.isEmpty() -> "None here"
+        on == 0 -> "Off"
+        on == 1 -> options.blends.first { it.on }.name
+        else -> "$on on"
+    }
+}
 
 fun spotifySummary(options: LyricsOptions): String = options.spotifyTrackId?.let { "Set by hand · $it" } ?: "Automatic"

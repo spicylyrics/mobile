@@ -34,16 +34,16 @@ import com.tx24.spicyplayer.translation.TranslationMode
 import com.tx24.spicyplayer.ui.theme.SpicyColors
 
 /** Which of the More menu's entries is open. */
-internal enum class MoreEntry { Source, Spotify, Translation, Romanization }
+internal enum class MoreEntry { Source, Blends, Spotify, Translation, Romanization }
 
 /**
- * The More menu's entries: the lyrics source, the Spotify match, translation, and romanization style, each opening
+ * The More menu's entries: the lyrics source, blends, the Spotify match, translation, and romanization style, each opening
  * in place onto its choices. Without [actions] they show as unavailable.
  */
 @Composable
 internal fun MoreMenuEntries(actions: LyricsActions?) {
     if (actions == null) {
-        for (entry in listOf("Lyrics source", "Spotify match", "Translate lyrics", "Romanization style")) {
+        for (entry in listOf("Lyrics source", "Blends", "Spotify match", "Translate lyrics", "Romanization style")) {
             EntryHeader(entry, "Not available here", open = false, enabled = false) {}
         }
         return
@@ -58,6 +58,14 @@ internal fun MoreMenuEntries(actions: LyricsActions?) {
             for (row in sourceRows(options)) {
                 Choice(row.title, row.detail, row.selected, row.enabled) { actions.useSource(row.id) }
             }
+        }
+    }
+
+    EntryHeader("Blends", blendSummary(options), open == MoreEntry.Blends) { toggle(MoreEntry.Blends) }
+    if (open == MoreEntry.Blends) {
+        SectionLabel("Word timing from one source, lines from the best")
+        for (blend in options.blends) {
+            Choice(blend.name, if (blend.on) "On" else "Off", selected = blend.on) { actions.setBlend(blend.id, !blend.on) }
         }
     }
 

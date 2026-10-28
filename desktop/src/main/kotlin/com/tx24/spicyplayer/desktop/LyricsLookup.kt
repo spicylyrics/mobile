@@ -4,6 +4,8 @@ import com.google.gson.Gson
 import com.tx24.spicyplayer.lyrics.LyricsNotices
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.RemoteLyricsAdapter
+import com.tx24.spicyplayer.network.data.LyricsBlendDefinition
+import com.tx24.spicyplayer.network.data.LyricsBlends
 import com.tx24.spicyplayer.network.data.LyricsLookupRequest
 import com.tx24.spicyplayer.network.data.LyricsSource
 import com.tx24.spicyplayer.network.data.LyricsSourceDescriptor
@@ -28,11 +30,27 @@ import retrofit2.converter.gson.GsonConverterFactory
 class LyricsLookup(clientKey: String = spicyLyricsKey()) : SongLookup {
     private val providers = providers(clientKey)
     private val source = RemoteLyricsSource(providers, ProviderCooldownTracker())
-    private val ranking = SourceRanking(providers.map { it.descriptor }, RemoteLyricsPolicy())
+    private val descriptors = providers.map { it.descriptor }
 
-    override val sources: List<LyricsSourceDescriptor> = providers.map { it.descriptor }
-        .filter { ranking.asked(it.id) }
-        .sortedBy { ranking.bestPlace(it.id) ?: SourceRanking.AFTER_ALL }
+    @Volatile private var policy = RemoteLyricsPolicy()
+    @Volatile private var ranking = SourceRanking(descriptors, policy)
+
+    override val sources: List<LyricsSourceDescriptor>
+        get() {
+            val ranking = ranking
+            val blends = ranking.liveBlends.map(LyricsBlendDefinition::descriptor)
+            return (descriptors.filter { ranking.asked(it.id) } + blends)
+                .sortedBy { ranking.bestPlace(it.id) ?: SourceRanking.AFTER_ALL }
+        }
+
+    override val blends: List<LyricsBlendDefinition> = LyricsBlends.ALL.filter { blend ->
+        ranking.origins.any { blend.id in it.providerIds }
+    }
+
+    override fun useBlends(ids: Set<String>) {
+        policy = blendPolicy(SourceRanking(descriptors, RemoteLyricsPolicy()), ids)
+        ranking = SourceRanking(descriptors, policy)
+    }
 
     val keyHint = if (clientKey.isBlank()) "none" else "sl_pk_..." + clientKey.takeLast(4)
 
@@ -49,7 +67,7 @@ class LyricsLookup(clientKey: String = spicyLyricsKey()) : SongLookup {
 
     private suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, romanize: Boolean, spotifyId: String? = null): Found {
         val request = LyricsLookupRequest(track.artist, track.title, track.album, (track.durationMs / 1000).toInt(), spotifyTrackId = spotifyId)
-        val policy = sourceId?.let(::only) ?: RemoteLyricsPolicy()
+        val policy = sourceId?.let(::only) ?: policy
         val result = runCatching { source.resolveLyrics(request, policy, known = known) }.getOrElse { return Found(LyricsNotices.lookupFailed(it), null) }
         if (result !is RemoteLyricsResolution.Found) {
             return Found(LyricsNotices.noLyrics(result.attempts) { id -> providers.firstOrNull { it.descriptor.id == id }?.descriptor?.displayName ?: id }, result)
@@ -59,16 +77,33 @@ class LyricsLookup(clientKey: String = spicyLyricsKey()) : SongLookup {
         return Found(lyrics, result)
     }
 
-    /** Every source in its usual place, with only [sourceId]'s provider switched on. */
-    private fun only(sourceId: String) = RemoteLyricsPolicy(
-        sourceOrder = ranking.origins.map { it.id },
-        pairs = ranking.origins.flatMap { origin ->
-            origin.providerIds.map { SourcePair(origin.id, it).key to (it == sourceId) }
-        }.toMap(),
-    )
+    /**
+     * Every source in its usual place, with only [sourceId]'s provider switched on; for a blend,
+     * its donors too, since it is built from their answers.
+     */
+    private fun only(sourceId: String): RemoteLyricsPolicy {
+        val ranking = ranking
+        val on = setOf(sourceId) + LyricsBlends.byId(sourceId)?.donorIds.orEmpty()
+        return RemoteLyricsPolicy(
+            sourceOrder = ranking.origins.map { it.id },
+            pairs = ranking.origins.flatMap { origin ->
+                origin.providerIds.map { SourcePair(origin.id, it).key to (it in on) }
+            }.toMap(),
+        )
+    }
 
     data class Found(val lyrics: LyricsState, val resolution: RemoteLyricsResolution?)
 }
+
+/**
+ * The usual policy with the blends in [ids] switched on wherever [ranking] lists them (in the
+ * services they draw on, just above their donors); every other blend stays off.
+ */
+fun blendPolicy(ranking: SourceRanking, ids: Set<String>): RemoteLyricsPolicy = RemoteLyricsPolicy(
+    pairs = ranking.origins.flatMap { origin ->
+        origin.providerIds.filter { it in ids && LyricsBlends.byId(it) != null }.map { SourcePair(origin.id, it).key to true }
+    }.toMap(),
+)
 
 private fun providers(clientKey: String): Set<RemoteLyricsProvider> {
     val client = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(12, TimeUnit.SECONDS).build()

@@ -4,6 +4,7 @@ import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.TimedLine
 import com.tx24.spicyplayer.lyrics.TimedWord
 import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
+import com.tx24.spicyplayer.network.data.LyricsBlends
 import com.tx24.spicyplayer.network.data.LyricsSourceDescriptor
 import com.tx24.spicyplayer.network.data.ProviderResult
 import com.tx24.spicyplayer.network.data.RemoteLyricsPayload
@@ -46,6 +47,12 @@ class DesktopLyricsTest {
         val spotifyIds = mutableListOf<String?>()
         /** What [known] held when each lookup started. */
         val knownAtStart = mutableListOf<Set<String>>()
+        override val blends = LyricsBlends.ALL.take(2)
+        var blendsOn: Set<String>? = null
+
+        override fun useBlends(ids: Set<String>) {
+            blendsOn = ids
+        }
 
         override suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, spotifyId: String?): LyricsLookup.Found {
             asked += sourceId
@@ -174,6 +181,40 @@ class DesktopLyricsTest {
         assertNull(s.store.getString(DesktopLyrics.spotifyKey(song)))
         assertNull(s.lyrics.options.value.spotifyTrackId)
         assertEquals("Enter a valid Spotify track ID or URL", s.lyrics.options.value.message)
+    }
+
+    @Test fun blendsAreSwitchedForEverySongAndKept() = runBlocking {
+        val s = setup()
+        val (first, second) = LyricsBlends.ALL.take(2).map { it.id }
+        assertEquals(emptySet<String>(), s.lookup.blendsOn)
+        assertEquals(listOf(false, false), s.lyrics.options.value.blends.map { it.on })
+        assertEquals("QQ Music timing", s.lyrics.options.value.blends.first().name)
+
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        val lookups = s.lookup.asked.size
+        s.lyrics.setBlend(first, true)
+        s.lyrics.settle()
+        assertEquals(setOf(first), s.lookup.blendsOn)
+        assertEquals(listOf(true, false), s.lyrics.options.value.blends.map { it.on })
+        assertEquals(first, s.store.getString(DesktopLyrics.KEY_BLENDS))
+        // Looked up again, over the answers already in hand.
+        assertEquals(lookups + 1, s.lookup.asked.size)
+        assertEquals(setOf("a", "b"), s.lookup.knownAtStart.last())
+
+        // An unknown blend changes nothing.
+        s.lyrics.setBlend("blend_nope", true)
+        assertEquals(setOf(first), s.lookup.blendsOn)
+
+        // Another session of the app starts with them on.
+        val again = setup(s.store)
+        assertEquals(setOf(first), again.lookup.blendsOn)
+        again.lyrics.setBlend(second, true)
+        again.lyrics.setBlend(first, false)
+        assertEquals(setOf(second), again.lookup.blendsOn)
+        assertEquals(second, again.store.getString(DesktopLyrics.KEY_BLENDS))
+        again.lyrics.setBlend(second, false)
+        assertNull(again.store.getString(DesktopLyrics.KEY_BLENDS))
     }
 
     @Test fun aPickedSourceWithNothingFallsBackAndSaysSo() = runBlocking {
