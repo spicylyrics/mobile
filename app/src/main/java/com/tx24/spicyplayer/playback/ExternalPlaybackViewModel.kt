@@ -863,6 +863,9 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         }
     }
 
+    /** The followed session's token, for a screen that reads more of the session than this does. */
+    fun followedSessionToken(): MediaSession.Token? = controller?.sessionToken
+
     /** Presses one of the player's own buttons (see [PlayerUiState.customActions]). */
     fun sendCustomAction(action: String) {
         val active = controller ?: return

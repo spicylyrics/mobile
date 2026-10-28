@@ -1,10 +1,12 @@
 package com.tx24.spicyplayer.ui.nowplaying
 
+import android.media.session.MediaSession
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,17 +27,17 @@ import com.tx24.spicyplayer.ui.bigscreen.PlayerCapabilities
 /**
  * What the big-screen page can offer on Android: the transport always goes to the player (it
  * says itself when it refuses a skip), seeking where the session allows it, the floating window
- * where the device has one, and no fullscreen, since the app already fills its window.
+ * where the device has one, no fullscreen, since the app already fills its window, and shuffle
+ * and repeat where the session says where they stand ([modes]).
  */
-fun androidCapabilities(canSeek: Boolean, pictureInPicture: Boolean): PlayerCapabilities = PlayerCapabilities(
+fun androidCapabilities(canSeek: Boolean, pictureInPicture: Boolean, modes: PlaybackModes = PlaybackModes()): PlayerCapabilities = PlayerCapabilities(
     playPause = true,
     skipNext = true,
     skipPrevious = true,
     seek = canSeek,
     fullscreen = false,
-    // The platform session reports neither mode, so the page can't show where they stand.
-    shuffle = false,
-    repeat = false,
+    shuffle = modes.shuffle != null,
+    repeat = modes.repeat != null,
     pictureInPicture = pictureInPicture,
 )
 
@@ -43,11 +45,13 @@ fun androidCapabilities(canSeek: Boolean, pictureInPicture: Boolean): PlayerCapa
  * The big-screen page on a tablet, DeX or an unfolded foldable. The controls follow the phone's
  * own idle timer ([controlsShown]): every touch on the page counts ([onTouch]) without being
  * taken from what's under it. Back steps out of cinema before it leaves the app. The More menu's
- * lyrics choices go through [lyricsActions].
+ * lyrics choices go through [lyricsActions]. Shuffle and repeat come from the followed session
+ * ([sessionToken]), watched only while the page is shown.
  */
 @Composable
 internal fun AndroidBigScreenPage(
     nowPlaying: NowPlaying,
+    sessionToken: MediaSession.Token?,
     canSeek: Boolean,
     pictureInPicture: Boolean,
     lyrics: LyricsState,
@@ -62,6 +66,8 @@ internal fun AndroidBigScreenPage(
     lyricsView: @Composable (modifier: Modifier, romanize: Boolean, activeLineTopPx: Float?, renderConfig: RenderConfig) -> Unit,
     lyricsActions: LyricsActions? = null,
 ) {
+    val (withModes, modesFlow) = rememberSessionModes(nowPlaying, sessionToken)
+    val modes by modesFlow.collectAsState()
     var page by remember { mutableStateOf(BigScreenState(romanized = initialRomanized)) }
     BackHandler(enabled = page.immersive) { page = page.back() }
     val actions = remember(onOpenSettings, onEnterPip) {
@@ -82,8 +88,8 @@ internal fun AndroidBigScreenPage(
         CompositionLocalProvider(LocalLyricsActions provides lyricsActions) {
         BigScreenPage(
             state = page,
-            nowPlaying = nowPlaying,
-            capabilities = androidCapabilities(canSeek, pictureInPicture),
+            nowPlaying = withModes,
+            capabilities = androidCapabilities(canSeek, pictureInPicture, modes),
             lyrics = lyrics,
             actions = actions,
             noticeActions = noticeActions,
