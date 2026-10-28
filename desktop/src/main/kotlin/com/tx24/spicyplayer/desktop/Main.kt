@@ -55,6 +55,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.jetbrains.skia.Image
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Where Spotify's audio analyses are kept between runs. */
 private val cacheDir = File(System.getenv("LOCALAPPDATA") ?: System.getProperty("java.io.tmpdir"), "Spicy Lyrics/cache")
@@ -90,14 +91,16 @@ fun main(args: Array<String>) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var beats: Job? = null
     val nowPlaying = DesktopNowPlaying(source, session)
-    val songLyrics = DesktopLyrics(lookup, GoogleSongTranslator(File(cacheDir, "translations")), desktopSettings, DesktopLyrics.defaultStore(), scope)
+    // The menu drives the lyrics from the UI thread, so the media updates hand over to it too.
+    val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    val songLyrics = DesktopLyrics(lookup, GoogleSongTranslator(File(cacheDir, "translations")), desktopSettings, DesktopLyrics.defaultStore(), uiScope)
         .also { it.followSettings() }
     scope.launch {
         songLyrics.shown.collect { shown -> if (shown != null) screen.value = Screen.Track(shown.track, shown.lyrics) }
     }
     val capabilities = capabilitiesOf(source.capabilities)
 
-    fun lookUp(track: Track) = songLyrics.load(track)
+    suspend fun lookUp(track: Track) = withContext(Dispatchers.Main) { songLyrics.load(track) }
 
     Runtime.getRuntime().addShutdownHook(Thread { source.close() })
     scope.launch {
@@ -120,7 +123,7 @@ fun main(args: Array<String>) {
                 }
             }
         }
-        songLyrics.clear()
+        withContext(Dispatchers.Main) { songLyrics.clear() }
         screen.value = Screen.Waiting
         nowPlaying.clear()
     }
@@ -169,7 +172,7 @@ fun main(args: Array<String>) {
                 val noticeActions = remember {
                     desktopNoticeActions(
                         track = { session.track },
-                        onRetry = { session.track?.let { lookUp(it) } },
+                        onRetry = { session.track?.let { songLyrics.load(it) } },
                         report = { session.track?.let { "Track: ${it.title} by ${it.artist}\nPlayer: ${it.app}" }.orEmpty() },
                     )
                 }

@@ -20,6 +20,7 @@ import com.tx24.spicyplayer.network.data.spotify.SharedSpotify
 import com.tx24.spicyplayer.network.service.LyricsService
 import java.io.File
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -49,7 +50,13 @@ class LyricsLookup(clientKey: String = spicyLyricsKey()) : SongLookup {
     private suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, romanize: Boolean): Found {
         val request = LyricsLookupRequest(track.artist, track.title, track.album, (track.durationMs / 1000).toInt())
         val policy = sourceId?.let(::only) ?: RemoteLyricsPolicy()
-        val result = runCatching { source.resolveLyrics(request, policy, known = known) }.getOrElse { return Found(LyricsNotices.lookupFailed(it), null) }
+        val result = try {
+            source.resolveLyrics(request, policy, known = known)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return Found(LyricsNotices.lookupFailed(e), null)
+        }
         if (result !is RemoteLyricsResolution.Found) {
             return Found(LyricsNotices.noLyrics(result.attempts) { id -> providers.firstOrNull { it.descriptor.id == id }?.descriptor?.displayName ?: id }, result)
         }
