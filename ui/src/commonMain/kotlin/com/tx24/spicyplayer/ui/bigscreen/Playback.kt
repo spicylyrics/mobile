@@ -20,6 +20,8 @@ data class PlayerCapabilities(
     val pictureInPicture: Boolean = false,
     val shuffle: Boolean = false,
     val repeat: Boolean = false,
+    /** A Lyrics Manager to open from the page, and its button turned on (`lyricsManagerButton`). */
+    val lyricsManager: Boolean = false,
 )
 
 /** A button in the cover's playback row; shuffle and repeat sit at its ends ([playbackToggles]). */

@@ -129,6 +129,7 @@ class BigScreenActions(
     val onState: (BigScreenState) -> Unit,
     val onOpenSettings: () -> Unit,
     val onEnterPip: () -> Unit = {},
+    val onOpenLyricsManager: () -> Unit = {},
 )
 
 /**
@@ -604,6 +605,7 @@ private fun ViewControlsRow(env: PageEnv, size: Dp, modifier: Modifier) {
                                 ViewControl.More -> env.onMenu(true)
                                 ViewControl.Settings -> env.actions.onOpenSettings()
                                 ViewControl.PictureInPicture -> env.actions.onEnterPip()
+                                ViewControl.LyricsManager -> env.actions.onOpenLyricsManager()
                                 else -> env.actions.onState(state.click(control, env.widthDp, env.heightDp, env.capabilities))
                             }
                         },
@@ -634,6 +636,7 @@ private fun ControlGlyph(control: ViewControl, env: PageEnv, modifier: Modifier)
         ViewControl.More -> MoreGlyph(modifier)
         ViewControl.PictureInPicture -> PictureInPictureGlyph(modifier)
         ViewControl.Settings -> SettingsGlyph(modifier)
+        ViewControl.LyricsManager -> LyricsManagerGlyph(modifier)
         ViewControl.Close -> CloseGlyph(modifier)
     }
 }

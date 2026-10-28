@@ -235,6 +235,12 @@ open class CommonAppSettings(
      * settings and Settings → This song, and few open it often.
      */
     var lyricsManagerButton by boolean("lyricsManagerButton", false)
+    /** The big-screen page's now-playing bar, open on the page; closed until the user opens it. */
+    var nowBarOpen by boolean("nowBarOpen", false)
+    /** The big-screen page's now-playing bar on the right of the lyrics instead of the left. */
+    var nowBarOnRight by boolean("nowBarOnRight", false)
+    /** The big-screen page's compact button: following the window, or held compact or side by side. */
+    var compactView by enum("compactView", CompactView.Auto)
     /** A floating button that opens the queue (it's always in quick settings); shown while the player shares one. */
     var queueButton by boolean("queueButton", false)
     /** A floating button that opens the song's lyrics source choice (it's always in quick settings). */
@@ -369,6 +375,15 @@ enum class AmbientDelay(val label: String, val millis: Long) {
 
 /** Which side the now-playing panel sits on in landscape. */
 enum class PanelSide { Left, Right }
+
+/** The big-screen page's compact choice: [Auto] follows the window; [override] is the page's own form of it. */
+enum class CompactView(val override: Boolean?) {
+    Auto(null), Compact(true), Side(false);
+
+    companion object {
+        fun of(override: Boolean?): CompactView = entries.first { it.override == override }
+    }
+}
 
 /** Where the song's release year shows beside the artists, if at all. */
 enum class ReleaseYearPosition(val label: String) { Off("Off"), Left("Left"), Right("Right") }
