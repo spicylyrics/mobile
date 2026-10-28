@@ -25,11 +25,17 @@ import org.jetbrains.skia.Surface
 /** 1/1000 rad: twice Skia's axis tolerance, and under 0.15 px of tilt across a 300 px word. */
 internal actual val UnsnapTextDegrees = (0.001 * 180.0 / kotlin.math.PI).toFloat()
 
-internal actual fun DrawScope.drawLyricText(layout: TextLayoutResult, brush: Brush, topLeft: Offset) =
-    drawMask(layout, topLeft) { brush.applyTo(Size(layout.size.width.toFloat(), layout.size.height.toFloat()), it, 1f) }
+internal actual fun DrawScope.drawLyricText(layout: TextLayoutResult, brush: Brush, topLeft: Offset) {
+    if (!drawMask(layout, topLeft) { brush.applyTo(Size(layout.size.width.toFloat(), layout.size.height.toFloat()), it, 1f) }) {
+        drawText(layout, brush = brush, topLeft = topLeft, shadow = Shadow.None)
+    }
+}
 
-internal actual fun DrawScope.drawLyricText(layout: TextLayoutResult, color: Color, topLeft: Offset, alpha: Float) =
-    drawMask(layout, topLeft) { it.color = if (alpha.isNaN()) color else color.copy(alpha = color.alpha * alpha) }
+internal actual fun DrawScope.drawLyricText(layout: TextLayoutResult, color: Color, topLeft: Offset, alpha: Float) {
+    if (!drawMask(layout, topLeft) { it.color = if (alpha.isNaN()) color else color.copy(alpha = color.alpha * alpha) }) {
+        drawText(layout, color = color, topLeft = topLeft, alpha = if (alpha.isNaN()) 1f else alpha, shadow = Shadow.None)
+    }
+}
 
 /** A layout's glyph coverage, [pad] px of room on every side for glyphs that reach past its box. */
 private class Mask(val image: Image, val pad: Int)
@@ -47,7 +53,33 @@ private val masks = object : LinkedHashMap<LayoutKey, Mask>(64, 0.75f, true) {
 }
 private val maskPaint = Paint()
 
-private fun maskOf(layout: TextLayoutResult): Mask = masks.getOrPut(LayoutKey(layout)) {
+/**
+ * How long a frame may spend making new masks. Fresh layouts (a resize, a new text size) need one
+ * per word on screen at once; past this, the rest are drawn as plain text for a frame or two and
+ * get their masks over the next frames, rather than holding one frame for all of them.
+ */
+private const val MASK_BUDGET_NS = 6_000_000L
+private const val FRAME_NS = 16_000_000L
+private var budgetSince = 0L
+private var budgetUsed = 0L
+
+/** [layout]'s mask, made now if this frame's budget allows; null when it has to wait. */
+private fun maskOf(layout: TextLayoutResult): Mask? {
+    val key = LayoutKey(layout)
+    masks[key]?.let { return it }
+    val now = System.nanoTime()
+    if (now - budgetSince > FRAME_NS) {
+        budgetSince = now
+        budgetUsed = 0L
+    }
+    if (budgetUsed >= MASK_BUDGET_NS) return null
+    return makeMask(layout).also {
+        masks[key] = it
+        budgetUsed += System.nanoTime() - now
+    }
+}
+
+private fun makeMask(layout: TextLayoutResult): Mask {
     val pad = ceil(layout.size.height / 2f).toInt()
     val width = layout.size.width + 2 * pad
     val height = layout.size.height + 2 * pad
@@ -56,13 +88,17 @@ private fun maskOf(layout: TextLayoutResult): Mask = masks.getOrPut(LayoutKey(la
         surface.canvas.asComposeCanvas(), Size(width.toFloat(), height.toFloat())) {
         drawText(layout, color = Color.White, shadow = Shadow.None, topLeft = Offset(pad.toFloat(), pad.toFloat()))
     }
-    Mask(surface.makeImageSnapshot(), pad).also { surface.close() }
+    return Mask(surface.makeImageSnapshot(), pad).also { surface.close() }
 }
 
-/** Draws [layout]'s mask at [topLeft], coloured by the paint [setUp] gives it (an alpha-only image takes the paint's colour or shader). */
-private inline fun DrawScope.drawMask(layout: TextLayoutResult, topLeft: Offset, setUp: (Paint) -> Unit) {
-    if (layout.size.width <= 0 || layout.size.height <= 0) return
-    val mask = maskOf(layout)
+/**
+ * Draws [layout]'s mask at [topLeft], coloured by the paint [setUp] gives it (an alpha-only image
+ * takes the paint's colour or shader). False when its mask isn't made yet, for the caller to draw
+ * the text as it is this frame.
+ */
+private inline fun DrawScope.drawMask(layout: TextLayoutResult, topLeft: Offset, setUp: (Paint) -> Unit): Boolean {
+    if (layout.size.width <= 0 || layout.size.height <= 0) return true
+    val mask = maskOf(layout) ?: return false
     val paint = maskPaint
     paint.shader = null
     paint.skiaPaint.shader = null
@@ -82,4 +118,5 @@ private inline fun DrawScope.drawMask(layout: TextLayoutResult, topLeft: Offset,
         skia.drawImageRect(mask.image, Rect.makeWH(w, h), Rect.makeWH(w, h), SamplingMode.LINEAR, skiaPaint, true)
         skia.restore()
     }
+    return true
 }

@@ -41,3 +41,10 @@ internal expect val textLayoutContext: CoroutineContext
  * up until the drag settles. 0 measures at once.
  */
 internal expect val resizeRelayoutDelayMs: Long
+
+/**
+ * Lyrics laid out on the UI thread ([textLayoutContext]) are laid out a few ms at a time, letting
+ * frames through between slices, so a long song's layout never holds the window still. Laid out
+ * in the background, they run straight through.
+ */
+internal expect val slicesTextLayout: Boolean

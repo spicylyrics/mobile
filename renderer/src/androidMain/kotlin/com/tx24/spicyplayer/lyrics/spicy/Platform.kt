@@ -20,3 +20,5 @@ internal actual val resizeSnapsToLine: Boolean = false
 internal actual val textLayoutContext: CoroutineContext = Dispatchers.Default
 
 internal actual val resizeRelayoutDelayMs: Long = 0L
+
+internal actual val slicesTextLayout: Boolean = false

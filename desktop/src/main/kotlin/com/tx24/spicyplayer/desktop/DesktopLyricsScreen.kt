@@ -129,16 +129,24 @@ class DesktopOverlays(private val nav: DesktopNav) : LyricsOverlays() {
 
 /**
  * How much bigger than the system's density the lyrics screen is drawn in a window [widthDp] by
- * [heightDp] (at the system's density): its short side lands where a phone's does held sideways
- * ([PHONE_SHORT_SIDE_DP]), never smaller than the system's size nor past [MAX_SCREEN_SCALE], then
- * times [percent] (the Interface Scale setting). In steps of 5%, so a window being dragged
- * changes it seldom.
+ * [heightDp] (at the system's density): a small window grows until its short side is where a
+ * phone's is held sideways ([PHONE_SHORT_SIDE_DP]), up to a large tablet's size
+ * ([MAX_AUTO_SCALE]); a bigger window gets more room rather than bigger controls. Then times
+ * [percent], the Interface Scale setting, which is the way to go bigger. In 10% steps.
  */
 fun lyricsScreenScale(widthDp: Float, heightDp: Float, percent: Int): Float {
-    val fit = (minOf(widthDp, heightDp) / PHONE_SHORT_SIDE_DP).coerceIn(1f, MAX_SCREEN_SCALE)
-    return ((fit * percent / 100f) * 20f).roundToInt().coerceAtLeast(1) / 20f
+    val fit = (minOf(widthDp, heightDp) / PHONE_SHORT_SIDE_DP).coerceIn(1f, MAX_AUTO_SCALE)
+    return ((fit * percent / 100f) * 10f).roundToInt().coerceAtLeast(1) / 10f
 }
 
 /** A phone's short side in dp, held sideways. */
 const val PHONE_SHORT_SIDE_DP = 420f
-const val MAX_SCREEN_SCALE = 3f
+
+/** The most the window's size alone scales the screen by: about a large tablet's. */
+const val MAX_AUTO_SCALE = 1.5f
+
+/**
+ * How long a new scale waits for the window to stop changing size: every change of scale lays
+ * every piece of text out again, so a drag keeps the scale it started with until it settles.
+ */
+const val SCALE_SETTLE_MS = 250L

@@ -58,6 +58,7 @@ import com.tx24.spicyplayer.lyrics.spicy.animation.AppleMusicMotion
 import com.tx24.spicyplayer.lyrics.spicy.resizeSnapsToLine
 import com.tx24.spicyplayer.lyrics.spicy.textLayoutContext
 import com.tx24.spicyplayer.lyrics.spicy.resizeRelayoutDelayMs
+import com.tx24.spicyplayer.lyrics.spicy.slicesTextLayout
 import com.tx24.spicyplayer.lyrics.spicy.models.Line
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
 import com.tx24.spicyplayer.lyrics.spicy.models.FooterLine
@@ -283,6 +284,9 @@ fun LyricsView(
             suspend fun measure(romanized: Boolean, presentation: TranslationPresentation? = translation): MeasuredLyrics {
                 val key = MeasureKey(letterConfig, canvasWidth, fontSizeScale, romanized, incomingType, fontKey, presentation, romanizationMode, density.density)
                 measuredCache[key]?.let { return it }
+                // On the UI thread: a slice at a time, the old layout staying up meanwhile.
+                val pacer = if (slicesTextLayout) LayoutPacer() else null
+                val pace: (suspend () -> Unit)? = pacer?.let { p -> { p.pace() } }
                 return withContext(textLayoutContext) {
                     // Per-letter emphasis for held words (mode-dependent thresholds, romanized
                     // display). Syllable mode only; Line/Static never letter-split.
@@ -298,15 +302,24 @@ fun LyricsView(
                         if (letterConfig.isAppleMusic) AppleMusicMotion.BACKGROUND_SIZE else 0.75f,
                         romanizationMode,
                         refreshedSimple = letterConfig.isRefreshedSimple,
+                        pace = pace,
                     ) else LyricsLayoutCalculator.calculateLineLayouts(
                         display, canvasWidth, textMeasurer, density.density, incomingType, fontSizeScale, romanized, letterConfig.isSimple,
                         letterConfig.wideDuetPadding,
                         if (letterConfig.isAppleMusic) AppleMusicMotion.BACKGROUND_SIZE else 0.75f,
                         refreshedSimple = letterConfig.isRefreshedSimple,
+                        pace = pace,
                     ), romanizationLines = originals.takeIf {
                         presentation?.mode == TranslationMode.Replace && romanized && romanizationMode == RomanizationMode.UnderLine
                     })
-                }.also { measuredCache[key] = it }
+                }.also {
+                    // Measured in place, layouts for another size are only kept until the next one:
+                    // a window resized many times would otherwise hold every size it passed through.
+                    if (slicesTextLayout) measuredCache.keys.removeAll { old ->
+                        old.widthPx != key.widthPx || old.density != key.density || old.fontSizeScale != key.fontSizeScale
+                    }
+                    measuredCache[key] = it
+                }
             }
             // Only the size changed (the width, and the text size that follows it), with lyrics on
             // screen: wait for it to hold (a window being dragged), keeping the old layout up,

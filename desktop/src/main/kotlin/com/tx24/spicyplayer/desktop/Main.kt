@@ -367,7 +367,13 @@ fun main(args: Array<String>) {
                     // Drawn at the size a phone held sideways would show it, whatever the window's size
                     // and the system's scaling, then sized by the Interface Scale setting.
                     val system = LocalDensity.current
-                    val scale = lyricsScreenScale(maxWidth.value, maxHeight.value, desktopSettings.interfaceScale)
+                    val targetScale = lyricsScreenScale(maxWidth.value, maxHeight.value, desktopSettings.interfaceScale)
+                    var scale by remember { mutableStateOf(targetScale) }
+                    LaunchedEffect(targetScale) {
+                        if (targetScale == scale) return@LaunchedEffect
+                        delay(SCALE_SETTLE_MS)
+                        scale = targetScale
+                    }
                     CompositionLocalProvider(LocalDensity provides Density(system.density * scale, system.fontScale)) {
                     // The screen picks portrait or landscape from the window's size, as the phone does from its screen's.
                     BoxWithConstraints(Modifier.fillMaxSize()) {
