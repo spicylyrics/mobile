@@ -27,7 +27,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 @Composable
 fun PortraitCanvas(url: String, onFailed: (String) -> Unit, modifier: Modifier = Modifier) {
     Box(modifier) {
-        CrossfadingMotionVideo(
+        LocalNowPlayingPlatform.current.CrossfadingMotionVideo(
             url = url,
             onFailed = onFailed,
             modifier = Modifier.fillMaxSize(),

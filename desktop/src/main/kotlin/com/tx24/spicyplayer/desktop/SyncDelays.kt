@@ -1,6 +1,8 @@
 package com.tx24.spicyplayer.desktop
 
+import com.tx24.spicyplayer.ui.settings.FileSettingsStore
 import com.tx24.spicyplayer.ui.settings.SettingsStore
+import java.io.File
 
 /**
  * The saved lyric offset per player, in ms (positive shows the lyrics earlier), under
@@ -17,5 +19,16 @@ class SyncDelays(private val store: SettingsStore, private val flagMs: Long? = n
 
     companion object {
         fun key(app: String) = "desktop.offset.${app.trim().lowercase()}"
+
+        /**
+         * The offsets' own file beside the settings file. Not `settings.properties` itself: each
+         * [FileSettingsStore] rewrites its whole file from what it holds, so two on one file undo
+         * each other's writes.
+         */
+        fun defaultStore(): FileSettingsStore = FileSettingsStore(
+            File(FileSettingsStore.appDataDir(System.getProperty("os.name").orEmpty(), System::getenv, System.getProperty("user.home")), FILE_NAME),
+        )
+
+        const val FILE_NAME = "sync-delay.properties"
     }
 }

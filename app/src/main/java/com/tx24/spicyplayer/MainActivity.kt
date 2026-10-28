@@ -103,7 +103,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
-import com.tx24.spicyplayer.lyrics.spicy.ScrollConfig
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -161,7 +160,7 @@ import com.tx24.spicyplayer.ui.components.LocalBackdrop
 import com.tx24.spicyplayer.ui.components.SpicyModalNotes
 import com.tx24.spicyplayer.ui.components.SpicyVersionRow
 import com.tx24.spicyplayer.ui.controls.KeyInput
-import com.tx24.spicyplayer.ui.controls.ActionKind
+import com.tx24.spicyplayer.ui.controls.shownCustomActions
 import com.tx24.spicyplayer.ui.controls.CoverControls
 import com.tx24.spicyplayer.ui.controls.PanelTimeline
 import com.tx24.spicyplayer.ui.controls.StageControls
@@ -170,7 +169,6 @@ import com.tx24.spicyplayer.ui.settings.QuickSettingsModal
 import com.tx24.spicyplayer.ui.components.LocalUiAnimations
 import com.tx24.spicyplayer.ui.controls.LyricsControls
 import com.tx24.spicyplayer.ui.controls.controlsClearancePx
-import com.tx24.spicyplayer.ui.controls.kind
 import com.tx24.spicyplayer.ui.nowplaying.LandscapeMetrics
 import com.tx24.spicyplayer.ui.settings.PanelSide
 import androidx.compose.foundation.layout.offset
@@ -182,12 +180,21 @@ import com.tx24.spicyplayer.ui.nowplaying.CompactHeaderMetrics
 import com.tx24.spicyplayer.ui.nowplaying.CompactNowPlayingHeader
 import com.tx24.spicyplayer.ui.nowplaying.LyricsNotice
 import com.tx24.spicyplayer.ui.nowplaying.NoticeActions
+import com.tx24.spicyplayer.ui.nowplaying.androidNoticeActions
+import com.tx24.spicyplayer.ui.settings.renderConfig
+import com.tx24.spicyplayer.ui.settings.romanizes
+import com.tx24.spicyplayer.ui.nowplaying.AndroidNowPlayingPlatform
+import com.tx24.spicyplayer.ui.nowplaying.LocalNowPlayingPlatform
 import com.tx24.spicyplayer.ui.nowplaying.PipSongCard
 import com.tx24.spicyplayer.ui.nowplaying.PipDock
 import com.tx24.spicyplayer.ui.settings.PipWithoutLyrics
 import com.tx24.spicyplayer.ui.settings.debugReport
 import com.tx24.spicyplayer.ui.nowplaying.MotionCoverQuery
-import com.tx24.spicyplayer.ui.nowplaying.NowPlayingInfo
+import com.tx24.spicyplayer.ui.nowplaying.ViewModelNowPlaying
+import com.tx24.spicyplayer.ui.nowplaying.nowPlayingState
+import com.tx24.spicyplayer.ui.nowplaying.skip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import com.tx24.spicyplayer.ui.nowplaying.CoverStage
 import com.tx24.spicyplayer.ui.nowplaying.CoverStageDock
 import com.tx24.spicyplayer.ui.nowplaying.SlidingAlignment
@@ -208,11 +215,9 @@ import com.tx24.spicyplayer.ui.nowplaying.MotionCovers
 import com.tx24.spicyplayer.ui.controls.controlsContentStartPx
 import com.tx24.spicyplayer.ui.nowplaying.PortraitCanvasDock
 import com.tx24.spicyplayer.ui.background.CanvasAmbient
-import com.tx24.spicyplayer.ui.nowplaying.TrackDirection
 import androidx.compose.animation.core.spring
 import com.tx24.spicyplayer.ui.settings.AppSettings
 import com.tx24.spicyplayer.ui.settings.SystemBarsMode
-import com.tx24.spicyplayer.ui.settings.LyricsStyle
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsLayoutCalculator
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -358,10 +363,12 @@ class LyricsActivity : ComponentActivity() {
             }
             val context = LocalContext.current
             val lyricsImages = remember(context) { CoilLyricsImageLoader(context) }
+            val nowPlayingPlatform = remember(context) { AndroidNowPlayingPlatform(context) }
             MaterialTheme(colorScheme = darkColorScheme()) {
                 ProvideTouchHaptics(settings.touchHaptics) {
                     CompositionLocalProvider(
                         LocalLyricsImageLoader provides lyricsImages,
+                        LocalNowPlayingPlatform provides nowPlayingPlatform,
                         LocalUiAnimations provides (settings.uiAnimations && !settings.lowPerformance),
                         LocalPopupPalette provides settings.popupTheme.palette,
                         LocalAppIcon provides settings.appIcon,
@@ -519,13 +526,18 @@ private fun LyricsApp(
     keyInput: KeyInput = remember { KeyInput() },
 ) {
     val state by viewModel.state.collectAsState()
+    // The player as the shared screen sees it: the cover converted once per picture, so the
+    // header's cover loader only restarts when the player sends a new one.
+    val transport = remember(viewModel) { ViewModelNowPlaying(viewModel) }
+    val artwork = remember(state.artwork) { state.artwork?.asImageBitmap() }
+    val nowPlaying = state.nowPlayingState(artwork)
     val context = LocalContext.current
     val lowPerformance = settings.lowPerformance
     val hideHeader = settings.hideHeader
     val romanizationAvailable = (state.lyrics as? LyricsState.Ready)?.let { ready ->
         ready.lines.any { line -> line.words.any { it.romanized != null } }
     } == true
-    val romanize = settings.romanize && romanizationAvailable
+    val romanize = settings.romanizes(romanizationAvailable)
     // The lyrics font: ours, the phone's, or the file picked in settings (ours again if it's gone).
     val lyricsFont = settings.lyricsFont
     val customFontFile = settings.customFontFile
@@ -717,30 +729,7 @@ private fun LyricsApp(
     val coverTouchArea = remember { CoverTouchArea() }
     // Elsewhere, where a touch leaves the controls alone: the cover's gestures, credit links.
     val revealGuard = remember { ControlsRevealGuard() }
-    // Built fresh, not copied: the mode-dependent defaults are worked out in the constructor.
-    val appleMusicStyle = settings.lyricsStyle == LyricsStyle.AppleMusic
-    val renderConfig = RenderConfig(
-        // Simple and Minimal are Spicy Lyrics' modes; the Apple Music style has its own look.
-        simpleLyricsMode = settings.simpleLyricsMode && !appleMusicStyle,
-        minimalLyricsMode = settings.minimalLyricsMode && !appleMusicStyle,
-        appleMusic = appleMusicStyle,
-        refreshedSimple = settings.refreshedSimpleLyrics && settings.simpleLyricsMode && !appleMusicStyle,
-        wordMotionBoost = settings.wordMotionBoost,
-        wideDuetPadding = settings.duetLinePadding,
-        creditsFollowLastLine = settings.creditsFollowLastLine,
-        refinedCredits = settings.refinedCredits,
-        backgroundPop = settings.backgroundPop && !appleMusicStyle,
-        keepOverlappingLines = settings.keepOverlappingLines,
-        syllableMerge = settings.syllableMerge,
-        distanceBlurEnabled = settings.distanceBlur && !lowPerformance,
-        glowEnabled = settings.glow && !lowPerformance,
-        scroll = ScrollConfig(
-            leadMs = if (settings.scrollLeadEnabled) settings.scrollLeadMs.coerceAtLeast(0).toLong() else 0L,
-            smooth = settings.smoothScrolling,
-            seekFadeCompensation = settings.seekFadeCompensation,
-            staticSongMs = if (settings.staticAutoScroll) state.durationMs else 0L,
-        ),
-    )
+    val renderConfig = settings.renderConfig(state.durationMs)
     var showSettings by remember { mutableStateOf(false) }
     // The settings pages left open, so coming back from the floating window lands on the same one.
     var settingsPages by remember { mutableStateOf(emptyList<SettingsPage>()) }
@@ -780,7 +769,8 @@ private fun LyricsApp(
         onDispose { lockLifecycle.removeObserver(observer) }
     }
     val noticeActions = remember(viewModel, context) {
-        NoticeActions(
+        androidNoticeActions(
+            context = context,
             onRetry = { viewModel.loadLyrics(force = true) },
             report = { debugReport(context, viewModel.state.value) },
             onSearchSpotify = { whenUnlocked { showSpotifySearch = true } },
@@ -917,7 +907,7 @@ private fun LyricsApp(
     Scaffold(contentWindowInsets = WindowInsets.safeDrawing) { padding ->
         // The floating window has room for the lyrics and nothing else.
         if (inPip) {
-            PipLyrics(state, viewModel, settings, renderConfig, lyricsViewState, romanize, lowPerformance, heldCanvasUrl)
+            PipLyrics(state, viewModel, settings, renderConfig, lyricsViewState, romanize, lowPerformance, heldCanvasUrl, artwork)
             return@Scaffold
         }
         CompositionLocalProvider(LocalControlsRevealGuard provides revealGuard) {
@@ -1076,16 +1066,16 @@ private fun LyricsApp(
                     isPlaying = state.isPlaying,
                     canSeek = state.canSeek,
                     durationMs = state.durationMs,
-                    positionMs = viewModel::currentPositionMs,
-                    onPlayPause = viewModel::playPause,
-                    onPrevious = viewModel::skipPrevious,
-                    onNext = viewModel::skipNext,
-                    onSeek = viewModel::seekTo,
+                    positionMs = transport::positionMs,
+                    onPlayPause = transport::playPause,
+                    onPrevious = transport::skipPrevious,
+                    onNext = transport::skipNext,
+                    onSeek = transport::seekTo,
                     // Shuffle and repeat stay in the playback row; only the player's other actions are floating buttons.
-                    customActions = if (settings.playerButtons) state.customActions else state.customActions.filter { it.kind != ActionKind.Other },
+                    customActions = shownCustomActions(state.customActions, settings.playerButtons),
                     onCustomAction = { action ->
                         UsageStats.count(UsageCounter.PLAYER_ACTION)
-                        viewModel.sendCustomAction(action)
+                        transport.sendCustomAction(action)
                     },
                     onResync = viewModel::resync,
                     // Only where a translation would help: not on songs already in the target language
@@ -1099,6 +1089,7 @@ private fun LyricsApp(
                     },
                     translated = state.translationEnabled && !state.translationFailed,
                     translating = state.translating,
+                    animate = uiAnimations,
                 )
                 val onEnterPipButton = onEnterPip.takeIf { settings.pipButton }
                 val onOpenLyricsManager = if (settings.lyricsManagerButton) ({ whenUnlocked { showLyricsManager = true } }) else null
@@ -1149,7 +1140,7 @@ private fun LyricsApp(
                 val immersive = { immersiveShown * expansion }
                 var failedFollowMotionUrl by remember { mutableStateOf<String?>(null) }
                 val motionScope = rememberCoroutineScope()
-                val stageInfo = NowPlayingInfo(state.title, state.artist, state.album, state.artwork, state.artworkUri, state.trackDirection, hasSession = state.sourcePackage != null)
+                val stageInfo = nowPlaying.info
                 // Everything the glass controls blur.
                 Box(Modifier.fillMaxSize().then(backdrop?.let { Modifier.hazeSource(it) } ?: Modifier)) {
                     SpicySessionBackground(
@@ -1348,15 +1339,17 @@ private fun LyricsApp(
                     if (landscape) landscapeMetrics.centred else headerMetrics.expanded(pageHeight - controlsHeightPx)
                 }
                 CompactNowPlayingHeader(
-                    info = NowPlayingInfo(state.title, state.artist, state.album, state.artwork, state.artworkUri, state.trackDirection, hasSession = state.sourcePackage != null),
-                    releaseYear = ReleaseYear(state.releaseYear, state.releaseYearPending, settings.releaseYearPosition),
+                    info = nowPlaying.info,
+                    releaseYear = settings.releaseYearPosition.takeIf { it != ReleaseYearPosition.Off }?.let { position ->
+                        ReleaseYear(state.releaseYear, state.releaseYearPending, before = position == ReleaseYearPosition.Left)
+                    },
                     metrics = headerMetrics,
                     modifier = Modifier.padding(belowTop).graphicsLayer { alpha = 1f - ambientFade.value },
                     expansion = { expansion },
                     expanded = expandedHeader,
                     isPlaying = state.isPlaying,
                     onPlayPause = viewModel::playPause,
-                    onSkip = { direction -> if (direction == TrackDirection.Forward) viewModel.skipNext() else viewModel.skipPrevious() },
+                    onSkip = transport::skip,
                     animatedCover = settings.animatedCover && !lowPerformance && (!hideHeader || headerShowing) && !stageCovers,
                     hidden = hideHeader,
                     // Under the stage its gestures would sit over the dock.
@@ -1694,6 +1687,8 @@ private fun PipLyrics(
     romanize: Boolean,
     lowPerformance: Boolean,
     canvasUrl: String?,
+    /** [state]'s cover, converted once by the caller. */
+    artwork: ImageBitmap?,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         // A short window fits few rows, so the height limits the text as much as the width does.
@@ -1732,7 +1727,7 @@ private fun PipLyrics(
         val songCard = !settings.pipShowLyrics ||
             (state.lyrics is LyricsState.Error && settings.pipWithoutLyrics == PipWithoutLyrics.SongCard)
         if (songCard) {
-            PipSongCard(state.title, state.artist, state.artwork, state.artworkUri, hasSession = state.sourcePackage != null)
+            PipSongCard(state.title, state.artist, artwork, state.artworkUri, hasSession = state.sourcePackage != null)
             return@BoxWithConstraints
         }
         // Square or taller, the song docks along the bottom, under the lyrics.
@@ -1765,7 +1760,7 @@ private fun PipLyrics(
         if (dock) {
             PipDock(
                 state.title, state.artist, viewModel::currentPositionMs, state.durationMs, state.isPlaying,
-                cover = settings.pipDockCover, artwork = state.artwork, artworkUri = state.artworkUri,
+                cover = settings.pipDockCover, artwork = artwork, artworkUri = state.artworkUri,
                 hasSession = state.sourcePackage != null,
                 credit = viewState.shownFooter?.miniCredit()?.takeIf { settings.pinnedFooter != PinnedFooterMode.Off },
             )
@@ -2108,9 +2103,9 @@ private fun LyricsPanelContent(
     romanizationCredit: String? = null,
 ) {
     when (lyrics) {
-        LyricsState.Idle -> LyricsNotice("Waiting for a song", modifier, bottomPx = noticeBottomPx, compact = noticeActions == null)
+        LyricsState.Idle -> LyricsNotice("Waiting for a song", modifier, bottomPx = noticeBottomPx, compact = noticeActions == null, animate = LocalUiAnimations.current)
         LyricsState.Loading -> Unit
-        is LyricsState.Error -> LyricsNotice(lyrics, noticeActions, noticeBottomPx, modifier)
+        is LyricsState.Error -> LyricsNotice(lyrics, noticeActions, noticeBottomPx, modifier, animate = LocalUiAnimations.current)
         is LyricsState.Ready -> {
             val originalLines = remember(lyrics.lines) {
                 lyrics.lines.map { line ->

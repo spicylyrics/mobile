@@ -52,7 +52,7 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
     /** The offset in use, read again whenever the followed player changes and on [offsetChanged]. */
     @Volatile var offsetMs = 0L
         private set
-    private var offsetApp: String? = null
+    @Volatile private var offsetApp: String? = null
     private val filter = ReportFilter()
 
     @Volatile var track: Track? = null

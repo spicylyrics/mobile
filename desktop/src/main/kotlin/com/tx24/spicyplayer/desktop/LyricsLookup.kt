@@ -6,6 +6,11 @@ import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.RemoteLyricsAdapter
 import com.tx24.spicyplayer.network.data.LyricsLookupRequest
 import com.tx24.spicyplayer.network.data.LyricsSource
+import com.tx24.spicyplayer.network.data.LyricsSourceDescriptor
+import com.tx24.spicyplayer.network.data.ProviderResult
+import com.tx24.spicyplayer.network.data.RemoteLyricsPolicy
+import com.tx24.spicyplayer.network.data.SourcePair
+import com.tx24.spicyplayer.network.data.SourceRanking
 import com.tx24.spicyplayer.network.data.ProviderCooldownTracker
 import com.tx24.spicyplayer.network.data.RemoteLyricsProvider
 import com.tx24.spicyplayer.network.data.RemoteLyricsResolution
@@ -20,16 +25,31 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
 /** The Android backend's sources, minus its preferences and caches. */
-class LyricsLookup(clientKey: String = spicyLyricsKey()) {
+class LyricsLookup(clientKey: String = spicyLyricsKey()) : SongLookup {
     private val providers = providers(clientKey)
     private val source = RemoteLyricsSource(providers, ProviderCooldownTracker())
+    private val ranking = SourceRanking(providers.map { it.descriptor }, RemoteLyricsPolicy())
+
+    override val sources: List<LyricsSourceDescriptor> = providers.map { it.descriptor }
+        .filter { ranking.asked(it.id) }
+        .sortedBy { ranking.bestPlace(it.id) ?: SourceRanking.AFTER_ALL }
 
     val keyHint = if (clientKey.isBlank()) "none" else "sl_pk_..." + clientKey.takeLast(4)
 
     /** The lyrics for [track] ready for the renderer, or the notice to show instead; with [romanize] off, only what the source romanized. */
-    suspend fun find(track: Track, romanize: Boolean = true): Found {
+    suspend fun find(track: Track, romanize: Boolean = true): Found = find(track, mutableMapOf(), null, romanize)
+
+    /**
+     * Like [find], keeping each source's answer in [known] (so a later call for the same song asks
+     * no source twice), and with [sourceId] asking only that source.
+     */
+    override suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?): Found =
+        find(track, known, sourceId, romanize = true)
+
+    private suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, romanize: Boolean): Found {
         val request = LyricsLookupRequest(track.artist, track.title, track.album, (track.durationMs / 1000).toInt())
-        val result = runCatching { source.resolveLyrics(request) }.getOrElse { return Found(LyricsNotices.lookupFailed(it), null) }
+        val policy = sourceId?.let(::only) ?: RemoteLyricsPolicy()
+        val result = runCatching { source.resolveLyrics(request, policy, known = known) }.getOrElse { return Found(LyricsNotices.lookupFailed(it), null) }
         if (result !is RemoteLyricsResolution.Found) {
             return Found(LyricsNotices.noLyrics(result.attempts) { id -> providers.firstOrNull { it.descriptor.id == id }?.descriptor?.displayName ?: id }, result)
         }
@@ -37,6 +57,14 @@ class LyricsLookup(clientKey: String = spicyLyricsKey()) {
             .getOrElse { LyricsNotices.renderFailed(result.selection.source.displayName, it) }
         return Found(lyrics, result)
     }
+
+    /** Every source in its usual place, with only [sourceId]'s provider switched on. */
+    private fun only(sourceId: String) = RemoteLyricsPolicy(
+        sourceOrder = ranking.origins.map { it.id },
+        pairs = ranking.origins.flatMap { origin ->
+            origin.providerIds.map { SourcePair(origin.id, it).key to (it == sourceId) }
+        }.toMap(),
+    )
 
     data class Found(val lyrics: LyricsState, val resolution: RemoteLyricsResolution?)
 }

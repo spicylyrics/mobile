@@ -32,4 +32,4 @@ To add a platform, implement `MediaSource`, keep the line parsing in a pure func
 
 ## Sync delay
 
-Ctrl+D in the lyrics window opens the sync-delay window (`SyncDelayWindow.kt`; `openSyncDelay()` for a menu). It nudges the followed player's offset in 10 or 50 ms steps with the current line in view, or works it out from taps along to the song's beats (`TapSync`, from the Spotify analysis). Positive shows the lyrics earlier. Offsets are saved per player app id in the settings file as `desktop.offset.<app id>` and move the lyrics at once; `--offset` overrides them for every player while given.
+Ctrl+D in the lyrics window opens the sync-delay window (`SyncDelayWindow.kt`; `openSyncDelay()` for a menu). It nudges the followed player's offset in 10 or 50 ms steps with the current line in view, or works it out from taps along to the song's beats (`TapSync`, from the Spotify analysis). Positive shows the lyrics earlier. Offsets are saved per player app id in `sync-delay.properties` beside the settings file, as `desktop.offset.<app id>` and move the lyrics at once; `--offset` overrides them for every player while given.

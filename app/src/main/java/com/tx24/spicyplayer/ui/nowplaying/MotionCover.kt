@@ -58,9 +58,6 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 import okhttp3.OkHttpClient
 
-/** What the animated cover is looked up by. */
-data class MotionCoverQuery(val artist: String, val album: String, val title: String)
-
 /**
  * The record's animated cover stream, or null while there is none (setting off, still searching,
  * or the album has no animation). Resets to null the moment the record changes.
@@ -70,12 +67,9 @@ fun rememberMotionCoverUrl(enabled: Boolean, query: MotionCoverQuery): String? =
     rememberMotionCover(enabled, query).let { if (it.settled) it.url else null }
 
 /**
- * The animated cover's lookup for [query]. While a new song's is under way, it holds the last
- * answer, not [settled], so a loop on screen can fade out or give way to the next one instead
- * of vanishing the moment the song changes.
+ * The animated cover's lookup for [query] ([MotionCoverLookup]): while a new song's is under way,
+ * it holds the last answer, not settled.
  */
-data class MotionCoverLookup(val url: String?, val settled: Boolean)
-
 @Composable
 fun rememberMotionCover(enabled: Boolean, query: MotionCoverQuery): MotionCoverLookup {
     val context = LocalContext.current

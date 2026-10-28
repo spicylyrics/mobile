@@ -13,6 +13,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import coil.Coil
 import com.tx24.spicyplayer.R
@@ -30,8 +32,13 @@ import kotlin.math.abs
  * for, plus a small fingerprint of its pixels. Players often republish the same cover as a new
  * Bitmap on every metadata update, so the fingerprint (not the object) says whether it changed.
  */
-class SessionArtwork private constructor(val bitmap: Bitmap, private val signature: IntArray) {
-    val fingerprint: Int = signature.contentHashCode()
+class SessionArtwork private constructor(val bitmap: Bitmap, private val signature: IntArray) : CoverImage {
+    override val fingerprint: Int = signature.contentHashCode()
+
+    /** The bitmap for Compose, wrapped once. */
+    override val image: ImageBitmap = bitmap.asImageBitmap()
+
+    override fun sameCover(other: CoverImage): Boolean = other is SessionArtwork && sameCover(other)
 
     /**
      * Whether [other] is the same picture, maybe at another size or encoding. Spotify sends a
