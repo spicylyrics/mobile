@@ -109,8 +109,13 @@ class MediaSessionTest {
         session.setShuffle(Fake(true, true), true)
         session.setRepeat(Fake(true, true), RepeatMode.Off)
         assertEquals(listOf("shuffle Spotify.exe true", "repeat Spotify.exe Off"), calls)
+        assertTrue(session.repeatOneSupported)
+        // A player that only repeats or doesn't says so, and clear goes back to the default.
+        session.feed(snap("Spotify", "One").copy(repeat = RepeatMode.All, repeatOneSupported = false), mono + 500, wall + 500)
+        assertEquals(false, session.repeatOneSupported)
         session.clear()
         assertNull(session.shuffle)
         assertNull(session.repeat)
+        assertTrue(session.repeatOneSupported)
     }
 }

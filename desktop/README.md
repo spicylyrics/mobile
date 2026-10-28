@@ -26,7 +26,7 @@ The app follows other players through a `MediaSource` (`MediaSource.kt`): a flow
 | --- | --- | --- |
 | Windows | `GsmtcMediaSource` | Works. Reads the gsmtc helper's JSON lines (`parseGsmtcLine`). Play, pause, seek, next and previous, shuffle and repeat (`IsShuffleActive`, `AutoRepeatMode`). A helper built before shuffle and repeat still parses, with both unknown. |
 | Linux | `MprisMediaSource` | Untested on a real desktop. Runs `playerctl --follow metadata --format ...` and parses its lines (`parsePlayerctlLine`), so it needs `playerctl` installed. All commands, through `playerctl --player=<instance>`, with shuffle and repeat as `shuffle` and `loop` (None, Track, Playlist). MPRIS gives no position stamp or rate, so each line counts from when it arrived, at 1x. Remote artwork (`https://` art URLs, e.g. Spotify) isn't downloaded yet; `file://` artwork works. |
-| macOS | `macMediaSource()` | Not supported; it reports nothing. The likely routes are the MediaRemote framework through a helper, or AppleScript for Spotify and Music. |
+| macOS | `MacMediaSource` | Untested on a real Mac. Spotify and Music only, polled about once a second through `osascript` (AppleScript); only players that are installed and running are asked, so it never launches one. All commands, and shuffle and repeat (Spotify's `shuffling` and `repeating`, Music's `shuffle enabled` and `song repeat`). Spotify's repeat is on or off, so it reads as repeat all, and asking it to repeat one track turns on the same repeat. macOS asks once per player for Automation permission. Spotify's artwork URL is passed on but not downloaded yet; Music's artwork isn't read. Other players would need the private MediaRemote framework. |
 
 To add a platform, implement `MediaSource`, keep the line parsing in a pure function with tests in `src/test/kotlin`, and add it to `mediaSource()`.
 
@@ -36,7 +36,12 @@ Ctrl+D in the lyrics window opens the sync-delay window (`SyncDelayWindow.kt`; `
 
 ## CI builds
 
-`.github/workflows/desktop-build.yml` builds the MSI on a Windows runner for pull requests that touch `desktop/`, for `desktop-vX.Y.Z` tags and on demand (Actions → Desktop installer → Run workflow). The installer is a workflow artifact; nothing is released.
+`.github/workflows/desktop-build.yml` builds the MSI on a Windows runner, a `.deb` on Ubuntu and a `.dmg` on macOS for pull requests that touch `desktop/`, for `desktop-vX.Y.Z` tags and on demand (Actions → Desktop installer → Run workflow). The installers are workflow artifacts; nothing is released.
 
 - A `desktop-vX.Y.Z` tag sets the version through `-PdesktopVersion=X.Y.Z`. Other runs use the default in `build.gradle.kts`.
 - The Spicy Lyrics key comes from the `SPICY_LYRICS_CLIENT_KEY` repository secret, or the variable of that name. Without either, the build leaves that source out.
+- macOS won't take a version starting with 0, so the `.dmg` of 0.y.z says 1.y.z (`macPackageVersion` in `build.gradle.kts`).
+
+## Linux
+
+`./gradlew :desktop:packageDeb` builds a `.deb` (package `spicy-lyrics-desktop`) in `desktop/build/compose/binaries/main/deb/`. It installs the app under `/opt` with a menu entry. The app reads players through `playerctl`, so install that too (`sudo apt install playerctl`): without it the app says what's missing and keeps checking for it. No Rust is needed on Linux.

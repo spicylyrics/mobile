@@ -70,6 +70,10 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
     @Volatile var repeat: RepeatMode? = null
         private set
 
+    /** Whether the followed player can repeat one track, rather than only on or off. */
+    @Volatile var repeatOneSupported: Boolean = true
+        private set
+
     private var lastStampMs = 0L
     private var lastStatus: PlaybackStatus? = null
     /** Whether the status changed since the stamp did: every later report with that stamp is stale. */
@@ -91,6 +95,7 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
         cover = snapshot.cover
         shuffle = snapshot.shuffle
         repeat = snapshot.repeat
+        repeatOneSupported = snapshot.repeatOneSupported
         val status = snapshot.status
         val playing = status == PlaybackStatus.Playing
         // The platform stamps the position in wall time; the clock runs on the monotonic one.
@@ -162,6 +167,7 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
         cover = null
         shuffle = null
         repeat = null
+        repeatOneSupported = true
         lastStampMs = 0L
         lastStatus = null
         stampOutlived = false

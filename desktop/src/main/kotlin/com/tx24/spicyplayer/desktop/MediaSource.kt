@@ -58,7 +58,8 @@ enum class PlaybackStatus { Closed, Opened, Changing, Stopped, Playing, Paused, 
  * no such stamp uses the time the report arrived. [current] is whether the platform counts this
  * player as the one in focus. [cover] is an image file on disk; [artUrl] is the player's own
  * artwork address when it isn't one (a remote URL the app doesn't fetch yet). [shuffle] and [repeat]
- * are null when the player or platform doesn't say.
+ * are null when the player or platform doesn't say. [repeatOneSupported] is false for a player
+ * that only repeats or doesn't, where [RepeatMode.One] reads back as [RepeatMode.All].
  */
 data class MediaSnapshot(
     val app: String,
@@ -77,6 +78,7 @@ data class MediaSnapshot(
     val event: String = "",
     val shuffle: Boolean? = null,
     val repeat: RepeatMode? = null,
+    val repeatOneSupported: Boolean = true,
 )
 
 sealed interface MediaUpdate {
