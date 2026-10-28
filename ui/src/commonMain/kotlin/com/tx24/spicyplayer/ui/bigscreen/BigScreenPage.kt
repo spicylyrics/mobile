@@ -20,13 +20,16 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -138,7 +141,10 @@ fun BigScreenPage(
     val pageHovered by pageHover.collectIsHoveredAsState()
     // A tap where nothing else took it shows the controls; the next one hides them.
     var revealed by remember { mutableStateOf(false) }
-    val showControls = pageHovered || revealed
+    // The More menu lives here, not in the row: the row leaves when the controls fade, and an open
+    // menu keeps them up instead (its pointer is off the page, and its taps reach no idle timer).
+    var menuOpen by remember { mutableStateOf(false) }
+    val showControls = pageHovered || revealed || menuOpen
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
@@ -155,7 +161,7 @@ fun BigScreenPage(
         val cover = LocalNowPlayingPlatform.current
             .rememberCover(playing.artwork, playing.artworkUri, metrics.coverSizePx.roundToInt().coerceAtLeast(1), playing.hasSession)
             ?.image
-        val env = PageEnv(state, capabilities, actions, widthDp, heightDp, metrics)
+        val env = PageEnv(state, capabilities, actions, widthDp, heightDp, metrics, menuOpen) { menuOpen = it }
         background()
 
         if (!playing.hasSession) {
@@ -192,6 +198,8 @@ private class PageEnv(
     val widthDp: Float,
     val heightDp: Float,
     val metrics: BigScreenMetrics,
+    val menuOpen: Boolean,
+    val onMenu: (Boolean) -> Unit,
 )
 
 /** `.ViewControls` on the page: a row 24px from the top, faded in while the page is hovered. */
@@ -473,7 +481,6 @@ private fun CompactPage(
 private fun ViewControlsRow(env: PageEnv, size: Dp, modifier: Modifier) {
     val tooltips = LocalTooltipHost.current
     val state = env.state
-    var menuOpen by remember { mutableStateOf(false) }
     Row(
         modifier,
         horizontalArrangement = Arrangement.spacedBy(env.metrics.controlGapPx.toDp(LocalDensity.current.density), Alignment.CenterHorizontally),
@@ -486,7 +493,7 @@ private fun ViewControlsRow(env: PageEnv, size: Dp, modifier: Modifier) {
                     GlassButton(
                         onClick = {
                             when (control) {
-                                ViewControl.More -> menuOpen = true
+                                ViewControl.More -> env.onMenu(true)
                                 ViewControl.Settings -> env.actions.onOpenSettings()
                                 else -> env.actions.onState(state.click(control, env.widthDp, env.heightDp, env.capabilities))
                             }
@@ -494,7 +501,7 @@ private fun ViewControlsRow(env: PageEnv, size: Dp, modifier: Modifier) {
                         contentDescription = label,
                         size = size,
                     ) { ControlGlyph(control, env, Modifier.size(size * 0.5f)) }
-                    if (control == ViewControl.More && menuOpen) MoreMenu(size) { menuOpen = false }
+                    if (control == ViewControl.More && env.menuOpen) MoreMenu(size, (env.heightDp * 0.6f).dp) { env.onMenu(false) }
                 }
             }
         }
@@ -521,9 +528,9 @@ private fun ControlGlyph(control: ViewControl, env: PageEnv, modifier: Modifier)
     }
 }
 
-/** The mobile app's extras, listed for now. */
+/** The mobile app's extras, listed for now; scrolls past [maxHeight] in short windows. */
 @Composable
-private fun MoreMenu(anchor: Dp, onDismiss: () -> Unit) {
+private fun MoreMenu(anchor: Dp, maxHeight: Dp, onDismiss: () -> Unit) {
     val density = LocalDensity.current
     Popup(
         alignment = Alignment.TopCenter,
@@ -537,6 +544,8 @@ private fun MoreMenu(anchor: Dp, onDismiss: () -> Unit) {
                 .shadow(24.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(SpicyColors.BgElevated)
+                .heightIn(max = maxHeight.coerceAtLeast(96.dp))
+                .verticalScroll(rememberScrollState())
                 .padding(vertical = 6.dp),
         ) {
             // TODO: the lyrics source picker, translation and romanization style from the mobile app.
