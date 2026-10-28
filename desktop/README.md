@@ -26,7 +26,7 @@ The app follows other players through a `MediaSource` (`MediaSource.kt`): a flow
 | --- | --- | --- |
 | Windows | `GsmtcMediaSource` | Works. Reads the gsmtc helper's JSON lines (`parseGsmtcLine`). Play, pause, seek, next and previous. |
 | Linux | `MprisMediaSource` | Untested on a real desktop. Runs `playerctl --follow metadata --format ...` and parses its lines (`parsePlayerctlLine`), so it needs `playerctl` installed. All commands, through `playerctl --player=<instance>`. MPRIS gives no position stamp or rate, so each line counts from when it arrived, at 1x. Remote artwork (`https://` art URLs, e.g. Spotify) isn't downloaded yet; `file://` artwork works. |
-| macOS | `macMediaSource()` | Not supported; it reports nothing. The likely routes are the MediaRemote framework through a helper, or AppleScript for Spotify and Music. |
+| macOS | `MacMediaSource` | Untested on a real Mac. Spotify and Music only, polled about once a second through `osascript` (AppleScript); only players that are installed and running are asked, so it never launches one. All commands. macOS asks once per player for Automation permission. Spotify's artwork URL is passed on but not downloaded yet; Music's artwork isn't read. Other players would need the private MediaRemote framework. |
 
 To add a platform, implement `MediaSource`, keep the line parsing in a pure function with tests in `src/test/kotlin`, and add it to `mediaSource()`.
 
