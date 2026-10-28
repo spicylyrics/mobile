@@ -97,7 +97,8 @@ import com.tx24.spicyplayer.ui.theme.SpicyType
  * narrower than [SINGLE_PANE_BELOW], the section list and then one section at a time with a back
  * button ([panelLayoutFor]). [theme] dresses it, in the brand's ramp or the plain plate. Links open
  * through `LocalPlatformActions`. Escape clears the search, then goes back, then closes
- * ([onClose]); Ctrl+F jumps to the search.
+ * ([onClose]); Ctrl+F jumps to the search. [systemBack] hosts the platform's back gesture, if it has
+ * one, and is handed the same steps as Escape.
  */
 @Composable
 fun SettingsPanel(
@@ -106,6 +107,7 @@ fun SettingsPanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     actions: PanelActions = PanelActions(),
+    systemBack: @Composable (onBack: () -> Unit) -> Unit = {},
 ) {
     val palette = theme.palette
     CompositionLocalProvider(LocalSpicyPalette provides palette) {
@@ -118,8 +120,6 @@ fun SettingsPanel(
         val brand = palette.brand
         val glyph = rememberBrandGlyph()
         val select: (PanelSectionId) -> Unit = { tab = it; query = "" }
-
-        LaunchedEffect(Unit) { runCatching { searchFocus.requestFocus() } }
 
         BoxWithConstraints(
             modifier
@@ -141,16 +141,29 @@ fun SettingsPanel(
                 tab != null -> ({ tab = null })
                 else -> null
             }
+            val stepBack: () -> Unit = {
+                when {
+                    query.isNotEmpty() -> query = ""
+                    back != null -> back()
+                    else -> onClose()
+                }
+            }
+            systemBack(stepBack)
+            // A single pane moves the search between the section list and the results, so the
+            // field that takes the typing changes; focus follows it. Null: no search on screen.
+            val searchHost = when {
+                layout != PanelLayout.SinglePane -> 0
+                hits != null -> 1
+                tab == null -> 2
+                else -> null
+            }
+            LaunchedEffect(searchHost) { if (searchHost != null) runCatching { searchFocus.requestFocus() } }
             Box(
                 Modifier.fillMaxSize().onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     when {
                         event.key == Key.Escape -> {
-                            when {
-                                query.isNotEmpty() -> query = ""
-                                back != null -> back()
-                                else -> onClose()
-                            }
+                            stepBack()
                             true
                         }
                         event.key == Key.F && (event.isCtrlPressed || event.isMetaPressed) -> {
@@ -173,7 +186,10 @@ fun SettingsPanel(
                     // One pane: the section list, with the search, until a tab or a search is open.
                     tab == null && hits == null ->
                         Sidebar(sections, null, null, query, { query = it }, searchFocus, select, SidebarStyle.Page, onClose)
-                    else -> Pane(section, hits, query, actions, select, onClose, back = back, gutter = layout.gutter)
+                    else -> Pane(
+                        section, hits, query, actions, select, onClose, back = back, gutter = layout.gutter,
+                        search = if (hits != null) ({ SearchBar(query, { query = it }, searchFocus) }) else null,
+                    )
                 }
             }
         }
@@ -352,6 +368,7 @@ private fun Pane(
     onClose: () -> Unit,
     back: (() -> Unit)?,
     gutter: Dp,
+    search: (@Composable () -> Unit)? = null,
 ) {
     val scroll = rememberScrollState()
     LaunchedEffect(section.id, hits == null) { scroll.scrollTo(0) }
@@ -382,6 +399,7 @@ private fun Pane(
             Spacer(Modifier.weight(1f))
             RoundButton(PanelIcons.Close, 12.dp, onClose)
         }
+        search?.let { Box(Modifier.padding(start = gutter, end = gutter, bottom = SpicySpacing.S2)) { it() } }
         Column(
             Modifier
                 .weight(1f)
