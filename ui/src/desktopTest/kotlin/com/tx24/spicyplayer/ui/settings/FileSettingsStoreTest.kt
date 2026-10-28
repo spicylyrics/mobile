@@ -27,6 +27,7 @@ class FileSettingsStoreTest {
             putString("lyricsStyle", "AppleMusic: with = and \\ and ünïcode\nand a new line")
             putStringSet("languages", setOf("ja", "ko", ""))
             putStringSet("nothing", emptySet())
+            flush()
         }
         val reopened = FileSettingsStore(file)
         assertEquals(false, reopened.getBoolean("glow"))
@@ -54,7 +55,9 @@ class FileSettingsStoreTest {
     @Test fun removeForgetsTheKeyOnDisk() {
         FileSettingsStore(file).apply {
             putBoolean("introDone", true)
+            flush()
             remove("introDone")
+            flush()
         }
         assertFalse("introDone" in FileSettingsStore(file))
     }
@@ -105,15 +108,51 @@ class FileSettingsStoreTest {
     }
 
     @Test fun commonAppSettingsReadBackWhatTheyWrote() {
-        CommonAppSettings(FileSettingsStore(file), pipButtonByDefault = false, prereleasesByDefault = false).apply {
+        val store = FileSettingsStore(file)
+        CommonAppSettings(store, pipButtonByDefault = false, prereleasesByDefault = false).apply {
             backgroundType = BackgroundType.Color
             lyricsSizePortrait = 140
             glow = false
         }
+        store.flush()
         val reopened = CommonAppSettings(FileSettingsStore(file), pipButtonByDefault = false, prereleasesByDefault = false)
         assertEquals(BackgroundType.Color, reopened.backgroundType)
         assertEquals(140, reopened.lyricsSizePortrait)
         assertFalse(reopened.glow)
         assertFalse(reopened.startedEmpty)
+    }
+
+    @Test fun changesWaitForTheSaveButReadAtOnce() {
+        val store = FileSettingsStore(file, saveDelayMs = 60_000)
+        repeat(100) { store.putInt("lyricsSizePortrait", it) }
+        assertEquals(99, store.getInt("lyricsSizePortrait"))
+        assertFalse(file.exists())
+        store.flush()
+        assertEquals(99, FileSettingsStore(file).getInt("lyricsSizePortrait"))
+    }
+
+    @Test fun theQueuedSaveLandsOnItsOwn() {
+        val store = FileSettingsStore(file, saveDelayMs = 10)
+        store.putBoolean("glow", false)
+        val deadline = System.currentTimeMillis() + 5_000
+        while (FileSettingsStore(file).getBoolean("glow") == null && System.currentTimeMillis() < deadline) Thread.sleep(20)
+        assertEquals(false, FileSettingsStore(file).getBoolean("glow"))
+    }
+
+    @Test fun flushWithNothingWaitingWritesNothing() {
+        FileSettingsStore(file).flush()
+        assertFalse(file.exists())
+    }
+
+    @Test fun aFailedSaveStaysWaitingForTheNextFlush() {
+        // A folder (not empty, so nothing can replace it) where the file should be: every write fails until it goes.
+        File(file, "keep").apply { parentFile.mkdirs() }.writeText("")
+        val store = FileSettingsStore(file, saveDelayMs = 60_000)
+        store.putBoolean("glow", false)
+        store.flush()
+        assertTrue(file.isDirectory)
+        file.deleteRecursively()
+        store.flush()
+        assertEquals(false, FileSettingsStore(file).getBoolean("glow"))
     }
 }
