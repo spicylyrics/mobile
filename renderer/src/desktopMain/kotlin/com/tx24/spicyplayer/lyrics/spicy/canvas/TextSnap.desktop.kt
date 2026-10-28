@@ -65,15 +65,16 @@ private inline fun DrawScope.drawMask(layout: TextLayoutResult, topLeft: Offset,
     val mask = maskOf(layout)
     val paint = maskPaint
     paint.shader = null
+    paint.skiaPaint.shader = null
     paint.color = Color.White
     paint.alpha = 1f
     setUp(paint)
     // The image sits at the canvas origin and the text a pad in from it; the brush is in text coordinates.
     val pad = mask.pad.toFloat()
-    paint.shader = paint.shader?.makeWithLocalMatrix(Matrix33.makeTranslate(pad, pad))
+    val skiaPaint = paint.skiaPaint
+    skiaPaint.shader = skiaPaint.shader?.makeWithLocalMatrix(Matrix33.makeTranslate(pad, pad))
     drawIntoCanvas { canvas ->
         val skia = canvas.skiaCanvas
-        val skiaPaint = paint.skiaPaint
         val w = mask.image.width.toFloat()
         val h = mask.image.height.toFloat()
         skia.save()
