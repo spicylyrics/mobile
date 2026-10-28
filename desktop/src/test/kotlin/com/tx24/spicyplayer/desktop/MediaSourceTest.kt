@@ -1,0 +1,42 @@
+package com.tx24.spicyplayer.desktop
+
+import java.io.File
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class MediaSourceTest {
+    @Test
+    fun `platforms by os name`() {
+        assertEquals(Platform.WINDOWS, platformOf("Windows 11"))
+        assertEquals(Platform.WINDOWS, platformOf("Windows Server 2022"))
+        assertEquals(Platform.LINUX, platformOf("Linux"))
+        assertEquals(Platform.LINUX, platformOf("FreeBSD"))
+        assertEquals(Platform.MAC, platformOf("Mac OS X"))
+        assertEquals(Platform.MAC, platformOf("Darwin"))
+        assertEquals(Platform.OTHER, platformOf("SunOS"))
+        assertEquals(Platform.OTHER, platformOf(""))
+    }
+
+    @Test
+    fun `the factory picks each platform's source`() {
+        val helper = File("nowhere/gsmtc.exe")
+        val windows = mediaSource(helper, osName = "Windows 11")
+        assertTrue(windows is GsmtcMediaSource)
+        assertEquals(helper, (windows as GsmtcMediaSource).helper)
+        assertNotNull(windows.unavailableReason)
+        assertTrue(mediaSource(helper, osName = "Linux") is MprisMediaSource)
+        val mac = mediaSource(helper, osName = "Mac OS X")
+        assertNotNull(mac.unavailableReason)
+        assertTrue(mac.capabilities.isEmpty())
+        assertNotNull(mediaSource(helper, osName = "SunOS").unavailableReason)
+    }
+
+    @Test
+    fun `gsmtc can't skip yet`() {
+        assertEquals(setOf(Transport.PLAY, Transport.PAUSE, Transport.SEEK), GsmtcMediaSource(File("x")).capabilities)
+        assertEquals(Transport.entries.toSet(), MprisMediaSource(path = null).capabilities)
+        assertNotNull(MprisMediaSource(path = null).unavailableReason)
+    }
+}

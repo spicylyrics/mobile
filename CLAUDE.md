@@ -45,7 +45,7 @@ The data flows through five layers. `docs/architecture.md` has the detail for ea
 
 The UI is split across these places:
 - `MainActivity.kt` is the lyrics screen (class `LyricsActivity`; the name `MainActivity` is the default launcher alias, so pinned icons survive the icon choice).
-- `ui/nowplaying/` holds the header, and `ui/controls/` the controls.
+- `ui/nowplaying/` holds the header, and `ui/controls/` the controls. Both live in `:ui`, behind the `NowPlaying` interface and the `NowPlayingPlatform` seam (`docs/renderer-module.md`); the Android-only parts (session artwork, animated-cover video, the view-model adapter) stay in `:app`'s `ui/nowplaying/`.
 - `ui/settings/` holds settings.
 
 The design tokens and glass live in `ui/theme/SpicyTokens.kt` and `ui/components/` (`Spicy*` components), split between `:ui` (tokens, glass, skeleton, glyphs) and `:app` (the rest, until they move). New chrome uses those, not Material defaults.

@@ -10,7 +10,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.foundation.Canvas
-import android.graphics.Bitmap
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -31,7 +31,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -41,6 +40,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import com.tx24.spicyplayer.ui.controls.twoDigits
 import com.tx24.spicyplayer.ui.theme.SpicyColors
 import com.tx24.spicyplayer.ui.theme.SpicyType
 
@@ -49,15 +49,15 @@ import com.tx24.spicyplayer.ui.theme.SpicyType
  * centred and sized to the window. A wide window puts the text beside the cover, any other under it.
  */
 @Composable
-internal fun PipSongCard(
+fun PipSongCard(
     title: String,
     artist: String,
-    artwork: Bitmap?,
+    artwork: ImageBitmap?,
     artworkUri: String?,
     hasSession: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val cover = rememberSessionArtwork(artwork, artworkUri, maxDimension = PIP_ARTWORK_MAX_PX, hasSession = hasSession)
+    val cover = LocalNowPlayingPlatform.current.rememberCover(artwork, artworkUri, PIP_ARTWORK_MAX_PX, hasSession)
     BoxWithConstraints(modifier.fillMaxSize().padding(10.dp), contentAlignment = Alignment.Center) {
         val wide = maxWidth > maxHeight * 1.2f
         // Wide: the cover takes the window's whole height, the text the rest of its width.
@@ -67,7 +67,7 @@ internal fun PipSongCard(
         val artistStyle = SpicyType.Body.copy(fontSize = (textSp * 0.82f).sp, color = SpicyColors.TextSecondary, lineHeight = 1.2.em)
         if (wide) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Cover(cover?.bitmap, coverSize)
+                Cover(cover?.image, coverSize)
                 Column(Modifier.weight(1f)) {
                     CardLine(title, titleStyle, Color.White, Alignment.CenterStart)
                     CardLine(artist, artistStyle, SpicyColors.TextSecondary, Alignment.CenterStart)
@@ -75,7 +75,7 @@ internal fun PipSongCard(
             }
         } else {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Cover(cover?.bitmap, coverSize)
+                Cover(cover?.image, coverSize)
                 Spacer(Modifier.height(8.dp))
                 CardLine(title, titleStyle, Color.White)
                 CardLine(artist, artistStyle, SpicyColors.TextSecondary)
@@ -93,12 +93,12 @@ private fun CardLine(text: String, style: TextStyle, color: Color, alignment: Al
 }
 
 @Composable
-private fun Cover(bitmap: Bitmap?, size: Dp) {
+private fun Cover(bitmap: ImageBitmap?, size: Dp) {
     val shape = RoundedCornerShape(size * 0.06f)
     if (bitmap == null) {
         Box(Modifier.size(size).clip(shape).background(SpicyColors.TintBg))
     } else {
-        Image(bitmap.asImageBitmap(), null, Modifier.size(size).clip(shape), contentScale = ContentScale.Crop)
+        Image(bitmap, null, Modifier.size(size).clip(shape), contentScale = ContentScale.Crop)
     }
 }
 
@@ -108,7 +108,7 @@ private fun Cover(bitmap: Bitmap?, size: Dp) {
  * ends. Sized off the window's width, over a scrim that keeps it legible on a bright background.
  */
 @Composable
-internal fun PipDock(
+fun PipDock(
     title: String,
     artist: String,
     positionMs: () -> Long,
@@ -117,13 +117,13 @@ internal fun PipDock(
     modifier: Modifier = Modifier,
     /** A small cover beside the title and artist, as tall as the two of them. */
     cover: Boolean = false,
-    artwork: Bitmap? = null,
+    artwork: ImageBitmap? = null,
     artworkUri: String? = null,
     hasSession: Boolean = true,
     /** Where the lyrics come from, as one short line under the times; null shows none. */
     credit: MiniCredit? = null,
 ) {
-    val coverArt = if (cover) rememberSessionArtwork(artwork, artworkUri, maxDimension = PIP_DOCK_ARTWORK_PX, hasSession = hasSession) else null
+    val coverArt = if (cover) LocalNowPlayingPlatform.current.rememberCover(artwork, artworkUri, PIP_DOCK_ARTWORK_PX, hasSession) else null
     // Ticks while playing; paused, the timeline holds still.
     var now by remember { mutableLongStateOf(positionMs()) }
     LaunchedEffect(isPlaying) {
@@ -143,7 +143,7 @@ internal fun PipDock(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (cover) {
                     // The title's and artist's lines together: 1.15 × sp + 1.2 × 0.72 sp.
-                    Cover(coverArt?.bitmap, (sp * 2.05f).dp)
+                    Cover(coverArt?.image, (sp * 2.05f).dp)
                     Spacer(Modifier.size((sp * 0.55f).dp))
                 }
                 Column(Modifier.weight(1f)) {
@@ -183,7 +183,7 @@ internal fun PipDock(
 private fun clock(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)
     val (h, m, sec) = Triple(total / 3600, total / 60 % 60, total % 60)
-    return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
+    return if (h > 0) "$h:${twoDigits(m)}:${twoDigits(sec)}" else "$m:${twoDigits(sec)}"
 }
 
 private const val PIP_ARTWORK_MAX_PX = 512

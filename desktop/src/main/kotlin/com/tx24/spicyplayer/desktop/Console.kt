@@ -11,21 +11,23 @@ import java.io.PrintWriter
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onEach
 
 /**
  * Usage: `console [--app <id substring>] [--offset <ms>] [--log <file>] [--helper <gsmtc.exe>] [--replay <log>]`
  *
- * A measurement tool, not the app: follows Windows' current media session (or the first whose
+ * A measurement tool, not the app: follows the platform's current media session (or the first whose
  * app id contains `--app`), fetches its lyrics and prints the current line whenever it changes.
- * `--log` writes every raw helper line, stamped with when it arrived, for working out each
- * player's position error later. `--replay <log>` feeds such a log back through the clock at its
+ * `--log` writes every raw gsmtc helper line (Windows only), stamped with when it arrived, for working
+ * out each player's position error later. `--replay <log>` feeds such a log back through the clock at its
  * recorded times, without lyrics. `--offset` moves the lyrics that many ms earlier (later if negative).
  */
 fun main(args: Array<String>) = runBlocking {
     // Windows' JVM writes stdout in the ANSI codepage, which has no CJK.
     System.setOut(java.io.PrintStream(java.io.FileOutputStream(java.io.FileDescriptor.out), true, "UTF-8"))
     val opts = args.toList().zipWithNext().filter { it.first.startsWith("--") }.toMap()
-    val helper = opts["--helper"]?.let(::File) ?: defaultHelper()
+    val source = mediaSource(opts["--helper"]?.let(::File))
     val log = opts["--log"]?.let { PrintWriter(File(it).bufferedWriter(), true) }
     val replay = opts["--replay"]?.let(::File)
     CoreLog.sink = { level, tag, message -> if (level == CoreLog.Level.WARN) System.err.println("  [$tag] $message") }
@@ -33,10 +35,11 @@ fun main(args: Array<String>) = runBlocking {
     val lookup = LyricsLookup()
     val session = MediaSession(opts["--app"], opts["--offset"]?.toLongOrNull() ?: 0L)
     val clock = session.clock
-    say("helper ${helper.path}, key ${lookup.keyHint}, log ${opts["--log"] ?: "off"}")
+    val sourceName = if (source is GsmtcMediaSource) "helper ${source.helper.path}" else "source ${source.name}"
+    say("$sourceName, key ${lookup.keyHint}, log ${opts["--log"] ?: "off"}")
+    if (replay == null) source.unavailableReason?.let { say(it); return@runBlocking }
 
-    val process = if (replay == null) ProcessBuilder(helper.path).redirectErrorStream(true).start() else null
-    Runtime.getRuntime().addShutdownHook(Thread { process?.destroy(); log?.close() })
+    Runtime.getRuntime().addShutdownHook(Thread { source.close(); log?.close() })
 
     var lines: List<TimedLine> = emptyList()
     var fetch: Job? = null
@@ -63,27 +66,35 @@ fun main(args: Array<String>) = runBlocking {
         }
     }
 
-    withContext(Dispatchers.IO) {
-        (replay?.bufferedReader() ?: process!!.inputStream.bufferedReader()).forEachLine { raw ->
-            var receivedMono = monoMs()
-            var receivedWall = System.currentTimeMillis()
-            val line = if (replay != null) {
-                val logged = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return@forEachLine
-                receivedMono = logged["rxMono"].asLong
-                receivedWall = logged["rx"].asLong
-                logged["line"].asJsonObject
-            } else {
-                log?.println("""{"rx":$receivedWall,"rxMono":$receivedMono,"line":$raw}""")
-                runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return@forEachLine
+    // Each update as it arrives, or as a log recorded it.
+    val updates = if (replay != null) {
+        flow {
+            replay.bufferedReader().useLines { logLines ->
+                for (raw in logLines) {
+                    val logged = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: continue
+                    val line = logged["line"]?.takeIf { it.isJsonObject }?.asJsonObject ?: continue
+                    val update = parseGsmtcJson(line) ?: continue
+                    emit(Received(update, logged["rxMono"].asLong, logged["rx"].asLong, line.toString()))
+                }
             }
-            when (val event = session.feed(line, receivedMono, receivedWall)) {
+        }
+    } else {
+        source.updates().onEach { received ->
+            if (source is GsmtcMediaSource) log?.println("""{"rx":${received.receivedWall},"rxMono":${received.receivedMono},"line":${received.raw}}""")
+        }
+    }
+
+    withContext(Dispatchers.IO) {
+        updates.collect { received ->
+            val update = received.update as? MediaUpdate.Snapshot ?: return@collect
+            when (val event = session.feed(update.snapshot, received.receivedMono, received.receivedWall)) {
                 is SessionEvent.NewTrack -> {
                     val track = event.track
                     synchronized(clock) { lines = emptyList() }
                     shownLine = -2
                     say("== ${track.app}: ${track.artist} - ${track.title} (${fmt(track.durationMs)})")
                     fetch?.cancel()
-                    if (replay != null) return@forEachLine
+                    if (replay != null) return@collect
                     fetch = this@runBlocking.launch(Dispatchers.IO) {
                         val started = monoMs()
                         val (lyrics, resolution) = lookup.find(track, romanize = false)
@@ -104,7 +115,7 @@ fun main(args: Array<String>) = runBlocking {
             }
         }
     }
-    say("helper exited (${process?.waitFor()})")
+    say("${source.name} ended")
     coroutineContext.cancelChildren()
 }
 
