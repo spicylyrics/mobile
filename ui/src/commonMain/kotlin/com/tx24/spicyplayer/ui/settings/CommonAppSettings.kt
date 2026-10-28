@@ -37,8 +37,9 @@ open class CommonAppSettings(
 
     /** Every setting below, so [reload] can re-read them; first, so it exists when they register. */
     private val all = mutableListOf<Setting<*>>()
-    // `coverStage` is only read now, by [stageArt], but an older backup still restores it.
-    private val types = mutableMapOf<String, KClass<*>>("coverStage" to Boolean::class)
+    // `coverStage` and `bigCoverCanvas` are only read now, by [stageArt] and [bigCoverArt], but an
+    // older backup still restores them.
+    private val types = mutableMapOf<String, KClass<*>>("coverStage" to Boolean::class, "bigCoverCanvas" to Boolean::class)
 
     /** The type each setting is stored as, by key, so a restore can turn away the wrong one. */
     val storedTypes: Map<String, KClass<*>> get() = types
@@ -158,8 +159,16 @@ open class CommonAppSettings(
     }) { store.putString("stageArts", StageArt.store(it)) }
     /** Where the song has a Spotify Canvas, the background is that Canvas, blurred, over [backgroundType]. */
     var canvasBackground by boolean("canvasBackground", false)
-    /** Portrait: the song's Spotify Canvas fills the screen while the big cover is open. */
-    var bigCoverCanvas by boolean("bigCoverCanvas", true)
+    /**
+     * Portrait, while the big cover is open: what takes its place. A Canvas fills the screen; the
+     * animated or still cover spreads edge to edge and melts into the background. A song gets the
+     * first one it has; nothing picked is the big cover as it is. Unset, it follows the
+     * `bigCoverCanvas` switch it replaced, if that was ever flipped off, else [StageArt.DEFAULT].
+     */
+    var bigCoverArt by setting("bigCoverArts", String::class, {
+        store.getString("bigCoverArts")?.let(StageArt::parse)
+            ?: if (store.getBoolean("bigCoverCanvas") == false) emptySet() else StageArt.DEFAULT
+    }) { store.putString("bigCoverArts", StageArt.store(it)) }
     /** While the stage or the big cover shows a Canvas, the background is that Canvas, blurred. */
     var canvasBackdrop by boolean("canvasBackdrop", true)
     /**

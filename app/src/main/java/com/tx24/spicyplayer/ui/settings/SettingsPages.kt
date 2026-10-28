@@ -740,7 +740,7 @@ internal fun NowPlayingContent(settings: AppSettings, viewModel: ExternalPlaybac
         enabled = !settings.lowPerformance,
     )
     SettingRow(
-        label = "Cover stage",
+        label = "Cover stage (landscape)",
         description = if (!settings.animatedCover && StageArt.AnimatedCover in settings.stageArt) {
             "In landscape, the first of these the song has fills its side of the screen. The animated cover needs Animated Cover on."
         } else {
@@ -767,17 +767,34 @@ internal fun NowPlayingContent(settings: AppSettings, viewModel: ExternalPlaybac
             },
         )
     }
-    ToggleRow(
-        label = "Canvas on the Big Cover",
-        checked = settings.bigCoverCanvas && !settings.lowPerformance,
-        onCheckedChange = { on ->
-            // Canvas asks a third-party service, so it says what it sends first.
-            if (on) viewModel.chooseCanvas { settings.bigCoverCanvas = true } else settings.bigCoverCanvas = false
+    SettingRow(
+        label = "Big cover (portrait)",
+        description = if (!settings.animatedCover && StageArt.AnimatedCover in settings.bigCoverArt) {
+            "In portrait, the first of these the song has takes the big cover's place. The animated cover needs Animated Cover on."
+        } else {
+            "In portrait, the first of these the song has takes the big cover's place: a Canvas fills the screen, a cover spreads edge to edge. None picked is the big cover as it is."
         },
-        description = "In portrait, the song's Spotify Canvas fills the screen while the big cover is open.",
         icon = Icons.Rounded.Fullscreen,
         enabled = !settings.lowPerformance,
-    )
+        searchDescription = "In portrait, the song's Spotify Canvas, animated cover or cover art takes the big cover's place, with the song docked under it.",
+    ) {
+        SpicyMultiSelect(
+            selected = settings.bigCoverArt.mapTo(mutableSetOf()) { it.name },
+            options = StageArt.entries.map { it.name },
+            labels = StageArt.entries.map { it.label },
+            none = "Off",
+            enabled = !settings.lowPerformance,
+            onChange = { picked ->
+                val arts = StageArt.entries.filter { it.name in picked }.toSet()
+                // Canvas asks a third-party service, so it says what it sends first.
+                if (StageArt.Canvas in arts && StageArt.Canvas !in settings.bigCoverArt) {
+                    viewModel.chooseCanvas { settings.bigCoverArt = arts }
+                } else {
+                    settings.bigCoverArt = arts
+                }
+            },
+        )
+    }
     MoreOptions("Hiding the header, cover without lyrics, blurred Canvas, pausing, credits") {
         ToggleRow(
             label = "Hide the song header",
@@ -793,7 +810,7 @@ internal fun NowPlayingContent(settings: AppSettings, viewModel: ExternalPlaybac
             description = "Grow the song header into the big cover when a song has no lyrics.",
             icon = Icons.Rounded.Album,
         )
-        val showsCanvas = StageArt.Canvas in settings.stageArt || settings.bigCoverCanvas
+        val showsCanvas = StageArt.Canvas in settings.stageArt || StageArt.Canvas in settings.bigCoverArt
         ToggleRow(
             label = "Blurred Canvas Behind",
             checked = settings.canvasBackdrop && showsCanvas && !settings.lowPerformance,

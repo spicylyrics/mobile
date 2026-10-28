@@ -65,7 +65,7 @@ class CommonAppSettingsTest {
         s.animatedCover = s.animatedCover
         s.stageArt = s.stageArt
         s.canvasBackground = s.canvasBackground
-        s.bigCoverCanvas = s.bigCoverCanvas
+        s.bigCoverArt = s.bigCoverArt
         s.canvasBackdrop = s.canvasBackdrop
         s.pauseWithMusicKinds = s.pauseWithMusicKinds
         s.animatedBackground = s.animatedBackground
@@ -167,7 +167,7 @@ class CommonAppSettingsTest {
             "animatedCover" to true,
             "stageArts" to StageArt.store(StageArt.DEFAULT),
             "canvasBackground" to false,
-            "bigCoverCanvas" to true,
+            "bigCoverArts" to StageArt.store(StageArt.DEFAULT),
             "canvasBackdrop" to true,
             "pauseWithMusic" to "AnimatedCover,Canvas",
             "animatedBackground" to false,

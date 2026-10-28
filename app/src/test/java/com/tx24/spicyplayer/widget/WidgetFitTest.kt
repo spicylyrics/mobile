@@ -51,4 +51,16 @@ class WidgetFitTest {
         assertEquals(328 to 322, WidgetFit.reportedDp(328, 322, 392, 850, 2.75f))
         assertEquals(328 to 322, WidgetFit.reportedDp(902, 886, 392, 850, 2.75f))
     }
+
+    @Test
+    fun `a screen too small to be one never turns a size into pixels`() {
+        assertEquals(380 to 190, WidgetFit.reportedDp(380, 190, 0, 0, 2.625f))
+        assertEquals(380 to 190, WidgetFit.reportedDp(380, 190, 120, 60, 2.625f))
+    }
+
+    @Test
+    fun `an empty display size falls back to the app's screen`() {
+        assertEquals(411 to 891, WidgetFit.screenDp(0 to 0, 411 to 891))
+        assertEquals(411 to 891, WidgetFit.screenDp(411 to 891, 300 to 200))
+    }
 }

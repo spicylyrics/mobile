@@ -1,5 +1,6 @@
 package com.tx24.spicyplayer.network.data
 
+import com.tx24.spicyplayer.lyrics.LrcConverter
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
 import com.tx24.spicyplayer.lyrics.spicy.parser.TtmlLyricsParser
 import com.tx24.spicyplayer.network.data.blend.BlendDonors
@@ -209,9 +210,22 @@ fun RemoteLyricsPayload.withoutFakeTiming(): RemoteLyricsPayload {
     return copy(syncedLyrics = null, plainLyrics = plainLyrics?.takeIf(String::isNotBlank) ?: text.ifBlank { null })
 }
 
+/**
+ * These lyrics with enhanced LRC (`<mm:ss.xx>` stamps before words) in the synced field as
+ * word-timed TTML too, so its word timing ranks and renders as such instead of the stamps showing
+ * as text. Lyrics that already have TTML keep it.
+ */
+fun RemoteLyricsPayload.withWordTimingAsTtml(): RemoteLyricsPayload {
+    if (!ttmlLyrics.isNullOrBlank()) return this
+    val synced = syncedLyrics?.takeIf { LRC_WORD_TIME.containsMatchIn(it) } ?: return this
+    return LrcConverter.toTtml(synced)?.let { copy(ttmlLyrics = it) } ?: this
+}
+
 private val LRC_STAMP = Regex("""\[[^\]]*]""")
 private val LRC_TAG = Regex("""\[[a-zA-Z]+:[^\]]*]""")
-private val LRC_TIME = Regex("""\[\d+:\d+(?:[.:]\d+)?]""")
+// The stamps the lyrics adapter reads: what passes here must render there.
+private val LRC_TIME = Regex("""\[\d{1,3}:\d{1,2}(?:[.:]\d{1,4})?]""")
+private val LRC_WORD_TIME = Regex("""<\d{1,3}:\d{1,2}(?:[.:]\d{1,4})?>""")
 
 private fun RemoteLyricsPayload.parsedTtmlQuality(): RemoteLyricsQuality {
     val ttml = ttmlLyrics?.takeIf(String::isNotBlank) ?: return RemoteLyricsQuality.NONE

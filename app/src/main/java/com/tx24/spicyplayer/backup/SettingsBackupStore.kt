@@ -76,11 +76,11 @@ class SettingsBackupStore(private val context: Context) {
 
     /**
      * Keys left out of a backup and left alone by a restore: the custom font's file is on this
-     * device, and the usage-stats answer was given on this device.
+     * device, and the usage-stats answer and the finished intro happened on this device.
      */
     private fun kept(store: String): Set<String> =
         when (store) {
-            "ui" -> setOf("customFontFile", "customFontName", UsageStats.KEY_ENABLED, UsageStats.KEY_ASKED)
+            "ui" -> setOf("customFontFile", "customFontName", UsageStats.KEY_ENABLED, UsageStats.KEY_ASKED, "introDone")
             "translation" -> setOf("disclosed")
             else -> emptySet()
         }

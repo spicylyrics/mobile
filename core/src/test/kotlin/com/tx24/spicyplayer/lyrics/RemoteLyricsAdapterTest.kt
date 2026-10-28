@@ -105,4 +105,20 @@ class RemoteLyricsAdapterTest {
         assertEquals(true, romaji.size > 1)
         assertEquals(ready.lines[1].words.filter { it.text.isNotEmpty() }.joinToString("") { it.text }, "今日は空が青い")
     }
+
+    private fun lrc(synced: String) = RemoteLyricsSelection(
+        LyricsSourceDescriptor("example", "Example", 1, emptySet()),
+        RemoteLyricsPayload(syncedLyrics = synced),
+        RemoteLyricsQuality.LINE_SYNCED,
+    )
+
+    @Test fun aLineStampedTheSameAsTheNextIsNotEndedByIt() {
+        val lines = RemoteLyricsAdapter.render(lrc("[00:01.00]こんにちは\n[00:01.00]Hello\n[00:05.00]Next"), 9_000).lines
+        assertEquals(listOf(5_000L, 5_000L), lines.take(2).map { it.endMs })
+    }
+
+    @Test fun singleDigitSecondsAndOffsetAreRead() {
+        val lines = RemoteLyricsAdapter.render(lrc("[offset:500]\n[0:1.00]One\n[0:3.00]Two"), 9_000).lines
+        assertEquals(listOf(500L, 2_500L), lines.map { it.startMs })
+    }
 }

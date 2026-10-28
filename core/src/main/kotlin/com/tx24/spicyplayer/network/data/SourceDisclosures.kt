@@ -28,6 +28,9 @@ data class SourceDisclosure(
 
 private const val TITLE_ARTIST = "the song's title and artist"
 private const val WITH_LENGTH = "the song's title, artist and length"
+/** The Chinese catalogues' fallback for names they don't find ([com.tx24.spicyplayer.network.data.providers.NativeNames]). */
+private const val ITUNES_NAMES = "When it doesn't find a song by its name, the title and artist also go to Apple's iTunes search, " +
+    "to look up the name the song has in Japan, Korea, Taiwan or Hong Kong."
 
 object SourceDisclosures {
     /** [service] is the host an OpenAI-compatible translator is at. */
@@ -62,10 +65,10 @@ object SourceDisclosures {
 
     private val byId = listOf(
         SourceDisclosure("rmm_revival", "RMM Revival", "Apple's iTunes search and RMM Revival (rmmreviv.al)"),
-        SourceDisclosure("kugou", "Kugou", "Kugou's servers in China", WITH_LENGTH),
-        SourceDisclosure("qq_music", "QQ Music", "Tencent's QQ Music servers in China"),
-        SourceDisclosure("kuwo", "Kuwo", "Kuwo's servers in China"),
-        SourceDisclosure("netease", "NetEase", "NetEase Cloud Music's servers in China"),
+        SourceDisclosure("kugou", "Kugou", "Kugou's servers in China", WITH_LENGTH, note = ITUNES_NAMES),
+        SourceDisclosure("qq_music", "QQ Music", "Tencent's QQ Music servers in China", note = ITUNES_NAMES),
+        SourceDisclosure("kuwo", "Kuwo", "Kuwo's servers in China", note = ITUNES_NAMES),
+        SourceDisclosure("netease", "NetEase", "NetEase Cloud Music's servers in China", note = ITUNES_NAMES),
         SourceDisclosure("genius", "Genius", "Genius (genius.com)"),
         SourceDisclosure("youtube_transcript", "YouTube transcripts", "YouTube's search (youtube.com)"),
         SourceDisclosure(GENIUS_ROMANIZATION_ID, "Human romanizations", "Genius (genius.com)",

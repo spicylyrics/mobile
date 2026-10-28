@@ -64,6 +64,9 @@ internal class ScrollManager(
     private var snapNext = true
     /** Where the mouse wheel is taking the view; null once it has arrived. */
     private var wheelGoal: Float? = null
+    /** The content's height when last scrolled, and before a relayout ([onRelayout]) still to take. */
+    private var lastContentHeight = 0f
+    private var relaidFromHeight: Float? = null
 
     // Current glide: from glideFrom to glideTo over glideDuration seconds.
     private var glideFrom = 0f
@@ -107,6 +110,8 @@ internal class ScrollManager(
         holdUntilLineChange = false
         snapNext = true
         wheelGoal = null
+        lastContentHeight = 0f
+        relaidFromHeight = null
     }
 
     /**
@@ -127,6 +132,22 @@ internal class ScrollManager(
         val top = topY
         val bottom = bottomY(totalContentHeight)
         var y = animScrollY
+
+        val laidOutFrom = relaidFromHeight
+        relaidFromHeight = null
+        if (laidOutFrom != null) {
+            if (hideLineBlur || targetY == null) {
+                // The view is the user's (or follows nothing): it stays at the same point of the
+                // lyrics, which grew or shrank around it.
+                if (laidOutFrom > 0f && totalContentHeight > 0f) y *= totalContentHeight / laidOutFrom
+                settle(y)
+                animScrollY = y
+                lastContentHeight = totalContentHeight
+                return
+            }
+            snapNext = true
+        }
+        lastContentHeight = totalContentHeight
 
         if (targetY == null && snapNext) {
             // Nothing to follow yet (before the first line): start at the top, then glide from it.
@@ -198,10 +219,10 @@ internal class ScrollManager(
     /**
      * The same lyrics were laid out again (romanized, resized): every line moved, so the next
      * frame jumps to the target's new place instead of gliding there, and the line being sung
-     * stays where it was on screen.
+     * stays where it was on screen. A view the user scrolled stays theirs ([updateScroll]).
      */
     fun onRelayout() {
-        snapNext = true
+        relaidFromHeight = lastContentHeight
     }
 
     fun onDragStart() {
