@@ -7,7 +7,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import com.tx24.spicyplayer.ui.bigscreen.LyricsActions
-import com.tx24.spicyplayer.ui.lyrics.LyricsChoicesPopup
+import com.tx24.spicyplayer.ui.bigscreen.ConsentPrompt
+import com.tx24.spicyplayer.ui.theme.SpicyColors
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.tx24.spicyplayer.ui.lyrics.LyricsOverlays
 import com.tx24.spicyplayer.ui.lyrics.LyricsScreenContext
 import com.tx24.spicyplayer.ui.lyrics.LyricsScreenHost
@@ -37,10 +49,14 @@ class DesktopLyricsHost(
     override fun seekToLyric(positionMs: Long) { seek(positionMs) }
     override fun resync() { onResync() }
 
-    /** The translate button: on asks first the first time (the choices card opens on the question). */
+    /** The translate button: on asks first the first time ([Overlays] shows the question). */
     override fun toggleTranslation() {
         lyricsActions.setTranslating(!lyricsActions.options.value.translating)
     }
+
+    // The phone's quick settings sheet comes to the desktop with the settings pages; until then
+    // its button, and the queue and source buttons that open its screens, stay hidden.
+    override val quickSettings: Boolean get() = false
 
     override val pictureInPicture: Boolean get() = true
     override fun enterPip() { openMiniWindow() }
@@ -57,15 +73,26 @@ class DesktopLyricsHost(
     ) = background(animate, modifier)
 
     /**
-     * The lyrics choices card, from the quick settings and source buttons, or by itself when a
-     * translation waits on consent. A credit's profile opens in the browser; there's no pop-up to
-     * ask first.
+     * The question a first translation waits on, in a card over the lyrics. A credit's profile
+     * opens in the browser; there's no pop-up to ask first.
      */
     @Composable
     override fun Overlays(context: LyricsScreenContext) {
         val options by lyricsActions.options.collectAsState()
-        LaunchedEffect(options.pendingConsent) { if (options.pendingConsent != null) overlays.quickSettings = true }
-        if (overlays.quickSettings) LyricsChoicesPopup(onDismiss = { overlays.quickSettings = false })
+        options.pendingConsent?.let { request ->
+            Popup(
+                alignment = Alignment.Center,
+                onDismissRequest = { lyricsActions.answerConsent(request.id, false) },
+                properties = PopupProperties(focusable = true),
+            ) {
+                Box(
+                    Modifier.width(340.dp).shadow(24.dp, RoundedCornerShape(16.dp)).clip(RoundedCornerShape(16.dp))
+                        .background(SpicyColors.BgElevated).padding(vertical = 6.dp),
+                ) {
+                    ConsentPrompt(request, onAnswer = { allowed -> lyricsActions.answerConsent(request.id, allowed) })
+                }
+            }
+        }
 
         val request = context.viewState.profileRequest
         val uriHandler = LocalUriHandler.current
@@ -88,14 +115,14 @@ class DesktopKeys : ScreenKeys {
 }
 
 /**
- * The screen's pop-ups on the desktop: settings and the Lyrics Manager are the window's own
- * pages; quick settings, the queue and source buttons open the lyrics choices card.
+ * The screen's pop-ups on the desktop: settings and the Lyrics Manager are the window's own pages.
+ * Quick settings has no desktop version yet ([DesktopLyricsHost.quickSettings] hides its buttons).
  */
 class DesktopOverlays(private val nav: DesktopNav) : LyricsOverlays() {
     override fun openSettings() = nav.open(Destination.Settings)
     override fun openLyricsManager() = nav.open(Destination.LyricsManager)
     override fun openQuickSettings(start: QuickScreen) {
-        if (start == QuickScreen.LyricsManager) nav.open(Destination.LyricsManager) else super.openQuickSettings(start)
+        if (start == QuickScreen.LyricsManager) nav.open(Destination.LyricsManager)
     }
     override fun openSpotifySearch() = Unit
 }

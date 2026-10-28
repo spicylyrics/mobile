@@ -165,6 +165,9 @@ abstract class LyricsScreenHost {
     /** Whether leaving the app may shrink the lyrics into the floating window now. */
     open fun setPipAllowed(allowed: Boolean) {}
 
+    /** Quick settings (and the queue and source buttons that open its screens) exist here. */
+    open val quickSettings: Boolean get() = true
+
     /** The rotate button can turn the screen. */
     open val canRotate: Boolean get() = false
 

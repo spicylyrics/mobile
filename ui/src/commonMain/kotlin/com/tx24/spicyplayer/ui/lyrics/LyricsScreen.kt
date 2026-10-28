@@ -620,11 +620,11 @@ fun LyricsScreen(
                 )
                 val onEnterPipButton = host::enterPip.takeIf { host.pictureInPicture && settings.pipButton }
                 val onOpenLyricsManager = if (settings.lyricsManagerButton) ({ overlays.openLyricsManager() }) else null
-                val onOpenQuickSettings = if (settings.quickSettingsButton) ({ overlays.openQuickSettings(QuickScreen.Main) }) else null
+                val onOpenQuickSettings = if (host.quickSettings && settings.quickSettingsButton) ({ overlays.openQuickSettings(QuickScreen.Main) }) else null
                 // The queue's own button opens quick settings on its queue screen.
-                val onOpenQueue = if (settings.queueButton && state.hasQueue) ({ overlays.openQuickSettings(QuickScreen.Queue) }) else null
+                val onOpenQueue = if (host.quickSettings && settings.queueButton && state.hasQueue) ({ overlays.openQuickSettings(QuickScreen.Queue) }) else null
                 // So does the source's, on its list of sources, while there's a song to choose for.
-                val onOpenSource = if (settings.sourceButton && state.hasSongKey) ({ overlays.openQuickSettings(QuickScreen.Source) }) else null
+                val onOpenSource = if (host.quickSettings && settings.sourceButton && state.hasSongKey) ({ overlays.openQuickSettings(QuickScreen.Source) }) else null
                 val romanizeButton = romanizationAvailable && settings.romanizeButton
                 // Expanded, it's the only way back to the lyrics, so it stays.
                 val expandButton = settings.expandButton || headerExpanded
