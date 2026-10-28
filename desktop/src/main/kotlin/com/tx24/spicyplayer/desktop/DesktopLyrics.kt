@@ -3,12 +3,17 @@ package com.tx24.spicyplayer.desktop
 import androidx.compose.runtime.snapshotFlow
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
+import com.tx24.spicyplayer.network.data.LyricsBlendDefinition
 import com.tx24.spicyplayer.network.data.LyricsSourceDescriptor
 import com.tx24.spicyplayer.network.data.ProviderResult
+import com.tx24.spicyplayer.network.data.SourceDisclosures
 import com.tx24.spicyplayer.network.data.RemoteLyricsQuality
 import com.tx24.spicyplayer.network.data.RemoteLyricsResolution
 import com.tx24.spicyplayer.network.data.SourceDisclosures
+import com.tx24.spicyplayer.network.data.RemoteLyricsSource.Companion.BLEND_FAMILY
 import com.tx24.spicyplayer.network.data.measuredQuality
+import com.tx24.spicyplayer.network.data.spotify.SpotifyLinks
+import com.tx24.spicyplayer.translation.DeepLTranslator
 import com.tx24.spicyplayer.translation.DiskTranslationCache
 import com.tx24.spicyplayer.translation.GoogleTranslator
 import com.tx24.spicyplayer.translation.SongLanguageDetector
@@ -22,11 +27,13 @@ import com.tx24.spicyplayer.translation.TranslationPreferences
 import com.tx24.spicyplayer.translation.TranslationProvider
 import com.tx24.spicyplayer.translation.TranslationResult
 import com.tx24.spicyplayer.translation.languageCode
+import com.tx24.spicyplayer.ui.bigscreen.BlendChoice
 import com.tx24.spicyplayer.ui.bigscreen.ConsentRequest
 import com.tx24.spicyplayer.ui.bigscreen.LanguageChoice
 import com.tx24.spicyplayer.ui.bigscreen.LyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.LyricsOptions
 import com.tx24.spicyplayer.ui.bigscreen.LyricsSourceChoice
+import com.tx24.spicyplayer.ui.bigscreen.TranslatorChoice
 import com.tx24.spicyplayer.ui.settings.CommonAppSettings
 import com.tx24.spicyplayer.ui.settings.FileSettingsStore
 import com.tx24.spicyplayer.ui.settings.SettingsStore
@@ -53,19 +60,29 @@ interface SongLookup {
     /** The sources asked, in rank order. */
     val sources: List<LyricsSourceDescriptor>
 
-    /** [track]'s lyrics, each source's answer kept in [known]; with [sourceId], from that source alone. */
-    suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?): LyricsLookup.Found
+    /**
+     * [track]'s lyrics, each source's answer kept in [known]; with [sourceId], from that source
+     * alone; with [spotifyId], matched to that Spotify track.
+     */
+    suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, spotifyId: String? = null): LyricsLookup.Found
+
+    /** The blends that can be switched on, in the menu's order. */
+    val blends: List<LyricsBlendDefinition> get() = emptyList()
+
+    /** Builds the blends in [ids] from now on, and no others. */
+    fun useBlends(ids: Set<String>) = Unit
 }
 
-/** Translates a song's lyrics into a language. */
+/** Translates a song's lyrics into a language, with [provider] (its API [key] where it needs one). */
 fun interface SongTranslator {
-    suspend fun translate(track: Track, lyrics: LyricsState.Ready, target: String): TranslationOutcome
+    suspend fun translate(track: Track, lyrics: LyricsState.Ready, target: String, provider: TranslationProvider, key: String?): TranslationOutcome
 }
 
 /**
- * The playing song's lyrics and the More menu's choices for them: the source (kept per song in
- * [store]), translation (on or off and the language, in [store]) and the display modes (in
- * [settings], the phone's keys).
+ * The playing song's lyrics and the More menu's choices for them: the source and the Spotify
+ * track it is matched to (each kept per song in [store]), blends (switched for every song),
+ * translation (on or off, the language and the service, in [store], each service after the
+ * user's OK to what it is sent) and the display modes (in [settings], the phone's keys).
  *
  * Not thread-safe: call it, and run [scope], on one thread (the UI's). Lookups and translations
  * run on [work] and come back to [scope] with their answer.
@@ -89,11 +106,20 @@ class DesktopLyrics(
             // On from before consent was asked for, it stays off until it's given.
             translating = store.getBoolean(KEY_TRANSLATE) == true && googleConsented(store),
             targetLanguage = store.getString(KEY_TARGET)?.let(::languageCode) ?: defaultTarget(),
-            languages = LANGUAGES,
+            languages = languagesFor(storedTranslator(store)),
+            translator = storedTranslator(store).name,
+            translators = TRANSLATORS.map { TranslatorChoice(it.name, it.label, needsKey = it == TranslationProvider.DeepL) },
+            translatorKeySet = store.getString(KEY_DEEPL_KEY) != null,
             translationMode = settings.translationMode,
             romanizationMode = settings.romanizationMode,
         ),
     )
+
+    init {
+        val on = storedBlends()
+        lookup.useBlends(on)
+        optionsState.update { it.copy(blends = blendChoices(lookup.blends, on)) }
+    }
     override val options: StateFlow<LyricsOptions> = optionsState.asStateFlow()
 
     private var track: Track? = null
@@ -108,7 +134,9 @@ class DesktopLyrics(
         this.track = track
         known = ConcurrentHashMap()
         shownSource = null
-        optionsState.update { it.copy(pickedSource = store.getString(sourceKey(track)), message = null) }
+        optionsState.update {
+            it.copy(pickedSource = store.getString(sourceKey(track)), spotifyTrackId = store.getString(spotifyKey(track)), message = null)
+        }
         lookUp(track)
     }
 
@@ -119,7 +147,81 @@ class DesktopLyrics(
         track = null
         shownSource = null
         shownState.value = null
-        optionsState.update { it.copy(sources = emptyList(), pickedSource = null, message = null) }
+        optionsState.update { it.copy(sources = emptyList(), pickedSource = null, spotifyTrackId = null, message = null) }
+    }
+
+    override fun setSpotifyLink(input: String): Boolean {
+        val track = track ?: return false
+        val id = SpotifyLinks.trackId(input)
+        if (id == null) {
+            optionsState.update { it.copy(message = "Enter a valid Spotify track ID or URL") }
+            return false
+        }
+        store.putString(spotifyKey(track), id)
+        rematch(track, id)
+        return true
+    }
+
+    override fun clearSpotifyLink() {
+        val track = track ?: return
+        store.remove(spotifyKey(track))
+        rematch(track, null)
+    }
+
+    /** The service waiting on [LyricsOptions.consent]. */
+    private var awaitingConsent: TranslationProvider? = null
+
+    override fun setTranslator(id: String) {
+        val provider = TRANSLATORS.firstOrNull { it.name == id } ?: return
+        if (TranslationConsent.covered(disclosed(), provider, human = false)) return useTranslator(provider)
+        awaitingConsent = provider
+        val disclosure = SourceDisclosures.translation(provider, human = false)
+        optionsState.update { it.copy(consent = ConsentRequest(disclosure.id, "Translate with ${provider.label}?", disclosure.description)) }
+    }
+
+    override fun answerConsent(allow: Boolean) {
+        val provider = awaitingConsent ?: return
+        awaitingConsent = null
+        optionsState.update { it.copy(consent = null) }
+        if (!allow) return
+        store.putStringSet(KEY_DISCLOSED, disclosed() + TranslationConsent.id(provider, human = false))
+        useTranslator(provider)
+    }
+
+    override fun setTranslatorKey(key: String) {
+        val trimmed = key.trim()
+        if (trimmed.isEmpty()) store.remove(KEY_DEEPL_KEY) else store.putString(KEY_DEEPL_KEY, trimmed)
+        optionsState.update { it.copy(translatorKeySet = trimmed.isNotEmpty(), message = null) }
+        if (optionsState.value.translating && storedTranslator(store) == TranslationProvider.DeepL) translateShown()
+    }
+
+    private fun useTranslator(provider: TranslationProvider) {
+        store.putString(KEY_TRANSLATOR, provider.name)
+        optionsState.update { it.copy(translator = provider.name, languages = languagesFor(provider), message = null) }
+        if (optionsState.value.translating) translateShown()
+    }
+
+    private fun disclosed(): Set<String> = store.getStringSet(KEY_DISCLOSED).orEmpty()
+
+    override fun setBlend(id: String, on: Boolean) {
+        if (lookup.blends.none { it.id == id }) return
+        val ids = if (on) storedBlends() + id else storedBlends() - id
+        if (ids.isEmpty()) store.remove(KEY_BLENDS) else store.putString(KEY_BLENDS, ids.sorted().joinToString(","))
+        lookup.useBlends(ids)
+        optionsState.update { it.copy(blends = blendChoices(lookup.blends, ids), message = null) }
+        // Blends are built from the answers already in hand, so nothing is asked twice.
+        track?.let(::lookUp)
+    }
+
+    private fun storedBlends(): Set<String> =
+        store.getString(KEY_BLENDS)?.split(',')?.filter(String::isNotBlank)?.toSet().orEmpty()
+
+    /** The answers so far were for the old match, so every source is asked again. */
+    private fun rematch(track: Track, spotifyId: String?) {
+        known = ConcurrentHashMap()
+        shownSource = null
+        optionsState.update { it.copy(spotifyTrackId = spotifyId, message = null) }
+        lookUp(track)
     }
 
     override fun useSource(id: String?) {
@@ -192,13 +294,14 @@ class DesktopLyrics(
         lookupJob?.cancel()
         translationJob?.cancel()
         val known = known
+        val spotifyId = optionsState.value.spotifyTrackId
         shownState.value = Shown(track, LyricsState.Loading)
         refreshSources()
         lookupJob = scope.launch {
             var message: String? = null
             var found: LyricsLookup.Found? = null
             optionsState.value.pickedSource?.let { picked ->
-                val fromPicked = withContext(work) { lookup.find(track, known, picked) }
+                val fromPicked = withContext(work) { lookup.find(track, known, picked, spotifyId) }
                 if ((fromPicked.resolution as? RemoteLyricsResolution.Found)?.selection?.source?.id == picked) {
                     found = fromPicked
                 } else {
@@ -206,7 +309,7 @@ class DesktopLyrics(
                     message = "$name has no lyrics for this song, so the usual pick is shown."
                 }
             }
-            val result = found ?: withContext(work) { lookup.find(track, known, null) }
+            val result = found ?: withContext(work) { lookup.find(track, known, null, spotifyId) }
             // A newer lookup cancelled this one, or the song changed while it ran.
             ensureActive()
             if (this@DesktopLyrics.track?.key != track.key) return@launch
@@ -226,11 +329,17 @@ class DesktopLyrics(
         val shown = shownState.value ?: return
         val lyrics = shown.lyrics as? LyricsState.Ready ?: return
         val target = optionsState.value.targetLanguage
+        val provider = storedTranslator(store)
+        val key = store.getString(KEY_DEEPL_KEY).takeIf { provider == TranslationProvider.DeepL }
         translationJob?.cancel()
+        if (provider == TranslationProvider.DeepL && key == null) {
+            optionsState.update { it.copy(message = "Add a DeepL API key to translate with DeepL.") }
+            return
+        }
         optionsState.update { it.copy(message = "Translating…") }
         translationJob = scope.launch {
             val outcome = try {
-                withContext(work) { translator.translate(shown.track, lyrics, target) }
+                withContext(work) { translator.translate(shown.track, lyrics, target, provider, key) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -269,15 +378,34 @@ class DesktopLyrics(
             val disclosure = SourceDisclosures.translation(TranslationProvider.Google, human = false)
             return ConsentRequest(disclosure.id, "Turn on ${disclosure.name}?", disclosure.description)
         }
+
+        const val KEY_TRANSLATOR = "translator"
+        const val KEY_DEEPL_KEY = "deeplKey"
+        /** The blends switched on, comma-separated. */
+        const val KEY_BLENDS = "blends"
         private const val SOURCE_PREFIX = "source:"
+        private const val SPOTIFY_PREFIX = "spotify:"
 
         /** Where the source picked for [track] is kept. */
         fun sourceKey(track: Track): String = SOURCE_PREFIX + track.key
 
-        /** Every language Google can translate into, by name. */
-        val LANGUAGES: List<LanguageChoice> = TranslationLanguages.common
-            .filterKeys { TranslationLanguages.supports(TranslationProvider.Google, it) }
+        /** Where the Spotify track [track] is matched to by hand is kept. */
+        fun spotifyKey(track: Track): String = SPOTIFY_PREFIX + track.key
+
+        /** The services the desktop can translate with: the AI ones need the phone's engines. */
+        val TRANSLATORS = listOf(TranslationProvider.Google, TranslationProvider.DeepL)
+
+        /** Every language [provider] can translate into, by name. */
+        fun languagesFor(provider: TranslationProvider): List<LanguageChoice> = TranslationLanguages.common
+            .filterKeys { TranslationLanguages.supports(provider, it) }
             .map { (code, name) -> LanguageChoice(code, name) }
+
+        /** Every language Google can translate into, by name. */
+        val LANGUAGES: List<LanguageChoice> = languagesFor(TranslationProvider.Google)
+
+        /** The translator chosen in [store], Google until one is. */
+        fun storedTranslator(store: SettingsStore): TranslationProvider =
+            TranslationProvider.stored(store.getString(KEY_TRANSLATOR)).takeIf { it in TRANSLATORS } ?: TranslationProvider.Google
 
         /** The system's language where it is listed, else English. */
         fun defaultTarget(locale: Locale = Locale.getDefault()): String =
@@ -293,6 +421,10 @@ class DesktopLyrics(
         fun defaultStore(): FileSettingsStore = sharedStore
     }
 }
+
+/** Each blend [blends] offers, and whether it is in [on]. */
+fun blendChoices(blends: List<LyricsBlendDefinition>, on: Set<String>): List<BlendChoice> =
+    blends.map { BlendChoice(it.id, it.displayName.removePrefix("Blend: "), it.id in on) }
 
 /** The sources as the menu lists them, with what each had for the song in [known]. */
 fun sourceChoices(sources: List<LyricsSourceDescriptor>, known: Map<String, ProviderResult>, shownId: String?): List<LyricsSourceChoice> =
@@ -311,7 +443,8 @@ fun sourceChoices(sources: List<LyricsSourceDescriptor>, known: Map<String, Prov
                 }
                 ProviderResult.Miss -> "No lyrics for this song"
                 ProviderResult.NeedsMatch -> "Needs a Spotify link"
-                null -> "Not asked yet"
+                // A blend's answer is built in the lookup, never kept with the sources'.
+                null -> if (source.upstreamFamily == BLEND_FAMILY) "Built from its sources' answers" else "Not asked yet"
                 else -> "Unavailable right now"
             },
             available = result == null || (result is ProviderResult.Hit && quality != RemoteLyricsQuality.NONE),
@@ -319,15 +452,20 @@ fun sourceChoices(sources: List<LyricsSourceDescriptor>, known: Map<String, Prov
         )
     }
 
-/** Google Translate through the shared engine, its results kept on disk in [cacheDir]. */
+/**
+ * Google Translate, or DeepL with the user's key, through the shared engine; results kept on disk
+ * in [cacheDir].
+ */
 class GoogleSongTranslator(cacheDir: File) : SongTranslator {
     private val engine = TranslationEngine(SongLanguageDetector { null }, DiskTranslationCache(cacheDir))
-    private val google = GoogleTranslator(OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build())
+    private val client = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
+    private val google = GoogleTranslator(client)
 
-    override suspend fun translate(track: Track, lyrics: LyricsState.Ready, target: String): TranslationOutcome {
+    override suspend fun translate(track: Track, lyrics: LyricsState.Ready, target: String, provider: TranslationProvider, key: String?): TranslationOutcome {
         val document = TranslationDocument.from("${track.artist} - ${track.title}", "${lyrics.provider}:${lyrics.source.orEmpty()}", lyrics.lines)
-        val preferences = TranslationPreferences(targetLanguage = target, provider = TranslationProvider.Google, humanTranslations = false)
+        val preferences = TranslationPreferences(targetLanguage = target, provider = provider, humanTranslations = false)
         engine.ownResult(document, preferences, null)?.let { return TranslationOutcome.Translated(it) }
-        return engine.translate(document, preferences, null, google)
+        val translator = if (provider == TranslationProvider.DeepL) DeepLTranslator(client, key.orEmpty()) else google
+        return engine.translate(document, preferences, null, translator)
     }
 }

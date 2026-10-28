@@ -2,6 +2,7 @@ package com.tx24.spicyplayer.ui.bigscreen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -20,9 +22,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,16 +36,22 @@ import com.tx24.spicyplayer.translation.TranslationMode
 import com.tx24.spicyplayer.ui.theme.SpicyColors
 
 /** Which of the More menu's entries is open. */
-internal enum class MoreEntry { Source, Translation, Romanization }
+internal enum class MoreEntry { Source, Blends, Spotify, Translation, Romanization }
 
 /**
- * The More menu's entries: the lyrics source, translation, and romanization style, each opening
+ * The More menu's entries: the lyrics source, blends, the Spotify match, translation, and romanization style, each opening
  * in place onto its choices. Without [actions] they show as unavailable.
  */
 @Composable
 internal fun MoreMenuEntries(actions: LyricsActions?) {
+    // Translation open with a key field runs taller than a small window: the menu scrolls.
+    Column(Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState())) { Entries(actions) }
+}
+
+@Composable
+private fun Entries(actions: LyricsActions?) {
     if (actions == null) {
-        for (entry in listOf("Lyrics source", "Translate lyrics", "Romanization style")) {
+        for (entry in listOf("Lyrics source", "Blends", "Spotify match", "Translate lyrics", "Romanization style")) {
             EntryHeader(entry, "Not available here", open = false, enabled = false) {}
         }
         return
@@ -62,6 +73,17 @@ internal fun MoreMenuEntries(actions: LyricsActions?) {
         }
     }
 
+    EntryHeader("Blends", blendSummary(options), open == MoreEntry.Blends) { toggle(MoreEntry.Blends) }
+    if (open == MoreEntry.Blends) {
+        SectionLabel("Word timing from one source, lines from the best")
+        for (blend in options.blends) {
+            Choice(blend.name, if (blend.on) "On" else "Off", selected = blend.on) { actions.setBlend(blend.id, !blend.on) }
+        }
+    }
+
+    EntryHeader("Spotify match", spotifySummary(options), open == MoreEntry.Spotify) { toggle(MoreEntry.Spotify) }
+    if (open == MoreEntry.Spotify) SpotifyLinkField(options, actions)
+
     EntryHeader("Translate lyrics", translationSummary(options), open == MoreEntry.Translation) { toggle(MoreEntry.Translation) }
     if (open == MoreEntry.Translation) {
         Choice("Translate", if (options.translating) "On" else "Off", selected = options.translating) {
@@ -69,6 +91,22 @@ internal fun MoreMenuEntries(actions: LyricsActions?) {
         }
         for (mode in TranslationMode.entries) {
             Choice(mode.label, null, selected = options.translationMode == mode) { actions.setTranslationMode(mode) }
+        }
+        if (options.translators.size > 1) {
+            SectionLabel("With")
+            for (translator in options.translators) {
+                Choice(translator.name, null, selected = options.translator == translator.id) { actions.setTranslator(translator.id) }
+            }
+            if (options.translators.firstOrNull { it.id == options.translator }?.needsKey == true) {
+                var key by remember { mutableStateOf("") }
+                SectionLabel(if (options.translatorKeySet) "API key (set; paste to replace)" else "API key")
+                TextEntry(key, "Paste your API key", secret = true) { key = it }
+                Choice("Save key", null, selected = false, enabled = key.isNotBlank()) {
+                    actions.setTranslatorKey(key)
+                    key = ""
+                }
+                if (options.translatorKeySet) Choice("Forget key", null, selected = false) { actions.setTranslatorKey("") }
+            }
         }
         SectionLabel("Into")
         Choices {
@@ -85,11 +123,61 @@ internal fun MoreMenuEntries(actions: LyricsActions?) {
         }
     }
 
+    options.consent?.let { consent ->
+        SectionLabel(consent.title)
+        BasicText(
+            consent.description,
+            Modifier.fillMaxWidth().padding(start = 24.dp, end = 14.dp, bottom = 4.dp),
+            style = TextStyle(color = SpicyColors.TextSecondary, fontSize = 12.sp),
+        )
+        Choice("Allow", null, selected = false) { actions.answerConsent(true) }
+        Choice("Not now", null, selected = false) { actions.answerConsent(false) }
+    }
+
     options.message?.let { message ->
         BasicText(
             message,
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
             style = TextStyle(color = SpicyColors.TextSecondary, fontSize = 12.sp),
+        )
+    }
+}
+
+/** Paste the song's Spotify track link when the automatic match is wrong or missing. */
+@Composable
+private fun SpotifyLinkField(options: LyricsOptions, actions: LyricsActions) {
+    var link by remember { mutableStateOf("") }
+    SectionLabel("Spotify track link or ID")
+    TextEntry(link, "open.spotify.com/track/…") { link = it }
+    Choice("Use this track", "Looks the lyrics up again with it", selected = false, enabled = link.isNotBlank()) {
+        if (actions.setSpotifyLink(link)) link = ""
+    }
+    if (options.spotifyTrackId != null) {
+        Choice("Match automatically", "Forget the track set by hand", selected = false) { actions.clearSpotifyLink() }
+    }
+}
+
+/** A one-line text box, [placeholder] showing while it's empty; a [secret] shows as dots. */
+@Composable
+private fun TextEntry(value: String, placeholder: String, secret: Boolean = false, onChange: (String) -> Unit) {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp, end = 14.dp, top = 2.dp, bottom = 4.dp)
+            .background(Color.White.copy(alpha = 0.08f))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        if (value.isEmpty()) {
+            BasicText(placeholder, style = TextStyle(color = SpicyColors.TextTertiary, fontSize = 13.sp))
+        }
+        BasicTextField(
+            value = value,
+            onValueChange = onChange,
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
+            textStyle = TextStyle(color = SpicyColors.TextPrimary, fontSize = 13.sp),
+            cursorBrush = SolidColor(SpicyColors.TextPrimary),
         )
     }
 }

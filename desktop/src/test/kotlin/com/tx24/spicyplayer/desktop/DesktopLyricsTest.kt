@@ -5,6 +5,7 @@ import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.TimedLine
 import com.tx24.spicyplayer.lyrics.TimedWord
 import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
+import com.tx24.spicyplayer.network.data.LyricsBlends
 import com.tx24.spicyplayer.network.data.LyricsSourceDescriptor
 import com.tx24.spicyplayer.network.data.ProviderResult
 import com.tx24.spicyplayer.network.data.RemoteLyricsPayload
@@ -30,6 +31,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -50,9 +52,20 @@ class DesktopLyricsTest {
     private inner class FakeLookup : SongLookup {
         override val sources = listOf(descriptor("a"), descriptor("b"), descriptor("c"))
         val asked = mutableListOf<String?>()
+        val spotifyIds = mutableListOf<String?>()
+        /** What [known] held when each lookup started. */
+        val knownAtStart = mutableListOf<Set<String>>()
+        override val blends = LyricsBlends.ALL.take(2)
+        var blendsOn: Set<String>? = null
 
-        override suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?): LyricsLookup.Found {
+        override fun useBlends(ids: Set<String>) {
+            blendsOn = ids
+        }
+
+        override suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, spotifyId: String?): LyricsLookup.Found {
             asked += sourceId
+            spotifyIds += spotifyId
+            knownAtStart += known.keys.toSet()
             val hits = mapOf("a" to "from a", "b" to "from b".takeIf { track == song })
             for (id in listOfNotNull(sourceId) .ifEmpty { listOf("a", "b") }) {
                 known[id] = hits[id]?.let { ProviderResult.Hit(RemoteLyricsPayload(plainLyrics = it)) } ?: ProviderResult.Miss
@@ -66,8 +79,10 @@ class DesktopLyricsTest {
 
     private class FakeTranslator(var outcome: (String) -> TranslationOutcome) : SongTranslator {
         val targets = mutableListOf<String>()
-        override suspend fun translate(track: Track, lyrics: LyricsState.Ready, target: String): TranslationOutcome {
+        val providers = mutableListOf<Pair<TranslationProvider, String?>>()
+        override suspend fun translate(track: Track, lyrics: LyricsState.Ready, target: String, provider: TranslationProvider, key: String?): TranslationOutcome {
             targets += target
+            providers += provider to key
             return outcome(target)
         }
     }
@@ -76,7 +91,7 @@ class DesktopLyricsTest {
         TranslationResult(TranslationKey("hash", target, TranslationProvider.Google, null, false, ""), listOf("[$target]"), detectedLanguage = "ja"),
     )
 
-    private class Setup(val lyrics: DesktopLyrics, val lookup: SongLookup, val store: InMemorySettingsStore, val settings: CommonAppSettings, val translator: FakeTranslator)
+    private class Setup(val lyrics: DesktopLyrics, val lookup: FakeLookup, val store: InMemorySettingsStore, val settings: CommonAppSettings, val translator: FakeTranslator)
 
     private fun CoroutineScope.setup(store: InMemorySettingsStore = InMemorySettingsStore()): Setup {
         val settings = CommonAppSettings(InMemorySettingsStore(), pipButtonByDefault = false, prereleasesByDefault = true)
@@ -118,6 +133,148 @@ class DesktopLyricsTest {
         again.lyrics.settle()
         assertNull(again.store.getString(DesktopLyrics.sourceKey(song)))
         assertEquals("from a", (again.lyrics.shown.value?.lyrics as LyricsState.Ready).provider)
+    }
+
+    @Test fun aSpotifyLinkRematchesTheSongAndIsKeptForIt() = runBlocking {
+        val s = setup()
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        assertNull(s.lookup.spotifyIds.last())
+
+        val id = "4uLU6hMCjMI75M1A2tKUQC"
+        assertTrue(s.lyrics.setSpotifyLink("https://open.spotify.com/track/$id?si=x"))
+        s.lyrics.settle()
+        assertEquals(id, s.lookup.spotifyIds.last())
+        assertEquals(id, s.store.getString(DesktopLyrics.spotifyKey(song)))
+        assertEquals(id, s.lyrics.options.value.spotifyTrackId)
+        // The answers for the old match are dropped: the sources are asked afresh.
+        assertEquals(emptySet<String>(), s.lookup.knownAtStart.last())
+
+        // Another session of the app, the same song: the match comes back.
+        val again = setup(s.store)
+        again.lyrics.load(song)
+        again.lyrics.settle()
+        assertEquals(id, again.lyrics.options.value.spotifyTrackId)
+        assertEquals(id, again.lookup.spotifyIds.last())
+
+        // Another song isn't matched by it.
+        again.lyrics.load(other)
+        again.lyrics.settle()
+        assertNull(again.lookup.spotifyIds.last())
+        assertNull(again.lyrics.options.value.spotifyTrackId)
+    }
+
+    @Test fun clearingTheSpotifyLinkGoesBackToTheAutomaticMatch() = runBlocking {
+        val id = "4uLU6hMCjMI75M1A2tKUQC"
+        val s = setup(InMemorySettingsStore(mapOf(DesktopLyrics.spotifyKey(song) to id)))
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        assertEquals(id, s.lookup.spotifyIds.last())
+
+        s.lyrics.clearSpotifyLink()
+        s.lyrics.settle()
+        assertNull(s.store.getString(DesktopLyrics.spotifyKey(song)))
+        assertNull(s.lyrics.options.value.spotifyTrackId)
+        assertNull(s.lookup.spotifyIds.last())
+        assertEquals(emptySet<String>(), s.lookup.knownAtStart.last())
+    }
+
+    @Test fun aBadSpotifyLinkChangesNothing() = runBlocking {
+        val s = setup()
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        val lookups = s.lookup.asked.size
+
+        assertFalse(s.lyrics.setSpotifyLink("https://open.spotify.com/album/4uLU6hMCjMI75M1A2tKUQC"))
+        s.lyrics.settle()
+        assertEquals(lookups, s.lookup.asked.size)
+        assertNull(s.store.getString(DesktopLyrics.spotifyKey(song)))
+        assertNull(s.lyrics.options.value.spotifyTrackId)
+        assertEquals("Enter a valid Spotify track ID or URL", s.lyrics.options.value.message)
+    }
+
+    @Test fun blendsAreSwitchedForEverySongAndKept() = runBlocking {
+        val s = setup()
+        val (first, second) = LyricsBlends.ALL.take(2).map { it.id }
+        assertEquals(emptySet<String>(), s.lookup.blendsOn)
+        assertEquals(listOf(false, false), s.lyrics.options.value.blends.map { it.on })
+        assertEquals("QQ Music timing", s.lyrics.options.value.blends.first().name)
+
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        val lookups = s.lookup.asked.size
+        s.lyrics.setBlend(first, true)
+        s.lyrics.settle()
+        assertEquals(setOf(first), s.lookup.blendsOn)
+        assertEquals(listOf(true, false), s.lyrics.options.value.blends.map { it.on })
+        assertEquals(first, s.store.getString(DesktopLyrics.KEY_BLENDS))
+        // Looked up again, over the answers already in hand.
+        assertEquals(lookups + 1, s.lookup.asked.size)
+        assertEquals(setOf("a", "b"), s.lookup.knownAtStart.last())
+
+        // An unknown blend changes nothing.
+        s.lyrics.setBlend("blend_nope", true)
+        assertEquals(setOf(first), s.lookup.blendsOn)
+
+        // Another session of the app starts with them on.
+        val again = setup(s.store)
+        assertEquals(setOf(first), again.lookup.blendsOn)
+        again.lyrics.setBlend(second, true)
+        again.lyrics.setBlend(first, false)
+        assertEquals(setOf(second), again.lookup.blendsOn)
+        assertEquals(second, again.store.getString(DesktopLyrics.KEY_BLENDS))
+        again.lyrics.setBlend(second, false)
+        assertNull(again.store.getString(DesktopLyrics.KEY_BLENDS))
+    }
+
+    @Test fun deepLIsUsedOnlyAfterItsConsentAndWithAKey() = runBlocking {
+        val s = setup()
+        assertEquals(listOf("Google", "DeepL"), s.lyrics.options.value.translators.map { it.id })
+        assertEquals("Google", s.lyrics.options.value.translator)
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        s.lyrics.setTranslating(true)
+        s.lyrics.settle()
+        assertEquals(TranslationProvider.Google to null, s.translator.providers.last())
+
+        // First the user's OK to what DeepL is sent; declining changes nothing.
+        s.lyrics.setTranslator("DeepL")
+        val consent = s.lyrics.options.value.consent!!
+        assertEquals("translation_deepl", consent.id)
+        assertTrue(consent.description.contains("DeepL"))
+        assertEquals("Google", s.lyrics.options.value.translator)
+        s.lyrics.answerConsent(false)
+        assertNull(s.lyrics.options.value.consent)
+        assertEquals("Google", s.lyrics.options.value.translator)
+        assertNull(s.store.getString(DesktopLyrics.KEY_TRANSLATOR))
+
+        // Agreed to, but with no key yet: it says so instead of asking DeepL.
+        val asked = s.translator.providers.size
+        s.lyrics.setTranslator("DeepL")
+        s.lyrics.answerConsent(true)
+        s.lyrics.settle()
+        assertEquals("DeepL", s.lyrics.options.value.translator)
+        assertEquals("DeepL", s.store.getString(DesktopLyrics.KEY_TRANSLATOR))
+        assertEquals(setOf("translation_deepl"), s.store.getStringSet(DesktopLyrics.KEY_DISCLOSED))
+        assertEquals(asked, s.translator.providers.size)
+        assertEquals("Add a DeepL API key to translate with DeepL.", s.lyrics.options.value.message)
+
+        s.lyrics.setTranslatorKey("  key:fx ")
+        s.lyrics.settle()
+        assertTrue(s.lyrics.options.value.translatorKeySet)
+        assertEquals(TranslationProvider.DeepL to "key:fx", s.translator.providers.last())
+
+        // Agreed once: switching back and forth asks no more.
+        s.lyrics.setTranslator("Google")
+        assertNotNull(s.lyrics.options.value.consent)
+        s.lyrics.answerConsent(true)
+        s.lyrics.setTranslator("DeepL")
+        assertNull(s.lyrics.options.value.consent)
+        assertEquals("DeepL", s.lyrics.options.value.translator)
+
+        s.lyrics.setTranslatorKey("")
+        assertFalse(s.lyrics.options.value.translatorKeySet)
+        assertNull(s.store.getString(DesktopLyrics.KEY_DEEPL_KEY))
     }
 
     @Test fun aPickedSourceWithNothingFallsBackAndSaysSo() = runBlocking {
@@ -277,6 +434,13 @@ class DesktopLyricsTest {
         )
         assertEquals(listOf(true, false, false, false, false, true), choices.map { it.available })
         assertEquals(listOf(true, false, false, false, false, false), choices.map { it.shown })
+    }
+
+    @Test fun aBlendIsNeverListedAsUnasked() {
+        val blend = LyricsBlends.ALL.first().descriptor
+        val choices = sourceChoices(listOf(blend), emptyMap(), shownId = blend.id)
+        assertEquals("Built from its sources' answers", choices.single().status)
+        assertTrue(choices.single().available)
     }
 
     @Test fun theAppSharesOneStoreForTheChoices() {
