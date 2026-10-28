@@ -59,6 +59,8 @@ class CommonAppSettingsTest {
         s.releaseYearPosition = s.releaseYearPosition
         s.expandWithoutLyrics = s.expandWithoutLyrics
         s.timelineOutsideCover = s.timelineOutsideCover
+        s.viewControlsPosition = s.viewControlsPosition
+        s.showNoLyricsNotice = s.showNoLyricsNotice
         s.animatedCover = s.animatedCover
         s.stageArt = s.stageArt
         s.canvasBackground = s.canvasBackground
@@ -155,6 +157,8 @@ class CommonAppSettingsTest {
             "releaseYearPosition" to "Off",
             "expandWithoutLyrics" to false,
             "timelineOutsideCover" to true,
+            "viewControlsPosition" to "Top",
+            "showNoLyricsNotice" to true,
             "animatedCover" to true,
             "stageArts" to StageArt.store(StageArt.DEFAULT),
             "canvasBackground" to false,

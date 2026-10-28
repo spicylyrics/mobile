@@ -15,6 +15,7 @@ import com.tx24.spicyplayer.ui.settings.LyricsStyle
 import com.tx24.spicyplayer.ui.settings.MAX_BACKGROUND_BLUR
 import com.tx24.spicyplayer.ui.settings.DEFAULT_DYNAMIC_BLUR
 import com.tx24.spicyplayer.ui.settings.ReleaseYearPosition
+import com.tx24.spicyplayer.ui.settings.ViewControlsPosition
 
 /** The background choices' names in the panel. */
 val BACKGROUND_TYPE_LABELS: Map<BackgroundType, String> = mapOf(
@@ -267,11 +268,22 @@ private fun interfaceSection(s: CommonAppSettings) = PanelSection(
     PanelSectionId.Interface, "Interface", PanelIcons.Interface,
     groups = listOf(
         PanelGroup("Lyrics View", listOf(
+            enumSelect<ViewControlsPosition>(
+                "viewControlsPosition", "View Controls Position", "Where the view controls sit on the lyrics page.",
+                keywords = "lyrics controls top bottom buttons",
+                optionLabel = { it.label }, get = { s.viewControlsPosition }, set = { s.viewControlsPosition = it },
+            ),
             PanelRow.Toggle(
                 "timelineOutsideCover", "Timeline Outside Media Box",
                 "Show the playback timeline under the cover, above the song, instead of on it.",
                 keywords = "progress bar seek",
                 checked = { s.timelineOutsideCover }, onChange = { s.timelineOutsideCover = it },
+            ),
+            PanelRow.Toggle(
+                "showNoLyricsNotice", "No Lyrics Notice",
+                "Explain why a song has no lyrics. Off leaves just the song in Cinema View and Fullscreen. Errors still show their notice.",
+                keywords = "unavailable missing message hide",
+                checked = { s.showNoLyricsNotice }, onChange = { s.showNoLyricsNotice = it },
             ),
             PanelRow.Toggle(
                 "hideHeader", "Hide the Song Header", "Show only the lyrics, centred on the page, without the cover panel.",
