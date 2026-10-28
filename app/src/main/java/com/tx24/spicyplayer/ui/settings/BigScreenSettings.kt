@@ -92,9 +92,14 @@ private fun BigScreenSettings(settings: AppSettings, contentPadding: PaddingValu
         )
         settingsPanelSections(settings, actions, device)
     }
-    BackHandler(onBack = onClosed)
     CompositionLocalProvider(LocalPlatformActions provides platform) {
-        SettingsPanel(sections, settings.settingsTheme, onClose = onClosed, modifier = Modifier.fillMaxSize().padding(contentPadding))
+        // Back clears a search, then leaves a section for the list, and only then closes.
+        SettingsPanel(
+            sections, settings.settingsTheme, onClose = onClosed, modifier = Modifier.fillMaxSize().padding(contentPadding),
+            systemBack = { BackHandler(onBack = it) },
+            // A focused field raises the keyboard over half the panel; tap the search to type.
+            autoFocusSearch = false,
+        )
     }
 }
 
