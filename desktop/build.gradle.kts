@@ -65,6 +65,7 @@ dependencies {
     implementation(compose.desktop.currentOs)
     // :core compiles against the XmlPull API that Android ships.
     runtimeOnly("net.sf.kxml:kxml2:2.3.0")
+    testImplementation("junit:junit:4.13.2")
 }
 
 val desktopArgs = (findProperty("desktopArgs") as String?)?.split(" ")?.filter { it.isNotBlank() }.orEmpty()
@@ -77,6 +78,8 @@ val gsmtcHelper = tasks.register<Exec>("gsmtcHelper") {
     commandLine("cargo", "build", "--release")
     inputs.files("gsmtc/Cargo.toml", "gsmtc/Cargo.lock", fileTree("gsmtc/src"))
     outputs.file("gsmtc/target/release/gsmtc.exe")
+    // Windows only: other platforms read their players without it (see MediaSource.kt).
+    onlyIf { System.getProperty("os.name").startsWith("Windows") }
 }
 
 val helperResources = tasks.register<Sync>("helperResources") {
