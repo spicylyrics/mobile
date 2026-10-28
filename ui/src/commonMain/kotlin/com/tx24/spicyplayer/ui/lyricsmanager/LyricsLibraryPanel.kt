@@ -72,6 +72,7 @@ import com.tx24.spicyplayer.ui.theme.SpicyColors
 import com.tx24.spicyplayer.ui.theme.SpicyRadii
 import com.tx24.spicyplayer.ui.theme.SpicySpacing
 import com.tx24.spicyplayer.ui.theme.SpicyType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
@@ -100,6 +101,8 @@ fun LyricsLibraryPanel(
     CompositionLocalProvider(LocalSpicyPalette provides palette) {
         val messages = remember { MutableSharedFlow<String>(extraBufferCapacity = 4) }
         var uploading by remember { mutableStateOf(false) }
+        // While a file is being added, back stays put so the upload isn't cut off.
+        var uploadBusy by remember { mutableStateOf(false) }
         val brand = palette.brand
         val glyph = rememberBrandGlyph()
         Box(
@@ -119,10 +122,10 @@ fun LyricsLibraryPanel(
                 val narrow = maxWidth < 600.dp
                 val gutter = if (narrow) SpicySpacing.S4 else 32.dp
                 Column(Modifier.fillMaxSize()) {
-                    Header(if (uploading) "Upload Lyrics" else "Lyrics Manager", gutter, onBack = if (uploading) ({ uploading = false }) else null, onClose)
+                    Header(if (uploading) "Upload Lyrics" else "Lyrics Manager", gutter, onBack = if (uploading) ({ if (!uploadBusy) uploading = false }) else null, onClose)
                     Box(Modifier.weight(1f).fillMaxWidth().padding(horizontal = gutter)) {
                         if (uploading) {
-                            UploadPage(library, current, saveUploads, onSaveUploadsChange, messages) { _ ->
+                            UploadPage(library, current, saveUploads, onSaveUploadsChange, messages, onBusyChange = { uploadBusy = it }) { _ ->
                                 uploading = false
                                 onLyricsChanged()
                             }
@@ -243,7 +246,9 @@ private fun LibraryPage(
                                 },
                                 onDelete = {
                                     scope.launch {
-                                        val removed = runCatching { library.remove(entry.id) }.isSuccess
+                                        val removed = runCatching { library.remove(entry.id) }
+                                            .onFailure { if (it is CancellationException) throw it }
+                                            .isSuccess
                                         messages.tryEmit(if (removed) "Removed from Local DB." else "Failed to remove entry.")
                                         if (removed) {
                                             covers.remove(entry.id)
@@ -371,11 +376,13 @@ private fun UploadPage(
     save: Boolean,
     onSaveChange: (Boolean) -> Unit,
     messages: MutableSharedFlow<String>,
+    onBusyChange: (Boolean) -> Unit,
     onDone: (saved: Boolean) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     val files = LocalLyricsFiles.current
     var busy by remember { mutableStateOf(false) }
+    fun setBusy(now: Boolean) { busy = now; onBusyChange(now) }
     Column(verticalArrangement = Arrangement.spacedBy(SpicySpacing.S3)) {
         // The mode: saved for good, or shown once.
         Row(
@@ -410,11 +417,14 @@ private fun UploadPage(
                                 messages.tryEmit("Only .ttml and .lrc files are supported.")
                                 return@open
                             }
-                            busy = true
+                            setBusy(true)
                             scope.launch {
-                                val result = runCatching { library.add(current, text, name, save) }
-                                    .getOrElse { AddResult.Refused("Upload failed.") }
-                                busy = false
+                                val result = try {
+                                    runCatching { library.add(current, text, name, save) }
+                                        .getOrElse { if (it is CancellationException) throw it else AddResult.Refused("Upload failed.") }
+                                } finally {
+                                    setBusy(false)
+                                }
                                 when (result) {
                                     is AddResult.Refused -> messages.tryEmit(result.message)
                                     is AddResult.Added -> {
