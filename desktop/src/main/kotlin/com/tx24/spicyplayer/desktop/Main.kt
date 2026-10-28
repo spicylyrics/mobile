@@ -1,5 +1,6 @@
 package com.tx24.spicyplayer.desktop
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.platform.LocalDensity
@@ -332,7 +334,11 @@ fun main(args: Array<String>) {
                         seek = { session.seek(source, it) },
                         onResync = { session.resync(source) },
                         openMiniWindow = { MiniLyrics.open = true },
-                        background = { animate, modifier ->
+                        background = background@{ animate, modifier ->
+                            if (!DesktopSwitches.background) {
+                                Box(modifier.background(Color(0xFF121212)))
+                                return@background
+                            }
                             val type = desktopSettings.backgroundType
                             val backgroundPlaying by playing.collectAsState()
                             val backgroundCover by cover.collectAsState()
@@ -372,6 +378,7 @@ fun main(args: Array<String>) {
                     // Drawn at the size a phone held sideways would show it, whatever the window's size
                     // and the system's scaling, then sized by the Interface Scale setting.
                     val system = LocalDensity.current
+                    TrackLiveResize(constraints.maxWidth, constraints.maxHeight)
                     val targetScale = lyricsScreenScale(maxWidth.value, maxHeight.value, desktopSettings.interfaceScale)
                     var scale by remember { mutableStateOf(targetScale) }
                     LaunchedEffect(targetScale) {

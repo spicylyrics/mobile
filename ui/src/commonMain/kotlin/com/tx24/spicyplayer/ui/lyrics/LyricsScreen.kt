@@ -337,7 +337,10 @@ fun LyricsScreen(
     LaunchedEffect(inPip) { if (inPip) overlays.closePanels() }
     // Where nothing can blur (Android before 12), the glass and pop-ups fall back to their solid
     // fills instead of showing the page through.
-    val backdrop = remember { HazeState().takeIf { nowPlayingPlatform.blursLayers } }
+    // Read in composition, so a platform that turns blur off for a while (the desktop, during a
+    // window resize) takes the glass away and back.
+    val blursLayers = nowPlayingPlatform.blursLayers
+    val backdrop = remember(blursLayers) { HazeState().takeIf { blursLayers } }
 
     // Any touch shows the controls, and they fade after a few seconds without one.
     var controlsVisible by remember { mutableStateOf(true) }
