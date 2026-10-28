@@ -98,8 +98,7 @@ class PlayerctlLineTest {
     @Test
     fun `the last player quitting removes it`() {
         assertEquals(MediaUpdate.Removed("spotify"), parsePlayerctlLine("", 0, lastApp = "spotify"))
-        assertEquals(MediaUpdate.Removed("vlc"), parsePlayerctlLine("No players found
-", 0, lastApp = "vlc"))
+        assertEquals(MediaUpdate.Removed("vlc"), parsePlayerctlLine("No players found\n", 0, lastApp = "vlc"))
         assertNull(parsePlayerctlLine("", 0, lastApp = null))
     }
 }
