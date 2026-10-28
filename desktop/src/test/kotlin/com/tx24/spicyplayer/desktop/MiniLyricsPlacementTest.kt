@@ -66,4 +66,34 @@ class MiniLyricsPlacementTest {
         assertEquals(1.5f, miniLyricsFontScale(400f, 400f, 150), 0.0001f)
         assertEquals(1.2f, miniLyricsFontScale(400f, 400f, 100, staticBoost = 1.2f), 0.0001f)
     }
+
+    @Test
+    fun `it opens at the popup's size and shrinks no further than its smallest`() {
+        assertEquals(390, MiniLyricsPlacement.DEFAULT_WIDTH)
+        assertEquals(379, MiniLyricsPlacement.DEFAULT_HEIGHT)
+        assertEquals(260, MiniLyricsPlacement.MIN_WIDTH)
+        assertEquals(180, MiniLyricsPlacement.MIN_HEIGHT)
+        // A size saved before the smallest grew comes back at the new smallest.
+        val store = InMemorySettingsStore()
+        MiniLyricsPlacement.save(store, WindowBounds(100, 100, 220, 110))
+        assertEquals(WindowBounds(100, 100, 260, 180), MiniLyricsPlacement.load(store, listOf(primary)))
+    }
+
+    @Test
+    fun `shuffle and repeat need width, the times need height`() {
+        assertEquals(MiniChrome(modes = true, times = true), miniChrome(390f, 379f))
+        assertEquals(MiniChrome(modes = true, times = true), miniChrome(280f, 230f))
+        assertEquals(MiniChrome(modes = false, times = true), miniChrome(279f, 379f))
+        assertEquals(MiniChrome(modes = true, times = false), miniChrome(390f, 229f))
+        assertEquals(MiniChrome(modes = false, times = false), miniChrome(260f, 180f))
+    }
+
+    @Test
+    fun `times read as minutes and seconds`() {
+        assertEquals("0:00", miniTime(0))
+        assertEquals("0:00", miniTime(-500))
+        assertEquals("1:05", miniTime(65_999))
+        assertEquals("12:34", miniTime((12 * 60 + 34) * 1000L))
+        assertEquals("1:02:03", miniTime((3600 + 2 * 60 + 3) * 1000L))
+    }
 }
