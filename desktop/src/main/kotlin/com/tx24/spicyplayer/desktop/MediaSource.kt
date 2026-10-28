@@ -28,11 +28,26 @@ interface MediaSource : AutoCloseable {
     /** Asks [app]'s player to carry out [action] (to [positionMs] for a seek); ignored outside [capabilities]. */
     fun control(app: String, action: Transport, positionMs: Long = 0L)
 
+    /** Whether [setShuffle] reaches the player on this platform. */
+    val canShuffle: Boolean get() = false
+
+    /** Whether [setRepeat] reaches the player on this platform. */
+    val canRepeat: Boolean get() = false
+
+    /** Asks [app]'s player to turn shuffle on or off; ignored unless [canShuffle]. */
+    fun setShuffle(app: String, on: Boolean) {}
+
+    /** Asks [app]'s player to repeat [mode]; ignored unless [canRepeat]. */
+    fun setRepeat(app: String, mode: RepeatMode) {}
+
     /** Stops the reader, so a collection of [updates] ends. */
     override fun close() {}
 }
 
 enum class Transport { PLAY, PAUSE, NEXT, PREVIOUS, SEEK }
+
+/** Repeat nothing, the current track, or the whole list. */
+enum class RepeatMode { Off, One, All }
 
 enum class PlaybackStatus { Closed, Opened, Changing, Stopped, Playing, Paused, Unknown }
 
@@ -42,7 +57,8 @@ enum class PlaybackStatus { Closed, Opened, Changing, Stopped, Playing, Paused, 
  * [updatedAtWallMs] is when the player says [positionMs] was true (epoch ms); a platform that gives
  * no such stamp uses the time the report arrived. [current] is whether the platform counts this
  * player as the one in focus. [cover] is an image file on disk; [artUrl] is the player's own
- * artwork address when it isn't one (a remote URL the app doesn't fetch yet).
+ * artwork address when it isn't one (a remote URL the app doesn't fetch yet). [shuffle] and [repeat]
+ * are null when the player or platform doesn't say.
  */
 data class MediaSnapshot(
     val app: String,
@@ -59,6 +75,8 @@ data class MediaSnapshot(
     val artUrl: String? = null,
     /** What made the platform report, e.g. "poll" or "timeline"; for logs. */
     val event: String = "",
+    val shuffle: Boolean? = null,
+    val repeat: RepeatMode? = null,
 )
 
 sealed interface MediaUpdate {
@@ -101,3 +119,6 @@ fun mediaSource(helper: File? = null, osName: String = System.getProperty("os.na
     }
 
 fun monoMs() = System.nanoTime() / 1_000_000
+
+/** How long to wait before starting a source again after its [failures]th failure in a row: 1 s, doubling, at most 30 s. */
+fun retryDelayMs(failures: Int): Long = (1000L shl (failures - 1).coerceIn(0, 5)).coerceAtMost(30_000L)

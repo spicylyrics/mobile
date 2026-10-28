@@ -11,6 +11,7 @@ use std::io::Write;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use windows::Foundation::TypedEventHandler;
+use windows::Media::MediaPlaybackAutoRepeatMode as Repeat;
 use windows::Media::Control::{
     GlobalSystemMediaTransportControlsSession as Session,
     GlobalSystemMediaTransportControlsSessionManager as Manager,
@@ -43,6 +44,15 @@ fn status_name(s: Status) -> &'static str {
         Status::Stopped => "Stopped",
         Status::Playing => "Playing",
         Status::Paused => "Paused",
+        _ => "Unknown",
+    }
+}
+
+fn repeat_name(r: Repeat) -> &'static str {
+    match r {
+        Repeat::None => "None",
+        Repeat::Track => "Track",
+        Repeat::List => "List",
         _ => "Unknown",
     }
 }
@@ -90,6 +100,9 @@ fn snapshot(session: &Session, current: Option<&str>, refresh_cover: bool) -> wi
     let start = ticks_ms(timeline.StartTime()?);
     let end = ticks_ms(timeline.EndTime()?);
     let rate = playback.PlaybackRate().and_then(|r| r.Value()).ok();
+    // Null when the player doesn't say.
+    let shuffle = playback.IsShuffleActive().and_then(|v| v.Value()).ok();
+    let repeat = playback.AutoRepeatMode().and_then(|v| v.Value()).ok().map(repeat_name);
     let state = json!({
         "app": app,
         "current": current == Some(app.as_str()),
@@ -101,6 +114,8 @@ fn snapshot(session: &Session, current: Option<&str>, refresh_cover: bool) -> wi
         "lastUpdatedMs": ticks_to_unix_ms(timeline.LastUpdatedTime()?.UniversalTime),
         "status": status_name(playback.PlaybackStatus()?),
         "rate": rate,
+        "shuffle": shuffle,
+        "repeat": repeat,
         "cover": media.as_ref().and_then(|m| cover(&app, m, refresh_cover)),
     });
     Ok((app, state))
@@ -147,10 +162,11 @@ fn subscribe(session: &Session, manager: &Manager) -> windows::core::Result<()> 
     Ok(())
 }
 
-/// `gsmtc ctl <app id substring> play|pause|seek <ms>`: drives a session, for scripted tests.
+/// `gsmtc ctl <app id substring> play|pause|next|previous|seek <ms>|shuffle on|off|repeat off|one|all`:
+/// drives a session.
 fn control(manager: &Manager, args: &[String]) -> windows::core::Result<()> {
     let [app, action, rest @ ..] = args else {
-        eprintln!("usage: gsmtc ctl <app> play|pause|seek <ms>");
+        eprintln!("usage: gsmtc ctl <app> play|pause|next|previous|seek <ms>|shuffle on|off|repeat off|one|all");
         std::process::exit(2);
     };
     let session = manager.GetSessions()?.into_iter()
@@ -162,11 +178,24 @@ fn control(manager: &Manager, args: &[String]) -> windows::core::Result<()> {
     let ok = match action.as_str() {
         "play" => session.TryPlayAsync()?.get()?,
         "pause" => session.TryPauseAsync()?.get()?,
+        "next" => session.TrySkipNextAsync()?.get()?,
+        "previous" => session.TrySkipPreviousAsync()?.get()?,
         "seek" => {
             let ms: i64 = rest.first().and_then(|v| v.parse().ok()).unwrap_or(0);
             let start = session.GetTimelineProperties()?.StartTime()?.Duration;
             session.TryChangePlaybackPositionAsync(start + ms * 10_000)?.get()?
         }
+        "shuffle" => match rest.first().map(String::as_str) {
+            Some("on") => session.TryChangeShuffleActiveAsync(true)?.get()?,
+            Some("off") => session.TryChangeShuffleActiveAsync(false)?.get()?,
+            _ => false,
+        },
+        "repeat" => match rest.first().map(String::as_str) {
+            Some("off") => session.TryChangeAutoRepeatModeAsync(Repeat::None)?.get()?,
+            Some("one") => session.TryChangeAutoRepeatModeAsync(Repeat::Track)?.get()?,
+            Some("all") => session.TryChangeAutoRepeatModeAsync(Repeat::List)?.get()?,
+            _ => false,
+        },
         _ => false,
     };
     println!("{}", json!({"t": now_ms(), "ctl": action, "app": session.SourceAppUserModelId()?.to_string(), "ok": ok}));

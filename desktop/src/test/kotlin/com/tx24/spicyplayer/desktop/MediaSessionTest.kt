@@ -66,4 +66,51 @@ class MediaSessionTest {
         session.seek(Fake(setOf(Transport.SEEK)), 50_000)
         assertEquals(listOf(Transport.SEEK to 49_700L), seen)
     }
+
+    @Test
+    fun `clear forgets the track and stops the clock`() {
+        val session = MediaSession()
+        session.feed(snap("Spotify.exe", "One"), mono, wall)
+        session.clear()
+        assertNull(session.track)
+        assertNull(session.cover)
+        assertEquals(false, session.clock.isPlaying)
+        assertEquals(0L, session.clock.positionAt(monoMs() + 5_000))
+        // The same song coming back is a new track again.
+        assertTrue(session.feed(snap("Spotify.exe", "One"), mono + 1_000, wall + 1_000) is SessionEvent.NewTrack)
+    }
+
+    @Test
+    fun `shuffle and repeat follow the player`() {
+        val calls = mutableListOf<String>()
+        class Fake(override val canShuffle: Boolean, override val canRepeat: Boolean) : MediaSource {
+            override val name = "fake"
+            override val unavailableReason: String? = null
+            override val capabilities = emptySet<Transport>()
+            override fun updates(): Flow<Received> = emptyFlow()
+            override fun control(app: String, action: Transport, positionMs: Long) {}
+            override fun setShuffle(app: String, on: Boolean) { calls += "shuffle $app $on" }
+            override fun setRepeat(app: String, mode: RepeatMode) { calls += "repeat $app $mode" }
+        }
+        val session = MediaSession()
+        // No track yet: nothing to ask.
+        session.setShuffle(Fake(true, true), true)
+        assertTrue(calls.isEmpty())
+        session.feed(snap("Spotify.exe", "One").copy(shuffle = true, repeat = RepeatMode.One), mono, wall)
+        assertEquals(true, session.shuffle)
+        assertEquals(RepeatMode.One, session.repeat)
+        // A change to them alone still lands, though the clock has nothing new.
+        session.feed(snap("Spotify.exe", "One").copy(shuffle = false, repeat = RepeatMode.All), mono + 250, wall + 250)
+        assertEquals(false, session.shuffle)
+        assertEquals(RepeatMode.All, session.repeat)
+        session.setShuffle(Fake(false, false), true)
+        session.setRepeat(Fake(false, false), RepeatMode.Off)
+        assertTrue(calls.isEmpty())
+        session.setShuffle(Fake(true, true), true)
+        session.setRepeat(Fake(true, true), RepeatMode.Off)
+        assertEquals(listOf("shuffle Spotify.exe true", "repeat Spotify.exe Off"), calls)
+        session.clear()
+        assertNull(session.shuffle)
+        assertNull(session.repeat)
+    }
 }

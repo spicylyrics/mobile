@@ -12,15 +12,14 @@ import kotlinx.coroutines.flow.flowOn
 
 /**
  * Windows' media sessions (GSMTC), read through the gsmtc helper in `desktop/gsmtc`: it writes
- * one JSON line per session per change, and `gsmtc ctl <app> play|pause|seek <ms>` drives one.
+ * one JSON line per session per change, and `gsmtc ctl <app> play|pause|next|previous|seek <ms>` drives one.
  */
 class GsmtcMediaSource(val helper: File) : MediaSource {
     override val name = "gsmtc"
     override val unavailableReason
         get() = if (helper.exists()) null else "No media session helper at $helper; build it with `cargo build --release` in desktop/gsmtc"
 
-    /** The helper takes play, pause and seek; next and previous aren't in it yet. */
-    override val capabilities = setOf(Transport.PLAY, Transport.PAUSE, Transport.SEEK)
+    override val capabilities = Transport.entries.toSet()
 
     private val running = AtomicReference<Process?>()
 
@@ -44,8 +43,19 @@ class GsmtcMediaSource(val helper: File) : MediaSource {
     }.flowOn(Dispatchers.IO)
 
     override fun control(app: String, action: Transport, positionMs: Long) {
-        val args = gsmtcCtlArgs(app, action, positionMs) ?: return
-        ProcessBuilder(listOf(helper.path) + args).redirectErrorStream(true).start()
+        ProcessBuilder(listOf(helper.path) + gsmtcCtlArgs(app, action, positionMs)).redirectErrorStream(true).start()
+    }
+
+    // A helper from before shuffle and repeat answers these with "ok": false and changes nothing.
+    override val canShuffle = true
+    override val canRepeat = true
+
+    override fun setShuffle(app: String, on: Boolean) {
+        ProcessBuilder(listOf(helper.path) + gsmtcShuffleArgs(app, on)).redirectErrorStream(true).start()
+    }
+
+    override fun setRepeat(app: String, mode: RepeatMode) {
+        ProcessBuilder(listOf(helper.path) + gsmtcRepeatArgs(app, mode)).redirectErrorStream(true).start()
     }
 
     override fun close() {
@@ -53,12 +63,19 @@ class GsmtcMediaSource(val helper: File) : MediaSource {
     }
 }
 
-/** The helper's arguments for [action] on the session whose app id contains [app], or null for one it doesn't take. */
-fun gsmtcCtlArgs(app: String, action: Transport, positionMs: Long): List<String>? = when (action) {
+/** The helper's arguments for [action] on the session whose app id contains [app]. */
+/** The helper's arguments to turn shuffle on or off for the session whose app id contains [app]. */
+fun gsmtcShuffleArgs(app: String, on: Boolean) = listOf("ctl", app, "shuffle", if (on) "on" else "off")
+
+/** The helper's arguments to set [app]'s repeat mode. */
+fun gsmtcRepeatArgs(app: String, mode: RepeatMode) = listOf("ctl", app, "repeat", mode.name.lowercase())
+
+fun gsmtcCtlArgs(app: String, action: Transport, positionMs: Long): List<String> = when (action) {
     Transport.PLAY -> listOf("ctl", app, "play")
     Transport.PAUSE -> listOf("ctl", app, "pause")
     Transport.SEEK -> listOf("ctl", app, "seek", positionMs.coerceAtLeast(0L).toString())
-    Transport.NEXT, Transport.PREVIOUS -> null
+    Transport.NEXT -> listOf("ctl", app, "next")
+    Transport.PREVIOUS -> listOf("ctl", app, "previous")
 }
 
 /** One line of the helper's output, or null for one that isn't a session report (or isn't JSON). */
@@ -94,6 +111,14 @@ fun parseGsmtcJson(line: JsonObject): MediaUpdate? {
             rate = line.get("rate")?.takeUnless { it.isJsonNull }?.let { runCatching { it.asFloat }.getOrNull() },
             cover = line.str("cover").takeIf(String::isNotBlank)?.let(::File),
             event = line.str("event"),
+            // A helper from before these fields leaves them out: null, as for a player that doesn't say.
+            shuffle = line.get("shuffle")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean,
+            repeat = when (line.str("repeat")) {
+                "None" -> RepeatMode.Off
+                "Track" -> RepeatMode.One
+                "List" -> RepeatMode.All
+                else -> null
+            },
         ),
     )
 }

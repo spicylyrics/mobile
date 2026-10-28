@@ -62,6 +62,14 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
     @Volatile var cover: File? = null
         private set
 
+    /** The followed player's shuffle, or null when it doesn't say. */
+    @Volatile var shuffle: Boolean? = null
+        private set
+
+    /** The followed player's repeat mode, or null when it doesn't say. */
+    @Volatile var repeat: RepeatMode? = null
+        private set
+
     private var lastStampMs = 0L
     private var lastStatus: PlaybackStatus? = null
     /** Whether the status changed since the stamp did: every later report with that stamp is stale. */
@@ -81,6 +89,8 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
 
         val title = snapshot.title
         cover = snapshot.cover
+        shuffle = snapshot.shuffle
+        repeat = snapshot.repeat
         val status = snapshot.status
         val playing = status == PlaybackStatus.Playing
         // The platform stamps the position in wall time; the clock runs on the monotonic one.
@@ -146,6 +156,19 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
         }
     }
 
+    /** The followed player is gone (it quit, or the source stopped): no track, and the clock stopped at 0. */
+    fun clear() {
+        track = null
+        cover = null
+        shuffle = null
+        repeat = null
+        lastStampMs = 0L
+        lastStatus = null
+        stampOutlived = false
+        lastRaw = null
+        clock.reset(monoMs())
+    }
+
     /**
      * Asks the player to jump to [positionMs], and moves the clock there now rather than on its next
      * report. Does nothing when [source] can't seek.
@@ -156,6 +179,18 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
         clock.seekTo(positionMs, monoMs())
         source.control(app, Transport.SEEK, (positionMs - offsetMs).coerceAtLeast(0L))
     }
+}
+
+/** Asks the followed player to turn shuffle on or off; does nothing when [source] can't. */
+fun MediaSession.setShuffle(source: MediaSource, on: Boolean) {
+    val app = track?.app ?: return
+    if (source.canShuffle) source.setShuffle(app, on)
+}
+
+/** Asks the followed player to repeat [mode]; does nothing when [source] can't. */
+fun MediaSession.setRepeat(source: MediaSource, mode: RepeatMode) {
+    val app = track?.app ?: return
+    if (source.canRepeat) source.setRepeat(app, mode)
 }
 
 /** The checkout's root, found from the working directory, where the helper and `.env` live. */

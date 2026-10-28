@@ -2,6 +2,7 @@ package com.tx24.spicyplayer.desktop
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -34,9 +35,26 @@ class MediaSourceTest {
     }
 
     @Test
-    fun `gsmtc can't skip yet`() {
-        assertEquals(setOf(Transport.PLAY, Transport.PAUSE, Transport.SEEK), GsmtcMediaSource(File("x")).capabilities)
+    fun `both sources take every command`() {
+        assertEquals(Transport.entries.toSet(), GsmtcMediaSource(File("x")).capabilities)
         assertEquals(Transport.entries.toSet(), MprisMediaSource(path = null).capabilities)
         assertNotNull(MprisMediaSource(path = null).unavailableReason)
+    }
+
+    @Test
+    fun `shuffle and repeat where the platform takes them`() {
+        for (source in listOf(GsmtcMediaSource(File("x")), MprisMediaSource(path = null))) {
+            assertTrue(source.canShuffle)
+            assertTrue(source.canRepeat)
+        }
+        val mac = mediaSource(File("x"), osName = "Mac OS X")
+        assertFalse(mac.canShuffle)
+        assertFalse(mac.canRepeat)
+    }
+
+    @Test
+    fun `retries back off to 30 seconds`() {
+        assertEquals(listOf(1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 30_000L, 30_000L), (1..7).map(::retryDelayMs))
+        assertEquals(1_000L, retryDelayMs(0))
     }
 }
