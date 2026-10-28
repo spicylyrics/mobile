@@ -12,6 +12,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.LocalUriHandler
 import com.tx24.spicyplayer.ui.bigscreen.LyricsActions
@@ -163,22 +164,35 @@ const val MAX_AUTO_SCALE = 1.5f
 const val SCALE_SETTLE_MS = 250L
 
 /**
- * Composes [content] once, out of sight, a few seconds after the window opens, then lets it go.
- * The first time the window turns between landscape and portrait, the screen composes the other
- * layout's controls and stage for the first time in the run: classes load and the code runs
- * uncompiled, which held the window still for a couple of seconds. Composed here first, at the
- * window's size turned the other way, that later turn finds it warm. It's measured at that size,
- * takes no room, sits outside the window (so no pointer reaches it) and is hidden from
- * accessibility.
+ * Composes [content] once per run, out of sight, then lets it go. The first time the window turns
+ * between landscape and portrait, the screen composes the other layout's controls and stage for
+ * the first time in the run: classes load and the code runs uncompiled, which held the window
+ * still for a couple of seconds. Composed here first, at the window's size turned the other way,
+ * that later turn finds it warm.
+ *
+ * That cost lands where it can't be seen: the first time the screen is [quiet] after its first
+ * frame, which is while the first song's lyrics are still being looked up (or nothing is
+ * playing), or failing that, the first pause. Never on a timer during playback.
+ *
+ * It's measured at that size, takes no room, sits outside the window (so no pointer reaches it)
+ * and is hidden from accessibility.
  */
 @Composable
-fun WarmOtherLayout(widthDp: Dp, heightDp: Dp, content: @Composable () -> Unit) {
+fun WarmOtherLayout(widthDp: Dp, heightDp: Dp, quiet: Boolean, content: @Composable () -> Unit) {
     var composing by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        delay(WARM_UP_AFTER_MS)
+    var done by remember { mutableStateOf(false) }
+    LaunchedEffect(quiet, done) {
+        if (!quiet || done || composing) return@LaunchedEffect
+        // After the first frame is up, so the window shows before this work starts.
+        withFrameNanos { }
         composing = true
+    }
+    // Once started it runs its course, even if the lyrics land meanwhile: the cost is already paid.
+    LaunchedEffect(composing) {
+        if (!composing) return@LaunchedEffect
         delay(WARM_UP_FOR_MS)
         composing = false
+        done = true
     }
     if (!composing) return
     Box(
@@ -190,9 +204,6 @@ fun WarmOtherLayout(widthDp: Dp, heightDp: Dp, content: @Composable () -> Unit) 
             },
     ) { content() }
 }
-
-/** When the other layout is composed out of sight: after startup's own work has settled. */
-const val WARM_UP_AFTER_MS = 3_000L
 
 /** How long it stays composed: long enough for its lyrics to lay out and a few frames to draw. */
 const val WARM_UP_FOR_MS = 2_500L

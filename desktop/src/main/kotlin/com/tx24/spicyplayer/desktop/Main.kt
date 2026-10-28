@@ -402,8 +402,9 @@ fun main(args: Array<String>) {
                         messages = remember { emptyFlow<String>() },
                         lyricsViewState = mainLyricsView,
                     )
-                    // The other orientation's layout, composed once out of sight so the first turn isn't cold.
-                    WarmOtherLayout(maxWidth, maxHeight) {
+                    // The other orientation's layout, composed once out of sight so the first turn isn't
+                    // cold: while no lyrics are sweeping yet (still being looked up, or none), or paused.
+                    WarmOtherLayout(maxWidth, maxHeight, quiet = readyLyrics == null || !nowPlayingState.isPlaying) {
                         LyricsScreen(
                             state = screenState,
                             settings = desktopSettings,
