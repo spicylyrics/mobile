@@ -241,10 +241,14 @@ class DesktopLyrics(
         fun defaultTarget(locale: Locale = Locale.getDefault()): String =
             languageCode(locale.language)?.takeIf { code -> LANGUAGES.any { it.code == code } } ?: "en"
 
-        /** The store for the More menu's choices, beside the settings file. */
-        fun defaultStore(): FileSettingsStore = FileSettingsStore(
-            File(FileSettingsStore.appDataDir(System.getProperty("os.name").orEmpty(), System::getenv, System.getProperty("user.home")), "lyrics.properties"),
-        )
+        private val sharedStore by lazy {
+            FileSettingsStore(
+                File(FileSettingsStore.appDataDir(System.getProperty("os.name").orEmpty(), System::getenv, System.getProperty("user.home")), "lyrics.properties"),
+            )
+        }
+
+        /** The one store for the More menu's choices, beside the settings file; never build a second over it. */
+        fun defaultStore(): FileSettingsStore = sharedStore
     }
 }
 

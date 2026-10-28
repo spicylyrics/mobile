@@ -4,6 +4,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -97,6 +98,10 @@ class FileSettingsStoreTest {
         val linuxWithAppData = FileSettingsStore.appDataDir("Linux", { if (it == "APPDATA") "/wine" else if (it == "XDG_CONFIG_HOME") " " else null }, "/home/me")
         assertEquals(File("/home/me/.config", "spicy-lyrics-desktop"), linuxWithAppData)
         assertEquals("settings.properties", FileSettingsStore.FILE_NAME)
+    }
+
+    @Test fun theAppSharesOneStoreOverTheSettingsFile() {
+        assertSame(FileSettingsStore.default(), FileSettingsStore.default())
     }
 
     @Test fun commonAppSettingsReadBackWhatTheyWrote() {
