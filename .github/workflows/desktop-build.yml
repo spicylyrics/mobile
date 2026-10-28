@@ -1,0 +1,83 @@
+name: Desktop installer
+
+# Builds the Spicy Lyrics Desktop MSI and uploads it as a workflow artifact. Nothing is
+# published: no GitHub release, no tag.
+on:
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - '.github/workflows/desktop-build.yml'
+  push:
+    tags: ['desktop-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-build-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  msi:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      # cargo is on the runner image; this only caches the helper's build.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/gsmtc
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Version from tag
+        id: version
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/desktop-v*)
+              version="${GITHUB_REF_NAME#desktop-v}"
+              if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "Tag $GITHUB_REF_NAME is not desktop-vMAJOR.MINOR.BUILD" >&2
+                exit 1
+              fi
+              echo "version=$version" >> "$GITHUB_OUTPUT"
+              echo "name=$version" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "name=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+      # The Compose plugin downloads WiX 3 for jpackage itself, so the runner needs none.
+      - name: Build MSI
+        env:
+          # Publishable key; blank leaves the Spicy Lyrics source out. Gradle checks its shape.
+          SPICY_LYRICS_CLIENT_KEY: ${{ secrets.SPICY_LYRICS_CLIENT_KEY || vars.SPICY_LYRICS_CLIENT_KEY }}
+          DESKTOP_VERSION: ${{ steps.version.outputs.version }}
+        run: ./gradlew.bat --no-daemon :desktop:packageMsi ${DESKTOP_VERSION:+-PdesktopVersion=$DESKTOP_VERSION}
+      - name: Checksum
+        run: |
+          cd desktop/build/compose/binaries/main/msi
+          ls -l *.msi
+          sha256sum *.msi | tee SHA256SUMS
+      - name: Upload MSI
+        uses: actions/upload-artifact@v7
+        with:
+          name: spicy-lyrics-desktop-${{ steps.version.outputs.name }}
+          path: |
+            desktop/build/compose/binaries/main/msi/*.msi
+            desktop/build/compose/binaries/main/msi/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+      # A release later: give the job `contents: write` and add a step like android-release.yml's
+      # "Publish prerelease", e.g.
+      #   gh release create "$GITHUB_REF_NAME" desktop/build/compose/binaries/main/msi/*.msi \
+      #     --repo "$GITHUB_REPOSITORY" --title "Spicy Lyrics Desktop ${{ steps.version.outputs.name }}" \
+      #     --generate-notes --prerelease --verify-tag
+      # guarded by `if: startsWith(github.ref, 'refs/tags/desktop-v')`.
