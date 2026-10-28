@@ -40,6 +40,7 @@ import com.tx24.spicyplayer.ui.bigscreen.LocalTooltipHost
 import com.tx24.spicyplayer.ui.bigscreen.ScrollToActiveButton
 import com.tx24.spicyplayer.ui.bigscreen.ViewMode
 import com.tx24.spicyplayer.ui.bigscreen.onPlaybackKey
+import com.tx24.spicyplayer.ui.lyrics.LyricsOverlays
 import com.tx24.spicyplayer.ui.lyrics.LyricsScreen
 import com.tx24.spicyplayer.ui.lyrics.LyricsScreenState
 import com.tx24.spicyplayer.ui.bigscreen.bigScreenOptions
@@ -319,7 +320,7 @@ fun main(args: Array<String>) {
                     )
                 }
                 val overlays = remember { DesktopOverlays(nav) }
-                val host = remember {
+                fun desktopHost(drawsOverlays: Boolean) =
                     DesktopLyricsHost(
                         transport = nowPlaying,
                         lyricsActions = songLyrics,
@@ -357,8 +358,10 @@ fun main(args: Array<String>) {
                                 }
                             }
                         },
+                        drawsOverlays = drawsOverlays,
                     )
-                }
+                val host = remember { desktopHost(drawsOverlays = true) }
+                val warmHost = remember { desktopHost(drawsOverlays = false) }
                 val nowPlayingState by nowPlaying.state.collectAsState()
                 val readyLyrics = lyricsState as? LyricsState.Ready
                 val translation = translated?.takeIf { readyLyrics != null && it.lyrics === readyLyrics }?.translation
@@ -378,17 +381,18 @@ fun main(args: Array<String>) {
                     // The screen picks portrait or landscape from the window's size, as the phone does from its screen's.
                     BoxWithConstraints(Modifier.fillMaxSize()) {
                     MaterialTheme(colorScheme = darkColorScheme()) {
+                    val screenState = LyricsScreenState(
+                        nowPlaying = nowPlayingState,
+                        lyrics = lyricsState,
+                        hasSongKey = track != null,
+                        translation = translation,
+                        translationEnabled = options.translating,
+                        translating = options.translating && readyLyrics != null && translation == null,
+                        translationHelps = readyLyrics != null,
+                        waitingDetail = (shown as? Screen.Waiting)?.problem,
+                    )
                     LyricsScreen(
-                        state = LyricsScreenState(
-                            nowPlaying = nowPlayingState,
-                            lyrics = lyricsState,
-                            hasSongKey = track != null,
-                            translation = translation,
-                            translationEnabled = options.translating,
-                            translating = options.translating && readyLyrics != null && translation == null,
-                            translationHelps = readyLyrics != null,
-                            waitingDetail = (shown as? Screen.Waiting)?.problem,
-                        ),
+                        state = screenState,
                         settings = desktopSettings,
                         host = host,
                         overlays = overlays,
@@ -398,6 +402,19 @@ fun main(args: Array<String>) {
                         messages = remember { emptyFlow<String>() },
                         lyricsViewState = mainLyricsView,
                     )
+                    // The other orientation's layout, composed once out of sight so the first turn isn't cold.
+                    WarmOtherLayout(maxWidth, maxHeight) {
+                        LyricsScreen(
+                            state = screenState,
+                            settings = desktopSettings,
+                            host = warmHost,
+                            overlays = remember { LyricsOverlays() },
+                            noticeActions = noticeActions,
+                            screenWidthDp = maxHeight.value.toInt(),
+                            screenHeightDp = maxWidth.value.toInt(),
+                            messages = remember { emptyFlow<String>() },
+                        )
+                    }
                     }
                     }
                     }

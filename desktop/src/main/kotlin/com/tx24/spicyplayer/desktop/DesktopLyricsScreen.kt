@@ -5,6 +5,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
+import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.LocalUriHandler
 import com.tx24.spicyplayer.ui.bigscreen.LyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.ConsentPrompt
@@ -44,6 +52,8 @@ class DesktopLyricsHost(
     private val onResync: () -> Unit,
     private val openMiniWindow: () -> Unit,
     private val background: @Composable (animate: Boolean, modifier: Modifier) -> Unit,
+    /** False for a copy of the screen composed out of sight ([WarmOtherLayout]): no pop-ups of its own. */
+    private val drawsOverlays: Boolean = true,
 ) : LyricsScreenHost() {
     override fun lyricPositionMs(): Long = positionMs()
     override fun seekToLyric(positionMs: Long) { seek(positionMs) }
@@ -78,6 +88,7 @@ class DesktopLyricsHost(
      */
     @Composable
     override fun Overlays(context: LyricsScreenContext) {
+        if (!drawsOverlays) return
         val options by lyricsActions.options.collectAsState()
         options.pendingConsent?.let { request ->
             Popup(
@@ -150,3 +161,38 @@ const val MAX_AUTO_SCALE = 1.5f
  * every piece of text out again, so a drag keeps the scale it started with until it settles.
  */
 const val SCALE_SETTLE_MS = 250L
+
+/**
+ * Composes [content] once, out of sight, a few seconds after the window opens, then lets it go.
+ * The first time the window turns between landscape and portrait, the screen composes the other
+ * layout's controls and stage for the first time in the run: classes load and the code runs
+ * uncompiled, which held the window still for a couple of seconds. Composed here first, at the
+ * window's size turned the other way, that later turn finds it warm. It's measured at that size,
+ * takes no room, sits outside the window (so no pointer reaches it) and is hidden from
+ * accessibility.
+ */
+@Composable
+fun WarmOtherLayout(widthDp: Dp, heightDp: Dp, content: @Composable () -> Unit) {
+    var composing by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        delay(WARM_UP_AFTER_MS)
+        composing = true
+        delay(WARM_UP_FOR_MS)
+        composing = false
+    }
+    if (!composing) return
+    Box(
+        Modifier
+            .clearAndSetSemantics {}
+            .layout { measurable, _ ->
+                val placeable = measurable.measure(Constraints.fixed(heightDp.roundToPx(), widthDp.roundToPx()))
+                layout(0, 0) { placeable.place(-placeable.width - 1, 0) }
+            },
+    ) { content() }
+}
+
+/** When the other layout is composed out of sight: after startup's own work has settled. */
+const val WARM_UP_AFTER_MS = 3_000L
+
+/** How long it stays composed: long enough for its lyrics to lay out and a few frames to draw. */
+const val WARM_UP_FOR_MS = 2_500L
