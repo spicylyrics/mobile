@@ -30,6 +30,7 @@ Read these only when the task calls for them:
 
 - `docs/architecture.md`: before working inside a layer (session tracking, backend, sources, normalisation, rendering, UI).
 - `docs/renderer-module.md`: before changing what `:renderer` holds, its platform seams (`expect`/`actual`, injected loaders) or how `:app` and `:desktop` use it.
+- `docs/desktop.md`: before working on `:desktop` or the big-screen UI (tablets, DeX): its modules, seams, data files, shortcuts, packaging and update check.
 - `docs/settings.md`: before adding or changing a setting.
 - `docs/releases.md`: when asked to make a release. Tagged builds produce signed APK GitHub prereleases, and they double as the changelog.
 
