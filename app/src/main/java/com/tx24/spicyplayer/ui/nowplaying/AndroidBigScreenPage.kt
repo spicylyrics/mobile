@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -17,6 +18,8 @@ import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.ui.bigscreen.BigScreenActions
 import com.tx24.spicyplayer.ui.bigscreen.BigScreenPage
 import com.tx24.spicyplayer.ui.bigscreen.BigScreenState
+import com.tx24.spicyplayer.ui.bigscreen.LocalLyricsActions
+import com.tx24.spicyplayer.ui.bigscreen.LyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.PlayerCapabilities
 
 /**
@@ -36,7 +39,8 @@ fun androidCapabilities(canSeek: Boolean, pictureInPicture: Boolean): PlayerCapa
 /**
  * The big-screen page on a tablet, DeX or an unfolded foldable. The controls follow the phone's
  * own idle timer ([controlsShown]): every touch on the page counts ([onTouch]) without being
- * taken from what's under it. Back steps out of cinema before it leaves the app.
+ * taken from what's under it. Back steps out of cinema before it leaves the app. The More menu's
+ * lyrics choices go through [lyricsActions].
  */
 @Composable
 internal fun AndroidBigScreenPage(
@@ -53,6 +57,7 @@ internal fun AndroidBigScreenPage(
     initialRomanized: Boolean,
     background: @Composable () -> Unit,
     lyricsView: @Composable (modifier: Modifier, romanize: Boolean, activeLineTopPx: Float?, renderConfig: RenderConfig) -> Unit,
+    lyricsActions: LyricsActions? = null,
 ) {
     var page by remember { mutableStateOf(BigScreenState(romanized = initialRomanized)) }
     BackHandler(enabled = page.immersive) { page = page.back() }
@@ -71,6 +76,7 @@ internal fun AndroidBigScreenPage(
                 }
             },
     ) {
+        CompositionLocalProvider(LocalLyricsActions provides lyricsActions) {
         BigScreenPage(
             state = page,
             nowPlaying = nowPlaying,
@@ -83,5 +89,6 @@ internal fun AndroidBigScreenPage(
             renderConfig = renderConfig,
             controlsShown = controlsShown,
         )
+        }
     }
 }

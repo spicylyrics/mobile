@@ -191,6 +191,7 @@ import com.tx24.spicyplayer.ui.settings.PipWithoutLyrics
 import com.tx24.spicyplayer.ui.settings.debugReport
 import com.tx24.spicyplayer.ui.nowplaying.MotionCoverQuery
 import com.tx24.spicyplayer.ui.nowplaying.ViewModelNowPlaying
+import com.tx24.spicyplayer.ui.nowplaying.rememberViewModelLyricsActions
 import com.tx24.spicyplayer.ui.nowplaying.AndroidBigScreenPage
 import com.tx24.spicyplayer.ui.bigscreen.usesBigScreenLayout
 import com.tx24.spicyplayer.ui.nowplaying.nowPlayingState
@@ -970,6 +971,8 @@ private fun LyricsApp(
                         modifier = lyricsModifier,
                     )
                 },
+                // The More menu's sources, translation and romanization, made only here.
+                lyricsActions = rememberViewModelLyricsActions(viewModel, settings),
             )
         } else CompositionLocalProvider(LocalControlsRevealGuard provides revealGuard) {
         Box(
