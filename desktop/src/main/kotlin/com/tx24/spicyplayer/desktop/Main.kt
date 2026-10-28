@@ -135,6 +135,9 @@ fun main(args: Array<String>) {
     val session = MediaSession(opts["--app"], delays::offsetFor)
     val lyricsLibrary = DesktopLyricsLibrary(coverOf = { session.cover })
     val lookup = LyricsLookup(local = lyricsLibrary)
+    // Settings → Sources: read before the lyrics start, and followed as the settings window changes it.
+    val sourceSettings = DesktopSourceSettings(DesktopLyrics.defaultStore(), lookup.descriptors, onChange = lookup::useSources)
+    lookup.useSources(sourceSettings.policy())
     val screen = MutableStateFlow<Screen>(Screen.Waiting())
     val playing = MutableStateFlow(false)
     val cover = MutableStateFlow<File?>(null)
@@ -365,7 +368,7 @@ fun main(args: Array<String>) {
             }
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
         }
-        SettingsWindow(settingsWindow)
+        SettingsWindow(settingsWindow, sourceSettings)
         LyricsManagerWindow(lyricsManager, lyricsLibrary, songLyrics)
 
         // Ctrl+M: the lyrics in a small window that stays on top.

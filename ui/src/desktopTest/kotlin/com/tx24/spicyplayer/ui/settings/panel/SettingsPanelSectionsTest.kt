@@ -17,7 +17,8 @@ class SettingsPanelSectionsTest {
 
     @Test
     fun `tabs are in sidebar order with About and Advanced below the divider`() {
-        assertEquals(PanelSectionId.entries - PanelSectionId.Device, sections.map { it.id })
+        // Sources and Device are the platform's own tabs: none here.
+        assertEquals(PanelSectionId.entries - PanelSectionId.Device - PanelSectionId.Sources, sections.map { it.id })
         assertEquals(listOf(PanelSectionId.Advanced, PanelSectionId.About), sections.filter { it.secondary }.map { it.id })
     }
 

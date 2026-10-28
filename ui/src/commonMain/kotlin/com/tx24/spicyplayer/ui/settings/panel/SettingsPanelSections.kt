@@ -38,6 +38,7 @@ val BACKGROUND_TYPE_LABELS: Map<BackgroundType, String> = mapOf(
  * @param links About's buttons, label to address.
  * @param lyricsManagerButton the page has a Lyrics Manager button to offer, under Interface → Controls.
  * @param pickLyricsFont asks for a font file and, picked, makes it the Custom lyrics font.
+ * @param sourceGroups the platform's lyrics-source rows, in a Sources tab after Lyrics; none, no tab.
  */
 class PanelActions(
     val clearLyricsCache: (() -> Unit)? = null,
@@ -45,6 +46,7 @@ class PanelActions(
     val links: List<Pair<String, String>> = emptyList(),
     val lyricsManagerButton: Boolean = false,
     val pickLyricsFont: (() -> Unit)? = null,
+    val sourceGroups: List<PanelGroup> = emptyList(),
 )
 
 /**
@@ -61,6 +63,9 @@ fun settingsPanelSections(
     hiddenRows: Set<String> = emptySet(),
 ): List<PanelSection> = listOfNotNull(
     lyricsSection(settings),
+    actions.sourceGroups.takeIf { groups -> groups.any { it.rows.isNotEmpty() } }?.let {
+        PanelSection(PanelSectionId.Sources, "Sources", PanelIcons.Database, groups = it)
+    },
     backgroundSection(settings),
     playbackSection(settings),
     interfaceSection(settings, actions),

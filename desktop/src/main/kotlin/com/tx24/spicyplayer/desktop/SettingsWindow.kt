@@ -28,6 +28,8 @@ import com.tx24.spicyplayer.ui.settings.LocalPlatformActions
 import com.tx24.spicyplayer.ui.settings.LyricsFont
 import com.tx24.spicyplayer.ui.settings.PlatformActions
 import com.tx24.spicyplayer.ui.settings.panel.PanelActions
+import com.tx24.spicyplayer.ui.settings.panel.PanelGroup
+import com.tx24.spicyplayer.ui.settings.panel.PanelRow
 import com.tx24.spicyplayer.ui.settings.panel.SettingsPanel
 import com.tx24.spicyplayer.ui.settings.panel.settingsPanelSections
 
@@ -42,6 +44,34 @@ val desktopSettings: CommonAppSettings by lazy {
  * phone's interface animations.
  */
 val DESKTOP_HIDDEN_ROWS = setOf("headerSize", "refinedBackground", "profilesInBrowser", "expandWithoutLyrics", "uiAnimations")
+
+/**
+ * Settings → Sources: a switch for each source, in their order. Switching one on that sends the
+ * song somewhere new asks first, with the phone's wording, and remembers the answer.
+ */
+private fun sourceGroups(sources: DesktopSourceSettings): List<PanelGroup> {
+    // The switches read Compose state, so the panel redraws when one changes.
+    val version = mutableStateOf(0)
+    val rows = sources.origins().map { origin ->
+        PanelRow.Toggle(
+            "source:${origin.id}", origin.displayName, null,
+            keywords = "lyrics source provider",
+            checked = { version.value; sources.isOn(origin.id) },
+            onChange = { on ->
+                val disclosure = if (on) sources.disclosureFor(origin.id) else null
+                val agreed = disclosure == null || JOptionPane.showConfirmDialog(
+                    null, disclosure.description, "Turn on ${disclosure.name}?", JOptionPane.OK_CANCEL_OPTION, JOptionPane.INFORMATION_MESSAGE,
+                ) == JOptionPane.OK_OPTION
+                if (agreed) {
+                    disclosure?.let(sources::agree)
+                    sources.setSourceEnabled(origin.id, on)
+                    version.value++
+                }
+            },
+        )
+    }
+    return listOf(PanelGroup("Lyrics Sources", rows))
+}
 
 /** Asks for a font file and makes a copy of it the Custom lyrics font, or says it isn't one. */
 private fun pickLyricsFont(settings: CommonAppSettings, platform: PlatformActions) {
@@ -72,7 +102,7 @@ class SettingsWindowState {
 
 /** The settings panel in a window of its own, while [state] is open. */
 @Composable
-fun ApplicationScope.SettingsWindow(state: SettingsWindowState) {
+fun ApplicationScope.SettingsWindow(state: SettingsWindowState, sources: DesktopSourceSettings? = null) {
     if (!state.open) return
     Window(
         onCloseRequest = { state.open = false },
@@ -89,6 +119,7 @@ fun ApplicationScope.SettingsWindow(state: SettingsWindowState) {
                 links = listOf("GitHub" to "https://github.com/spicylyrics/mobile"),
                 lyricsManagerButton = true,
                 pickLyricsFont = { pickLyricsFont(settings, platform) },
+                sourceGroups = sources?.let(::sourceGroups).orEmpty(),
             )
         }
         val sections = remember(settings, actions) { settingsPanelSections(settings, actions, DESKTOP_HIDDEN_ROWS) }

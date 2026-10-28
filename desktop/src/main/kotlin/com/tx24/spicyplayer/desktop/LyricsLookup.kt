@@ -31,8 +31,12 @@ import retrofit2.converter.gson.GsonConverterFactory
 class LyricsLookup(clientKey: String = spicyLyricsKey(), private val local: DesktopLyricsLibrary? = null) : SongLookup {
     private val providers = providers(clientKey)
     private val source = RemoteLyricsSource(providers, ProviderCooldownTracker())
-    private val descriptors = providers.map { it.descriptor }
+    /** Every provider there is, switched on or not. */
+    val descriptors = providers.map { it.descriptor }
 
+    /** The sources' order and switches from settings ([useSources]), before the blends go in. */
+    @Volatile private var base = RemoteLyricsPolicy()
+    @Volatile private var blendIds: Set<String> = emptySet()
     @Volatile private var policy = RemoteLyricsPolicy()
     @Volatile private var ranking = SourceRanking(descriptors, policy)
 
@@ -49,7 +53,20 @@ class LyricsLookup(clientKey: String = spicyLyricsKey(), private val local: Desk
     }
 
     override fun useBlends(ids: Set<String>) {
-        policy = blendPolicy(SourceRanking(descriptors, RemoteLyricsPolicy()), ids)
+        blendIds = ids
+        rebuild()
+    }
+
+    /** Asks the sources in [sources]' order and switches from now on ([DesktopSourceSettings]), with the blends switched on over them. */
+    fun useSources(sources: RemoteLyricsPolicy) {
+        base = sources
+        rebuild()
+    }
+
+    private fun rebuild() {
+        val base = base
+        val blends = blendPolicy(SourceRanking(descriptors, base), blendIds)
+        policy = base.copy(pairs = base.pairs + blends.pairs)
         ranking = SourceRanking(descriptors, policy)
     }
 
