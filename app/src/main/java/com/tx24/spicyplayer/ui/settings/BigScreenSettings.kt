@@ -98,6 +98,8 @@ private fun BigScreenSettings(settings: AppSettings, contentPadding: PaddingValu
         SettingsPanel(
             sections, settings.settingsTheme, onClose = onClosed, modifier = Modifier.fillMaxSize().padding(contentPadding),
             systemBack = { BackHandler(onBack = it) },
+            // A focused field raises the keyboard over half the panel; tap the search to type.
+            autoFocusSearch = false,
         )
     }
 }
