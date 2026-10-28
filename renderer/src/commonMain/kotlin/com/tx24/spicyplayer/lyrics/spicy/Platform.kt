@@ -1,5 +1,7 @@
 package com.tx24.spicyplayer.lyrics.spicy
 
+import kotlin.coroutines.CoroutineContext
+
 /** A monotonic clock in nanoseconds, for timing and nothing else. */
 internal expect fun monotonicNanos(): Long
 
@@ -24,3 +26,10 @@ internal expect fun roundHalfUp(value: Float): Int
  * goes, which shouldn't pull a hand-scrolled view back.
  */
 internal expect val resizeSnapsToLine: Boolean
+
+/**
+ * Where lyrics get measured. Skia's text layout isn't thread-safe: measuring off the UI thread
+ * while it draws text can corrupt a shared cache and hang the UI thread for good, so desktop
+ * measures in place. Android's text layout is safe on a background thread.
+ */
+internal expect val textLayoutContext: CoroutineContext
