@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -97,7 +98,10 @@ import com.tx24.spicyplayer.ui.theme.SpicyType
  * narrower than [SINGLE_PANE_BELOW], the section list and then one section at a time with a back
  * button ([panelLayoutFor]). [theme] dresses it, in the brand's ramp or the plain plate. Links open
  * through `LocalPlatformActions`. Escape clears the search, then goes back, then closes
- * ([onClose]); Ctrl+F jumps to the search.
+ * ([onClose]); Ctrl+F jumps to the search. [systemBack] hosts the platform's back gesture, if it has
+ * one, and is handed the same steps as Escape. [autoFocusSearch] puts the caret in the search when
+ * the panel opens and on the section list; off (where focus brings up a soft keyboard), the search
+ * only keeps its focus while it moves.
  */
 @Composable
 fun SettingsPanel(
@@ -106,6 +110,8 @@ fun SettingsPanel(
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
     actions: PanelActions = PanelActions(),
+    systemBack: @Composable (onBack: () -> Unit) -> Unit = {},
+    autoFocusSearch: Boolean = true,
 ) {
     val palette = theme.palette
     CompositionLocalProvider(LocalSpicyPalette provides palette) {
@@ -113,13 +119,21 @@ fun SettingsPanel(
         var tab by remember { mutableStateOf<PanelSectionId?>(null) }
         var query by remember { mutableStateOf("") }
         val searchFocus = remember { FocusRequester() }
+        // One search field, moved between the section list and the results, so what's typed and
+        // the caret carry over instead of a fresh field starting again.
+        var searchFocused by remember { mutableStateOf(false) }
+        // Whether the field had focus when the query last changed, for it to keep once it moves.
+        var refocus by remember { mutableStateOf(false) }
+        val searchBar = remember {
+            movableContentOf {
+                SearchBar(query, { refocus = searchFocused; query = it }, searchFocus, onFocusChange = { searchFocused = it })
+            }
+        }
         val searching = searchTerms(query).isNotEmpty()
         val hits = if (searching) searchPanel(query, sections) else null
         val brand = palette.brand
         val glyph = rememberBrandGlyph()
         val select: (PanelSectionId) -> Unit = { tab = it; query = "" }
-
-        LaunchedEffect(Unit) { runCatching { searchFocus.requestFocus() } }
 
         BoxWithConstraints(
             modifier
@@ -141,16 +155,31 @@ fun SettingsPanel(
                 tab != null -> ({ tab = null })
                 else -> null
             }
+            val stepBack: () -> Unit = {
+                when {
+                    query.isNotEmpty() -> query = ""
+                    back != null -> back()
+                    else -> onClose()
+                }
+            }
+            systemBack(stepBack)
+            // A single pane moves the search between the section list and the results, so the
+            // field that takes the typing changes; focus follows it. Null: no search on screen.
+            val searchHost = when {
+                layout != PanelLayout.SinglePane -> 0
+                hits != null -> 1
+                tab == null -> 2
+                else -> null
+            }
+            LaunchedEffect(searchHost) {
+                if (searchHost != null && (autoFocusSearch || refocus)) runCatching { searchFocus.requestFocus() }
+            }
             Box(
                 Modifier.fillMaxSize().onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     when {
                         event.key == Key.Escape -> {
-                            when {
-                                query.isNotEmpty() -> query = ""
-                                back != null -> back()
-                                else -> onClose()
-                            }
+                            stepBack()
                             true
                         }
                         event.key == Key.F && (event.isCtrlPressed || event.isMetaPressed) -> {
@@ -165,15 +194,18 @@ fun SettingsPanel(
                 when {
                     layout != PanelLayout.SinglePane -> Row(Modifier.fillMaxSize()) {
                         Sidebar(
-                            sections, section.id, hits, query, { query = it }, searchFocus, select,
+                            sections, section.id, hits, searchBar, select,
                             SidebarStyle.Rail(layout.railWidth, brand?.fieldDeep ?: Color.Black),
                         )
                         Pane(section, hits, query, actions, select, onClose, back = null, gutter = layout.gutter)
                     }
                     // One pane: the section list, with the search, until a tab or a search is open.
                     tab == null && hits == null ->
-                        Sidebar(sections, null, null, query, { query = it }, searchFocus, select, SidebarStyle.Page, onClose)
-                    else -> Pane(section, hits, query, actions, select, onClose, back = back, gutter = layout.gutter)
+                        Sidebar(sections, null, null, searchBar, select, SidebarStyle.Page, onClose)
+                    else -> Pane(
+                        section, hits, query, actions, select, onClose, back = back, gutter = layout.gutter,
+                        search = if (hits != null) searchBar else null,
+                    )
                 }
             }
         }
@@ -199,9 +231,7 @@ private fun Sidebar(
     sections: List<PanelSection>,
     selected: PanelSectionId?,
     hits: List<SearchHit>?,
-    query: String,
-    onQuery: (String) -> Unit,
-    searchFocus: FocusRequester,
+    search: @Composable () -> Unit,
     onSelect: (PanelSectionId) -> Unit,
     style: SidebarStyle,
     onClose: (() -> Unit)? = null,
@@ -229,7 +259,7 @@ private fun Sidebar(
             }
             onClose?.let { RoundButton(PanelIcons.Close, 12.dp, it) }
         }
-        SearchBar(query, onQuery, searchFocus)
+        search()
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             sections.filter { !it.secondary }.forEach { Tab(it, selected, hits, onSelect) }
             Box(Modifier.padding(horizontal = 10.dp, vertical = SpicySpacing.S2).fillMaxWidth().height(1.dp).background(SpicyColors.Hairline))
@@ -249,7 +279,13 @@ private fun BrandLine() {
 }
 
 @Composable
-internal fun SearchBar(query: String, onQuery: (String) -> Unit, focus: FocusRequester, placeholder: String = "Search settings") {
+internal fun SearchBar(
+    query: String,
+    onQuery: (String) -> Unit,
+    focus: FocusRequester,
+    placeholder: String = "Search settings",
+    onFocusChange: (Boolean) -> Unit = {},
+) {
     val hover = remember { MutableInteractionSource() }
     val hovered by hover.collectIsHoveredAsState()
     var focused by remember { mutableStateOf(false) }
@@ -278,7 +314,7 @@ internal fun SearchBar(query: String, onQuery: (String) -> Unit, focus: FocusReq
             modifier = Modifier
                 .weight(1f)
                 .focusRequester(focus)
-                .onFocusChanged { focused = it.isFocused },
+                .onFocusChanged { focused = it.isFocused; onFocusChange(it.isFocused) },
             decorationBox = { field ->
                 Box(contentAlignment = Alignment.CenterStart) {
                     if (query.isEmpty()) BasicText(placeholder, style = style.copy(color = SpicyColors.TextSecondary), maxLines = 1)
@@ -352,6 +388,7 @@ private fun Pane(
     onClose: () -> Unit,
     back: (() -> Unit)?,
     gutter: Dp,
+    search: (@Composable () -> Unit)? = null,
 ) {
     val scroll = rememberScrollState()
     LaunchedEffect(section.id, hits == null) { scroll.scrollTo(0) }
@@ -382,6 +419,7 @@ private fun Pane(
             Spacer(Modifier.weight(1f))
             RoundButton(PanelIcons.Close, 12.dp, onClose)
         }
+        search?.let { Box(Modifier.padding(start = gutter, end = gutter, bottom = SpicySpacing.S2)) { it() } }
         Column(
             Modifier
                 .weight(1f)
