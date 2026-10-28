@@ -119,7 +119,7 @@ internal fun DrawScope.drawWipeText(
  */
 private fun DrawScope.drawGradientText(layoutResult: TextLayoutResult, brush: Brush, topLeft: Offset) {
     if (!layoutResult.layoutInput.text.text.hasEmoji()) {
-        unsnapped(layoutResult, topLeft) { drawText(layoutResult, brush = brush, shadow = Shadow.None, topLeft = topLeft) }
+        drawLyricText(layoutResult, brush, topLeft)
         return
     }
     val w = layoutResult.size.width.toFloat()
@@ -233,11 +233,14 @@ private fun DrawScope.drawInactiveText(
 ) {
     val shadow = inactiveShadow(plan, suppressBlur, cssPx)
     val topLeft = Offset(xPos, yPos)
+    // Unblurred, the text itself carries the colour: Skia drops a shadow with no blur and no
+    // offset, which would leave nothing drawn (Compose on Android nudges the radius instead).
+    if (shadow.blurRadius <= 0f) {
+        drawLyricText(layoutResult, shadow.color, topLeft)
+        return
+    }
     unsnapped(layoutResult, topLeft) {
-        // Unblurred, the text itself carries the colour: Skia drops a shadow with no blur and no
-        // offset, which would leave nothing drawn (Compose on Android nudges the radius instead).
-        if (shadow.blurRadius <= 0f) drawText(layoutResult, color = shadow.color, shadow = Shadow.None, topLeft = topLeft)
-        else drawText(
+        drawText(
             textLayoutResult = layoutResult,
             color = Color.Transparent,
             shadow = shadow,
@@ -744,15 +747,7 @@ internal fun DrawScope.drawStaticLine(
     layout.words.forEach { wLayout ->
         val xPos = lineStartX + wLayout.relativeOffset.x
         val yPos = dynamicY + wLayout.relativeOffset.y + scrollOffset
-        unsnapped(wLayout.textLayoutResult, Offset(xPos, yPos)) {
-            drawText(
-                textLayoutResult = wLayout.textLayoutResult,
-                color = Color.White,
-                alpha = lineAnim.opacity.coerceIn(0f, 1f),
-                shadow = Shadow.None,
-                topLeft = Offset(xPos, yPos),
-            )
-        }
+        drawLyricText(wLayout.textLayoutResult, Color.White, Offset(xPos, yPos), lineAnim.opacity.coerceIn(0f, 1f))
     }
 }
 

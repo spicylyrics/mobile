@@ -21,6 +21,9 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
       - name: Build, test, and lint
         run: ./gradlew --no-daemon assembleDebug testDebugUnitTest :core:test :renderer:desktopTest :ui:desktopTest :desktop:compileKotlin :desktop:test lintDebug
+      - name: Text motion numbers
+        if: always()
+        run: grep -h "TextSnap" renderer/build/test-results/desktopTest/TEST-*TextSnapTest.xml || true
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
