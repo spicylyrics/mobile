@@ -106,4 +106,24 @@ class SettingsPanelSectionsTest {
         val bare = settingsPanelSections(settings).single { it.id == PanelSectionId.Advanced }
         assertTrue(bare.rows.isEmpty())
     }
+
+    @Test
+    fun `hidden rows leave the panel, and a group left empty goes with them`() {
+        assertEquals(rows.map { it.id }, settingsPanelSections(settings, PanelActions(clearLyricsCache = {}), emptySet()).flatMap { it.rows }.map { it.id })
+        val hidden = setOf("headerSize", "profilesInBrowser")
+        val shown = settingsPanelSections(settings, PanelActions(clearLyricsCache = {}), hidden)
+        assertEquals(rows.map { it.id }.filter { it !in hidden }, shown.flatMap { it.rows }.map { it.id })
+        val advanced = settingsPanelSections(settings, PanelActions(clearLyricsCache = {}), setOf("clearStoredLyricsCache"))
+            .single { it.id == PanelSectionId.Advanced }
+        assertTrue(advanced.groups.isEmpty())
+    }
+
+    @Test
+    fun `the lyrics manager button row shows only where the platform has the button`() {
+        assertTrue(rows.none { it.id == "lyricsManagerButton" })
+        val withButton = settingsPanelSections(settings, PanelActions(lyricsManagerButton = true)).flatMap { it.rows }
+        val row = withButton.single { it.id == "lyricsManagerButton" } as PanelRow.Toggle
+        row.onChange(true)
+        assertTrue(settings.lyricsManagerButton)
+    }
 }

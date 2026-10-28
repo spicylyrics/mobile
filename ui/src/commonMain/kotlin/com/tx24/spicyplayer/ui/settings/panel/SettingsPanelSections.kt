@@ -35,23 +35,39 @@ val BACKGROUND_TYPE_LABELS: Map<BackgroundType, String> = mapOf(
  * @param clearLyricsCache deletes every saved lyric.
  * @param version the app's version, for About.
  * @param links About's buttons, label to address.
+ * @param lyricsManagerButton the page has a Lyrics Manager button to offer, under Interface → Controls.
  */
 class PanelActions(
     val clearLyricsCache: (() -> Unit)? = null,
     val version: String? = null,
     val links: List<Pair<String, String>> = emptyList(),
+    val lyricsManagerButton: Boolean = false,
 )
 
-fun settingsPanelSections(settings: CommonAppSettings, actions: PanelActions = PanelActions()): List<PanelSection> = listOf(
+/**
+ * [hiddenRows] are the ids of rows the platform leaves out because they do nothing there; a group
+ * left empty goes too. The default shows every row.
+ */
+fun settingsPanelSections(
+    settings: CommonAppSettings,
+    actions: PanelActions = PanelActions(),
+    hiddenRows: Set<String> = emptySet(),
+): List<PanelSection> = listOf(
     lyricsSection(settings),
     backgroundSection(settings),
     playbackSection(settings),
-    interfaceSection(settings),
+    interfaceSection(settings, actions),
     appearanceSection(settings),
     experimentsSection(settings),
     advancedSection(actions),
     PanelSection(PanelSectionId.About, "About", PanelIcons.About, secondary = true),
-)
+).map { it.without(hiddenRows) }
+
+private fun PanelSection.without(hidden: Set<String>): PanelSection {
+    if (hidden.isEmpty() || rows.none { it.id in hidden }) return this
+    val kept = groups.map { group -> PanelGroup(group.title, group.rows.filter { it.id !in hidden }) }.filter { it.rows.isNotEmpty() }
+    return PanelSection(id, title, icon, kept, secondary, intro, emptyText)
+}
 
 private inline fun <reified E : Enum<E>> enumSelect(
     id: String,
@@ -263,7 +279,7 @@ private fun playbackSection(s: CommonAppSettings) = PanelSection(
     ),
 )
 
-private fun interfaceSection(s: CommonAppSettings) = PanelSection(
+private fun interfaceSection(s: CommonAppSettings, actions: PanelActions) = PanelSection(
     PanelSectionId.Interface, "Interface", PanelIcons.Interface,
     groups = listOf(
         PanelGroup("Lyrics View", listOf(
@@ -317,6 +333,12 @@ private fun interfaceSection(s: CommonAppSettings) = PanelSection(
                 disabled = { if (s.autoHideControls) null else "Turn on Hide Controls to change this." },
                 checked = { s.hideControlsWhilePaused }, onChange = { s.hideControlsWhilePaused = it },
             ),
+        ) + listOfNotNull(
+            PanelRow.Toggle(
+                "lyricsManagerButton", "Lyrics Manager Button", "Show a button beside the view controls that opens the Lyrics Manager.",
+                keywords = "ttml upload saved lyrics library maker",
+                checked = { s.lyricsManagerButton }, onChange = { s.lyricsManagerButton = it },
+            ).takeIf { actions.lyricsManagerButton },
         )),
     ),
 )

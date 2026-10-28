@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
+import com.tx24.spicyplayer.ui.components.LocalPopupPalette
 import com.tx24.spicyplayer.ui.settings.CommonAppSettings
 import com.tx24.spicyplayer.ui.settings.DesktopPlatformActions
 import com.tx24.spicyplayer.ui.settings.FileSettingsStore
@@ -30,6 +31,13 @@ import com.tx24.spicyplayer.ui.settings.panel.settingsPanelSections
 val desktopSettings: CommonAppSettings by lazy {
     CommonAppSettings(FileSettingsStore.default(), pipButtonByDefault = false, prereleasesByDefault = true)
 }
+
+/**
+ * The settings rows that do nothing on desktop: the phone's header and its expanded cover, the
+ * background's older look (the desktop only has the refined one), in-app profiles, and the
+ * phone's interface animations.
+ */
+val DESKTOP_HIDDEN_ROWS = setOf("headerSize", "refinedBackground", "profilesInBrowser", "expandWithoutLyrics", "uiAnimations")
 
 /** Whether the settings window is open; Ctrl+, (Cmd+, on a Mac) opens it. */
 class SettingsWindowState {
@@ -60,10 +68,11 @@ fun ApplicationScope.SettingsWindow(state: SettingsWindowState) {
                 // Set by the installer's launcher; a run from Gradle has none.
                 version = System.getProperty("jpackage.app-version"),
                 links = listOf("GitHub" to "https://github.com/spicylyrics/mobile"),
+                lyricsManagerButton = true,
             )
         }
-        val sections = remember(settings, actions) { settingsPanelSections(settings, actions) }
-        CompositionLocalProvider(LocalPlatformActions provides platform) {
+        val sections = remember(settings, actions) { settingsPanelSections(settings, actions, DESKTOP_HIDDEN_ROWS) }
+        CompositionLocalProvider(LocalPlatformActions provides platform, LocalPopupPalette provides settings.popupTheme.palette) {
             SettingsPanel(sections, settings.settingsTheme, onClose = { state.open = false }, actions = actions)
         }
     }

@@ -124,6 +124,7 @@ val LocalTooltipHost = staticCompositionLocalOf<TooltipHost> { NoTooltips }
 class BigScreenActions(
     val onState: (BigScreenState) -> Unit,
     val onOpenSettings: () -> Unit,
+    val onOpenLyricsManager: () -> Unit = {},
 )
 
 /**
@@ -588,6 +589,7 @@ private fun ViewControlsRow(env: PageEnv, size: Dp, modifier: Modifier) {
                             when (control) {
                                 ViewControl.More -> menuOpen = true
                                 ViewControl.Settings -> env.actions.onOpenSettings()
+                                ViewControl.LyricsManager -> env.actions.onOpenLyricsManager()
                                 else -> env.actions.onState(state.click(control, env.widthDp, env.heightDp, env.capabilities))
                             }
                         },
@@ -617,6 +619,7 @@ private fun ControlGlyph(control: ViewControl, env: PageEnv, modifier: Modifier)
         ViewControl.Fullscreen -> ExpandGlyph(expanded = state.mode == ViewMode.Fullscreen, modifier)
         ViewControl.More -> MoreGlyph(modifier)
         ViewControl.Settings -> SettingsGlyph(modifier)
+        ViewControl.LyricsManager -> LyricsManagerGlyph(modifier)
         ViewControl.Close -> CloseGlyph(modifier)
     }
 }
