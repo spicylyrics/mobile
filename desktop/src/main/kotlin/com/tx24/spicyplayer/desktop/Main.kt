@@ -45,6 +45,8 @@ import com.tx24.spicyplayer.network.data.spotify.AudioAnalysis
 import com.tx24.spicyplayer.network.data.spotify.LocalTrackMetadata
 import com.tx24.spicyplayer.network.data.spotify.SharedSpotify
 import com.tx24.spicyplayer.platform.CoreLog
+import com.tx24.spicyplayer.desktop.update.UpdateBanner
+import com.tx24.spicyplayer.desktop.update.UpdateCheck
 import java.awt.GraphicsEnvironment
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -92,6 +94,9 @@ fun main(args: Array<String>) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var fetch: Job? = null
     var beats: Job? = null
+
+    val updates = UpdateCheck.forThisApp()
+    scope.launch { updates.run() }
 
     Runtime.getRuntime().addShutdownHook(Thread { source.close() })
     scope.launch {
@@ -154,6 +159,7 @@ fun main(args: Array<String>) {
                             NowPlaying(s.track, Modifier.align(Alignment.TopStart))
                         }
                     }
+                    UpdateBanner(updates.update, Modifier.align(Alignment.BottomCenter))
                 }
             }
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
