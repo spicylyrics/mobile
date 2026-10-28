@@ -132,6 +132,13 @@ open class CommonAppSettings(
     var expandWithoutLyrics by boolean("expandWithoutLyrics", false)
     /** Landscape: the timeline sits under the cover, above the song, rather than with the controls on it. */
     var timelineOutsideCover by boolean("timelineOutsideCover", true)
+    /** Big screens: whether the page's view controls sit along its top or its bottom, 24 px in. */
+    var viewControlsPosition by enum("viewControlsPosition", ViewControlsPosition.Top)
+    /**
+     * Big screens: a song without lyrics says why. Off, cinema and fullscreen leave just the song,
+     * its cover in the middle. Errors still show their notice.
+     */
+    var showNoLyricsNotice by boolean("showNoLyricsNotice", true)
     /** The record's looping Apple Music cover in place of the still one, where it has one. */
     var animatedCover by boolean("animatedCover", true)
     /**
@@ -372,6 +379,9 @@ enum class AmbientDelay(val label: String, val millis: Long) {
     TwoMinutes("2 minutes", 120_000L),
     FiveMinutes("5 minutes", 300_000L),
 }
+
+/** Where the big-screen page's view controls sit. */
+enum class ViewControlsPosition(val label: String) { Top("Top"), Bottom("Bottom") }
 
 /** Which side the now-playing panel sits on in landscape. */
 enum class PanelSide { Left, Right }

@@ -1,7 +1,10 @@
 package com.tx24.spicyplayer.ui.bigscreen
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -32,11 +35,13 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameMillis
@@ -48,17 +53,25 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -67,6 +80,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
@@ -76,6 +90,7 @@ import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsLayoutCalculator
 import com.tx24.spicyplayer.ui.components.ExpandGlyph
 import com.tx24.spicyplayer.ui.components.GlassButton
+import com.tx24.spicyplayer.ui.components.GlyphEase
 import com.tx24.spicyplayer.ui.components.LyricsSkeleton
 import com.tx24.spicyplayer.ui.components.MoreGlyph
 import com.tx24.spicyplayer.ui.components.PictureInPictureGlyph
@@ -107,6 +122,9 @@ import com.tx24.spicyplayer.ui.nowplaying.NowPlayingState
 import com.tx24.spicyplayer.ui.nowplaying.RepeatState
 import com.tx24.spicyplayer.ui.theme.SpicyColors
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 
 /**
  * How a view control gets its tooltip. The desktop wraps the button in its own tooltip area;
@@ -143,6 +161,7 @@ class BigScreenActions(
  * [lyricsView] draws ready lyrics into the box it's given, romanized or not, keeping the active
  * line's top at the given px (compact) or centred (null), drawn with [renderConfig]: the one
  * place the page picks how the lyrics render. [noticeActions] are the notice's buttons.
+ * [options] are the settings it follows ([bigScreenOptions]).
  */
 @Composable
 fun BigScreenPage(
@@ -158,6 +177,8 @@ fun BigScreenPage(
     /** Whether the controls show, where the platform decides (a touch screen's own idle timer); null follows hover and taps. */
     controlsShown: Boolean? = null,
     /** The glass buttons blur what's behind them; off (Low Performance), they keep their translucent fill. */
+    /** The settings the page follows; [bigScreenOptions] reads them. */
+    options: BigScreenOptions = BigScreenOptions(),
     blurGlass: Boolean = true,
     /** The waiting notice's text while nothing plays, where the platform knows why (its media source failed). */
     waitingBody: String? = null,
@@ -165,7 +186,7 @@ fun BigScreenPage(
     // What the glass blurs: the background, the lyrics and the covers, each marked as a source.
     val backdrop = remember(blurGlass) { if (blurGlass) HazeState() else null }
     CompositionLocalProvider(LocalBackdrop provides backdrop) {
-        BigScreenContent(state, nowPlaying, capabilities, lyrics, actions, noticeActions, background, lyricsView, renderConfig, controlsShown, waitingBody)
+        BigScreenContent(state, nowPlaying, capabilities, lyrics, actions, noticeActions, background, lyricsView, renderConfig, controlsShown, waitingBody, options)
     }
 }
 
@@ -187,6 +208,7 @@ private fun BigScreenContent(
     renderConfig: RenderConfig,
     controlsShown: Boolean?,
     waitingBody: String?,
+    options: BigScreenOptions,
 ) {
     val lyricsSlot: @Composable (Modifier, Boolean, Float?) -> Unit = { modifier, romanize, top -> lyricsView(modifier, romanize, top, renderConfig) }
     val playing by nowPlaying.state.collectAsState()
@@ -195,18 +217,59 @@ private fun BigScreenContent(
     LaunchedEffect(keys) { runCatching { keys.requestFocus() } }
     val pageHover = remember { MutableInteractionSource() }
     val pageHovered by pageHover.collectIsHoveredAsState()
-    // A tap where nothing else took it shows the controls; the next one hides them.
+    val rowHover = remember { MutableInteractionSource() }
+    val rowHovered by rowHover.collectIsHoveredAsState()
+    val coverHover = remember { MutableInteractionSource() }
+    val coverHovered by coverHover.collectIsHoveredAsState()
+    // A tap where nothing else took it brings hidden controls up and puts shown ones away.
     var revealed by remember { mutableStateOf(false) }
-    // The More menu lives here, not in the row: the row leaves when the controls fade, and an open
-    // menu keeps them up instead (its pointer is off the page, and its taps reach no idle timer).
+    // The More menu lives here, not in the row: the row leaves when the controls fade, and an
+    // open menu (like a timeline being dragged) holds them up instead.
     var menuOpen by remember { mutableStateOf(false) }
-    val showControls = (controlsShown ?: (pageHovered || revealed)) || menuOpen
+    var dragging by remember { mutableStateOf(false) }
+    val held = menuOpen || dragging
+
+    // In cinema and fullscreen the controls fade a while after the pointer last moved. Each move
+    // goes into a flow rather than state, so the page doesn't recompose at the pointer's rate.
+    val moves = remember { MutableStateFlow(0L) }
+    var idle by remember { mutableStateOf(false) }
+    // Where the platform decides ([controlsShown], a touch screen's own idle timer), its answer
+    // stands in for hover, taps and idling, and shown is shown in full.
+    val platformShown = controlsShown
+    val idleAfter = idleAfterMs(options.idle, playing.isPlaying).takeIf { state.immersive && platformShown == null }
+    LaunchedEffect(idleAfter) {
+        idle = false
+        if (idleAfter == null) return@LaunchedEffect
+        moves.collectLatest {
+            idle = false
+            delay(idleAfter)
+            idle = true
+            revealed = false
+        }
+    }
+    var lastLevel by remember { mutableStateOf(ControlsLevel.Hidden) }
+    val onPage = pageHovered && platformShown == null
+    val tapped = platformShown ?: revealed
+    val level = controlsLevel(onPage, platformShown ?: coverHovered, tapped, idle, held, previous = lastLevel)
+    SideEffect { lastLevel = level }
+    val currentLevel by rememberUpdatedState(level)
+    // Off cinema and fullscreen the row has three steps; in the compact layout it idles too.
+    val rowAlpha = viewControlsAlpha(onPage && !idle, rowHovered && platformShown == null, tapped && !idle, held)
+    val input = PageInput(level, rowHover, coverHover, menuOpen, { menuOpen = it }, { dragging = it })
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
             .hoverable(pageHover)
-            .then(if (controlsShown != null) Modifier else Modifier.pointerInput(Unit) { detectTapGestures { revealed = !revealed } })
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.type == PointerEventType.Move || event.type == PointerEventType.Press) moves.value++
+                    }
+                }
+            }
+            .then(if (controlsShown != null) Modifier else Modifier.pointerInput(Unit) { detectTapGestures { revealed = revealedAfterTap(currentLevel) } })
             .focusRequester(keys)
             .focusable()
             .onKeyEvent { event -> onPlaybackKey(event, nowPlaying, capabilities) },
@@ -216,11 +279,15 @@ private fun BigScreenContent(
         val heightPx = constraints.maxHeight.toFloat()
         val widthDp = widthPx / density
         val heightDp = heightPx / density
-        val metrics = remember(widthPx, heightPx, density, state.mode) { BigScreenMetrics(widthPx, heightPx, density, state.mode) }
+        // The timeline leaves the cover only in cinema and fullscreen: the page has none.
+        val timelineOutside = options.timelineOutsideCover && state.immersive
+        val metrics = remember(widthPx, heightPx, density, state.mode, timelineOutside) {
+            BigScreenMetrics(widthPx, heightPx, density, state.mode, timelineOutside)
+        }
         val cover = LocalNowPlayingPlatform.current
             .rememberCover(playing.artwork, playing.artworkUri, metrics.coverSizePx.roundToInt().coerceAtLeast(1), playing.hasSession)
             ?.image
-        val env = PageEnv(state, capabilities, actions, widthDp, heightDp, metrics, menuOpen) { menuOpen = it }
+        val env = PageEnv(state, capabilities, actions, widthDp, heightDp, metrics, options, input)
         Box(Modifier.fillMaxSize().backdropSource()) { background() }
 
         if (!playing.hasSession) {
@@ -229,23 +296,33 @@ private fun BigScreenContent(
                 modifier = Modifier.fillMaxSize(),
                 body = waitingBody ?: "Play something in Spotify or another player that shows in the system's media controls.",
             )
-            PageControls(env, showControls, Modifier.fillMaxWidth())
+            PageControls(env, rowAlpha, Modifier.fillMaxWidth())
             return@BoxWithConstraints
         }
         if (state.layoutFor(widthDp, heightDp) == BigScreenLayout.Compact) {
-            CompactPage(env, playing, cover, lyrics, noticeActions, showControls, lyricsSlot)
+            CompactPage(env, playing, cover, lyrics, noticeActions, rowAlpha, lyricsSlot)
             return@BoxWithConstraints
         }
 
-        val withBar = state.nowBarOpen
+        val withBar = showsNowBar(state, options)
+        val lyricsHidden = hidesLyrics(lyrics, state.immersive, options)
+        // Opening, closing and moving the bar slide the cover and the lyrics over 400 ms; a closed
+        // bar only waits off the page, so moving it then doesn't sweep it across.
+        val layoutChange: Any = if (withBar) listOf(state.nowBarOnRight, lyricsHidden, state.mode) else false
         val box = metrics.lyricsBox(withBar, state.nowBarOnRight)
-        LyricsArea(
-            lyrics, state.romanized, metrics, box.leftPx, box.widthPx, 0f,
-            Modifier.offset { IntOffset(box.leftPx.roundToInt(), 0) }.width(box.widthPx.toDp(density)).fillMaxHeight(),
+        val boxLeft = slidingPx(box.leftPx, layoutChange, LAYOUT_SLIDE_MS)
+        val boxWidth = slidingPx(box.widthPx, layoutChange, LAYOUT_SLIDE_MS)
+        if (!lyricsHidden) LyricsArea(
+            lyrics, state.romanized, metrics, boxLeft, boxWidth, 0f,
+            Modifier.offset { IntOffset(boxLeft.roundToInt(), 0) }.width(boxWidth.toDp(density)).fillMaxHeight(),
             noticeActions, lyricsSlot,
         )
-        if (withBar) NowBar(env, playing, cover, nowPlaying, showControls)
-        if (!state.immersive) PageControls(env, showControls, Modifier.fillMaxWidth())
+        val hiddenLeft = metrics.hiddenCoverLeftPx(state.nowBarOnRight)
+        val coverLeft = slidingPx(
+            if (withBar) metrics.coverLeftPx(state.nowBarOnRight, lyricsHidden) else hiddenLeft, layoutChange, LAYOUT_SLIDE_MS,
+        )
+        if (withBar || coverLeft != hiddenLeft) NowBar(env, playing, cover, nowPlaying, coverLeft)
+        if (!state.immersive) PageControls(env, rowAlpha, Modifier.fillMaxWidth())
     }
 }
 
@@ -257,19 +334,78 @@ private class PageEnv(
     val widthDp: Float,
     val heightDp: Float,
     val metrics: BigScreenMetrics,
-    val menuOpen: Boolean,
-    val onMenu: (Boolean) -> Unit,
+    val options: BigScreenOptions,
+    val input: PageInput,
 )
 
-/** `.ViewControls` on the page: a row 24px from the top, faded in while the page is hovered. */
+/**
+ * Where the pointer is and what holds the controls up: the cover's [level] in cinema and
+ * fullscreen, the hover of the view controls row and of the cover, the More menu, and a timeline
+ * drag ([onDragging]).
+ */
+private class PageInput(
+    val level: ControlsLevel,
+    val rowHover: MutableInteractionSource,
+    val coverHover: MutableInteractionSource,
+    val menuOpen: Boolean,
+    val onMenu: (Boolean) -> Unit,
+    val onDragging: (Boolean) -> Unit,
+)
+
+/** The overdamped spring the cover's controls and its dimming move on. */
+private val CoverControlsSpring = spring<Float>(dampingRatio = 2f, stiffness = 158f)
+
+/** `transition: left 0.4s`: the bar opening, closing and changing sides. */
+private const val LAYOUT_SLIDE_MS = 400
+
+/** `transition: height 0.35s`: the compact layout's song bar. */
+private const val COMPACT_SLIDE_MS = 350
+
+/** CSS `ease`. */
+private val CssEase = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f)
+
+/**
+ * [targetPx], moved there over [durationMs] when [trigger] changes (a view control, a setting),
+ * but straight away when only the window's size moved it, so nothing trails a resize.
+ */
 @Composable
-private fun PageControls(env: PageEnv, shown: Boolean, modifier: Modifier) {
+private fun slidingPx(targetPx: Float, trigger: Any, durationMs: Int): Float {
+    val anim = remember { Animatable(targetPx) }
+    var seen by remember { mutableStateOf(trigger) }
+    var sliding by remember { mutableStateOf(false) }
+    val changed = trigger != seen
+    LaunchedEffect(trigger, targetPx) {
+        if (trigger != seen) {
+            seen = trigger
+            sliding = true
+            try {
+                anim.animateTo(targetPx, tween(durationMs, easing = CssEase))
+            } finally {
+                sliding = false
+            }
+        } else {
+            anim.snapTo(targetPx)
+        }
+    }
+    // The frame the trigger changes on still shows where the slide starts from.
+    return if (sliding || changed) anim.value else targetPx
+}
+
+/**
+ * `.ViewControls` on the page: a row 24px from the top, or from the bottom with the setting, at
+ * [target] opacity ([viewControlsAlpha]).
+ */
+@Composable
+private fun PageControls(env: PageEnv, target: Float, modifier: Modifier) {
     val density = LocalDensity.current.density
-    val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(300), label = "viewControls")
+    val alpha by animateFloatAsState(target, tween(300), label = "viewControls")
     if (alpha == 0f) return
+    val metrics = env.metrics
+    val size = metrics.pageControlSizePx
+    val top = if (env.options.viewControlsAtBottom) metrics.heightPx - metrics.pageControlsTopPx - size else metrics.pageControlsTopPx
     ViewControlsRow(
-        env, env.metrics.pageControlSizePx.toDp(density),
-        modifier.offset { IntOffset(0, env.metrics.pageControlsTopPx.roundToInt()) }.alpha(alpha),
+        env, size.toDp(density),
+        modifier.offset { IntOffset(0, top.roundToInt()) }.alpha(alpha),
     )
 }
 
@@ -305,39 +441,51 @@ private fun LyricsArea(
 
 /**
  * The now-playing bar: the cover and, centred under it, the name (`font-weight: 900`, .95) and
- * the artists (.7). Off the page, hovering (or tapping) the cover darkens it and brings up the
- * view controls along its top and the playback row and timeline along its bottom.
+ * the artists (.7). Off the page the pointer on the page dims the cover a little and brings up the
+ * view controls along its top and the playback row and timeline along its bottom, faintly; on the
+ * cover it dims it more and brings them up fully ([ControlsLevel]), both on a slow spring. With the
+ * timeline outside the cover it sits, always shown, between the cover and the song. It all sits at
+ * [leftPx], which slides.
  */
 @Composable
-private fun NowBar(env: PageEnv, playing: NowPlayingState, cover: ImageBitmap?, nowPlaying: NowPlaying, pageRevealed: Boolean) {
+private fun NowBar(
+    env: PageEnv,
+    playing: NowPlayingState,
+    cover: ImageBitmap?,
+    nowPlaying: NowPlaying,
+    leftPx: Float,
+) {
     val density = LocalDensity.current.density
     val metrics = env.metrics
-    val left = metrics.coverLeftPx(env.state.nowBarOnRight)
+    val left = leftPx
     val coverSize = metrics.coverSizePx.toDp(density)
-    val coverHover = remember { MutableInteractionSource() }
-    val coverHovered by coverHover.collectIsHoveredAsState()
-    val overlay by animateFloatAsState(
-        if (env.state.immersive && (coverHovered || pageRevealed)) 1f else 0f, tween(300), label = "coverControls",
-    )
+    val level = if (env.state.immersive) env.input.level else ControlsLevel.Hidden
+    val controls by animateFloatAsState(level.controlsAlpha, CoverControlsSpring, label = "coverControls")
+    val brightness by animateFloatAsState(level.artworkBrightness, CoverControlsSpring, label = "coverBrightness")
     Box(
         Modifier
             .offset { IntOffset(left.roundToInt(), metrics.coverTopPx.roundToInt()) }
             .size(coverSize)
-            .hoverable(coverHover),
+            .hoverable(env.input.coverHover),
     ) {
         val shape = RoundedCornerShape(metrics.coverCornerPx.toDp(density))
         Cover(cover, Modifier.fillMaxSize().shadow(20.dp, shape, clip = false).clip(shape).alpha(0.95f).backdropSource(zIndex = 1f))
-        if (overlay > 0f) {
-            Box(Modifier.fillMaxSize().clip(shape).background(Color.Black.copy(alpha = 0.45f * overlay)))
-            Box(Modifier.fillMaxSize().alpha(overlay)) {
+        // The spring only nears its rest, so the overlay goes once it's out of sight.
+        if (brightness < 0.995f) Box(Modifier.fillMaxSize().clip(shape).background(Color.Black.copy(alpha = 1f - brightness)))
+        if (controls > 0.005f) {
+            Box(Modifier.fillMaxSize().alpha(controls)) {
                 ViewControlsRow(
                     env, metrics.coverControlSizePx.toDp(density),
                     Modifier.fillMaxWidth().offset { IntOffset(0, metrics.coverControlsTopPx.roundToInt()) },
                 )
-                CoverPlayback(env, playing, nowPlaying, Modifier.align(Alignment.BottomCenter))
+                CoverPlayback(env, playing, nowPlaying, withTimeline = !metrics.timelineOutside, Modifier.align(Alignment.BottomCenter))
             }
         }
     }
+    if (metrics.timelineOutside) PlaybackTimeline(
+        env, playing, nowPlaying, metrics.outsideTimeline,
+        Modifier.offset { IntOffset(left.roundToInt(), metrics.outsideTimelineTopPx.roundToInt()) }.width(coverSize),
+    )
     SongText(
         playing,
         metrics.titleSizeSp, metrics.titleLineHeightSp, metrics.artistsSizeSp, metrics.artistsLineHeightSp,
@@ -397,21 +545,23 @@ private fun Cover(art: ImageBitmap?, modifier: Modifier) {
 
 /**
  * The cover's bottom: the playback row (previous, play/pause, next, each dimmed where the
- * platform can't) above the timeline, whose bar seeks on click and drag where it can.
+ * platform can't) above the timeline ([withTimeline]; else the row sits `6.5cqh` from the bottom and
+ * the timeline is under the cover).
  */
 @Composable
-private fun CoverPlayback(env: PageEnv, playing: NowPlayingState, nowPlaying: NowPlaying, modifier: Modifier) {
+private fun CoverPlayback(env: PageEnv, playing: NowPlayingState, nowPlaying: NowPlaying, withTimeline: Boolean, modifier: Modifier) {
     val density = LocalDensity.current.density
     val metrics = env.metrics
-    var now by remember { mutableLongStateOf(nowPlaying.positionMs()) }
-    LaunchedEffect(nowPlaying) { while (true) withFrameMillis { now = nowPlaying.positionMs() } }
     val pause by animateFloatAsState(if (playing.isPlaying) 1f else 0f, tween(200), label = "playPause")
     val skip = remember { SkipGlyph { 0f } }
     val playPause = remember { PlayPauseGlyph { pause } }
     val toggles = playbackToggles(env.capabilities, playing)
     // With either toggle, both ends keep their room, so the three buttons stay centred.
     val withToggles = toggles.shuffle != null || toggles.repeat != null
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        modifier.fillMaxWidth().padding(bottom = if (withTimeline) 0.dp else metrics.playbackRowBottomPx.toDp(density)),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Row(
             Modifier
                 .fillMaxWidth()
@@ -450,7 +600,7 @@ private fun CoverPlayback(env: PageEnv, playing: NowPlayingState, nowPlaying: No
                 label = "Repeat", widthPx = metrics.toggleWidthPx,
             ) { toggles.repeat?.let { nowPlaying.setRepeat(nextRepeat(it, playing.repeatOneSupported)) } }
         }
-        Timeline(now, playing.track.durationMs, env.capabilities.seek && playing.canSeek, metrics, nowPlaying::seekTo)
+        if (withTimeline) PlaybackTimeline(env, playing, nowPlaying, metrics.coverTimeline, Modifier)
     }
 }
 
@@ -480,44 +630,95 @@ private fun PlaybackToggle(glyph: ImageVector, active: Boolean, shown: Boolean, 
     }
 }
 
-/** `.Timeline`: the position, the bar (white for what has played), and the length. */
+/** The song's timeline laid out by [geometry], following the player's position every frame. */
 @Composable
-private fun Timeline(positionMs: Long, durationMs: Long, seekable: Boolean, metrics: BigScreenMetrics, onSeek: (Long) -> Unit) {
+private fun PlaybackTimeline(env: PageEnv, playing: NowPlayingState, nowPlaying: NowPlaying, geometry: TimelineGeometry, modifier: Modifier) {
+    var now by remember { mutableLongStateOf(nowPlaying.positionMs()) }
+    LaunchedEffect(nowPlaying) { while (true) withFrameMillis { now = nowPlaying.positionMs() } }
+    Timeline(now, playing.track.durationMs, env.capabilities.seek && playing.canSeek, env.metrics, geometry, nowPlaying::seekTo, env.input.onDragging, modifier)
+}
+
+/**
+ * `.Timeline`: the position, the bar (white for what has played), and the length. Where it seeks,
+ * the pointer over the bar (or dragging it) shows the time it would go to in a small label above
+ * the bar, kept inside the timeline, and while dragging the position shows the drag's time too.
+ */
+@Composable
+private fun Timeline(
+    positionMs: Long,
+    durationMs: Long,
+    seekable: Boolean,
+    metrics: BigScreenMetrics,
+    geometry: TimelineGeometry,
+    onSeek: (Long) -> Unit,
+    onDragging: (Boolean) -> Unit,
+    modifier: Modifier,
+) {
     val density = LocalDensity.current.density
     val timeStyle = TextStyle(color = SpicyColors.TextSecondary, fontSize = metrics.baseFontSizeSp.sp, fontWeight = FontWeight.Medium,
-        fontFamily = LyricsLayoutCalculator.spicyFontFamily)
+        fontFamily = LyricsLayoutCalculator.spicyFontFamily, fontFeatureSettings = "tnum")
     var barWidth by remember { mutableStateOf(1) }
     // While dragging, the bar follows the pointer rather than the player.
     var dragFraction by remember { mutableStateOf<Float?>(null) }
+    var hoverFraction by remember { mutableStateOf<Float?>(null) }
     val progress = dragFraction ?: progressOf(positionMs, durationMs)
-    val barHeight = metrics.timelineBarHeightPx.toDp(density).coerceAtLeast(3.dp)
+    val barHeight = geometry.barHeightPx.toDp(density).coerceAtLeast(3.dp)
     val timeWidth = (metrics.baseFontSizeSp * 2.5f).dp
+    // Where the bar sits in the timeline, for the label above it.
+    var timeline by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var bar by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    Box(modifier.fillMaxWidth().onGloballyPositioned { timeline = it }) {
     Row(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = metrics.timelineInsetXPx.toDp(density), vertical = metrics.timelineInsetYPx.toDp(density)),
+            .padding(
+                start = geometry.insetXPx.toDp(density), end = geometry.insetXPx.toDp(density),
+                top = geometry.insetTopPx.toDp(density), bottom = geometry.insetBottomPx.toDp(density),
+            ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BasicText(formatClock(positionMs), Modifier.widthIn(min = timeWidth), style = timeStyle.copy(textAlign = TextAlign.End))
+        val shownMs = dragFraction?.let { seekTarget(it, durationMs) } ?: positionMs
+        BasicText(formatClock(shownMs), Modifier.widthIn(min = timeWidth), style = timeStyle.copy(textAlign = TextAlign.End))
         Box(
             Modifier
                 .weight(1f)
-                .padding(horizontal = 6.dp)
-                .height(barHeight + 10.dp)
+                .padding(horizontal = geometry.barMarginPx.toDp(density))
+                .height(barHeight + BigScreenMetrics.BAR_HIT_SLOP_DP.dp)
                 .onSizeChanged { barWidth = it.width.coerceAtLeast(1) }
+                .onGloballyPositioned { bar = it }
                 .then(
                     if (!seekable) Modifier else Modifier
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    // A finger has no hover; its drag shows the label instead.
+                                    if (event.changes.first().type == PointerType.Touch) continue
+                                    hoverFraction = when (event.type) {
+                                        PointerEventType.Exit -> null
+                                        else -> (event.changes.first().position.x / barWidth).coerceIn(0f, 1f)
+                                    }
+                                }
+                            }
+                        }
                         .pointerInput(durationMs) {
                             detectTapGestures { onSeek(seekTarget(it.x / barWidth, durationMs)) }
                         }
                         .pointerInput(durationMs) {
                             detectHorizontalDragGestures(
-                                onDragStart = { dragFraction = it.x / barWidth },
+                                onDragStart = {
+                                    dragFraction = it.x / barWidth
+                                    onDragging(true)
+                                },
                                 onDragEnd = {
                                     dragFraction?.let { onSeek(seekTarget(it, durationMs)) }
                                     dragFraction = null
+                                    onDragging(false)
                                 },
-                                onDragCancel = { dragFraction = null },
+                                onDragCancel = {
+                                    dragFraction = null
+                                    onDragging(false)
+                                },
                             ) { change, _ -> dragFraction = (change.position.x / barWidth).coerceIn(0f, 1f) }
                         },
                 ),
@@ -529,11 +730,73 @@ private fun Timeline(positionMs: Long, durationMs: Long, seekable: Boolean, metr
         }
         BasicText(formatClock(durationMs), Modifier.widthIn(min = timeWidth), style = timeStyle)
     }
+    val preview = (dragFraction ?: hoverFraction).takeIf { seekable && durationMs > 0 }
+    val barHeightPx = barHeight.value * density
+    ScrubPreview(
+        text = formatClock(seekTarget(preview ?: 0f, durationMs)),
+        shown = preview != null,
+        fontSizeSp = metrics.baseFontSizeSp,
+        anchor = {
+            val outer = timeline
+            val inner = bar
+            if (outer == null || inner == null || !outer.isAttached || !inner.isAttached) {
+                null
+            } else {
+                val start = outer.localPositionOf(inner, Offset.Zero)
+                // The bar is drawn centred in its taller hit box.
+                Offset(start.x + (preview ?: 0f) * inner.size.width, start.y + (inner.size.height - barHeightPx) / 2f)
+            }
+        },
+        maxWidthPx = { timeline?.size?.width?.toFloat() ?: 0f },
+    )
+    }
 }
 
 /**
+ * `.ScrubPreview`: the time a click would seek to, in a small dark label centred over [anchor] (the
+ * bar's top edge under the pointer), kept within [maxWidthPx], fading and growing in quickly.
+ */
+@Composable
+private fun ScrubPreview(text: String, shown: Boolean, fontSizeSp: Float, anchor: () -> Offset?, maxWidthPx: () -> Float) {
+    val density = LocalDensity.current.density
+    val visible by animateFloatAsState(if (shown) 1f else 0f, tween(if (shown) 120 else 90, easing = GlyphEase), label = "scrubPreview")
+    if (visible == 0f) return
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val em = fontSizeSp * density
+    BasicText(
+        text,
+        Modifier
+            .offset {
+                val at = anchor() ?: return@offset IntOffset.Zero
+                val x = (at.x - size.width / 2f).coerceIn(0f, (maxWidthPx() - size.width).coerceAtLeast(0f))
+                IntOffset(x.roundToInt(), (at.y - SCRUB_GAP_EM * em - size.height).roundToInt())
+            }
+            .onSizeChanged { size = it }
+            .graphicsLayer {
+                alpha = visible
+                val scale = 0.96f + 0.04f * visible
+                scaleX = scale
+                scaleY = scale
+                transformOrigin = TransformOrigin(0.5f, 1f)
+            }
+            .clip(RoundedCornerShape((0.45f * em).toDp(density)))
+            .background(Color(18, 18, 22).copy(alpha = 0.58f))
+            .padding(horizontal = (0.5f * em).toDp(density), vertical = (0.3f * em).toDp(density)),
+        style = TextStyle(
+            color = Color.White, fontSize = fontSizeSp.sp, fontWeight = FontWeight.Medium, lineHeight = (fontSizeSp * 1.1f).sp,
+            fontFamily = LyricsLayoutCalculator.spicyFontFamily, fontFeatureSettings = "tnum",
+        ),
+        maxLines = 1,
+    )
+}
+
+/** `--ScrubPreviewGap: 0.55em` between the label and the bar. */
+private const val SCRUB_GAP_EM = 0.55f
+
+/**
  * The compact layout: the song as a bar across the top (cover, then name and artists), the view
- * controls at its end, and the lyrics below, the active line held near their top.
+ * controls at its end, and the lyrics below, the active line held near their top. Without the song
+ * header (the setting, off cinema and fullscreen) the lyrics take the whole page, the active line centred.
  */
 @Composable
 private fun CompactPage(
@@ -542,18 +805,42 @@ private fun CompactPage(
     cover: ImageBitmap?,
     lyrics: LyricsState,
     noticeActions: NoticeActions?,
-    showControls: Boolean,
+    rowAlpha: Float,
     lyricsView: @Composable (Modifier, Boolean, Float?) -> Unit,
 ) {
     val density = LocalDensity.current.density
     val metrics = env.metrics
     val bar = remember(metrics) { CompactHeaderMetrics(metrics.widthPx, metrics.heightPx, density, metrics.lyricFontSizeSp) }
-    val lyricsTop = bar.lyricsTopPx
+    val withHeader = !(env.options.hideHeader && !env.state.immersive)
+    // Hiding or showing the song bar slides the lyrics up or down over 350 ms.
+    val lyricsTop = slidingPx(if (withHeader) bar.lyricsTopPx else 0f, withHeader, COMPACT_SLIDE_MS)
     LyricsArea(
         lyrics, env.state.romanized, metrics, 0f, metrics.widthPx, lyricsTop,
         Modifier.fillMaxSize().padding(top = lyricsTop.toDp(density)), noticeActions, lyricsView,
-        activeLineTopPx = bar.activeLineTopPx,
+        activeLineTopPx = bar.activeLineTopPx.takeIf { withHeader },
     )
+    if (withHeader) CompactSongBar(playing, cover, bar)
+    val alpha by animateFloatAsState(rowAlpha, tween(300), label = "compactControls")
+    val atBottom = env.options.viewControlsAtBottom
+    if (alpha > 0f) Box(
+        Modifier
+            .fillMaxSize()
+            .padding(
+                top = if (atBottom) 0.dp else metrics.pageControlsTopPx.toDp(density),
+                bottom = if (atBottom) metrics.pageControlsTopPx.toDp(density) else 0.dp,
+                end = bar.contentStartPx.toDp(density),
+            )
+            .alpha(alpha),
+        contentAlignment = if (atBottom) Alignment.BottomEnd else Alignment.TopEnd,
+    ) {
+        ViewControlsRow(env, metrics.pageControlSizePx.toDp(density), Modifier)
+    }
+}
+
+/** The compact layout's song bar: the cover, then the name over the artists. */
+@Composable
+private fun CompactSongBar(playing: NowPlayingState, cover: ImageBitmap?, bar: CompactHeaderMetrics) {
+    val density = LocalDensity.current.density
     val shape = RoundedCornerShape((bar.artSizePx * CompactHeaderMetrics.ART_CORNER_FRACTION).toDp(density))
     Cover(
         cover,
@@ -573,36 +860,27 @@ private fun CompactPage(
     ) {
         SongText(playing, bar.titleSizeSp, bar.titleLineHeightSp, bar.artistsSizeSp, bar.artistsLineHeightSp, Alignment.Start, bar.textWidthPx, Modifier)
     }
-    val alpha by animateFloatAsState(if (showControls) 1f else 0f, tween(300), label = "compactControls")
-    if (alpha > 0f) Box(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = metrics.pageControlsTopPx.toDp(density), end = bar.contentStartPx.toDp(density))
-            .alpha(alpha),
-        contentAlignment = Alignment.TopEnd,
-    ) {
-        ViewControlsRow(env, metrics.pageControlSizePx.toDp(density), Modifier)
-    }
 }
 
-/** The round glass view controls [viewControls] picks, with their tooltips; More opens its menu. */
+/** The round glass view controls [pageViewControls] picks, with their tooltips; More opens its menu. */
 @Composable
 private fun ViewControlsRow(env: PageEnv, size: Dp, modifier: Modifier) {
     val tooltips = LocalTooltipHost.current
     val state = env.state
+    val input = env.input
     Row(
-        modifier,
+        modifier.hoverable(input.rowHover),
         horizontalArrangement = Arrangement.spacedBy(env.metrics.controlGapPx.toDp(LocalDensity.current.density), Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        for (control in viewControls(state, env.capabilities)) {
+        for (control in pageViewControls(state, env.capabilities, env.options)) {
             val label = tooltip(control, state, env.widthDp, env.heightDp)
             tooltips.Tooltip(label) {
                 Box {
                     GlassButton(
                         onClick = {
                             when (control) {
-                                ViewControl.More -> env.onMenu(true)
+                                ViewControl.More -> input.onMenu(true)
                                 ViewControl.Settings -> env.actions.onOpenSettings()
                                 ViewControl.PictureInPicture -> env.actions.onEnterPip()
                                 ViewControl.LyricsManager -> env.actions.onOpenLyricsManager()
@@ -612,7 +890,9 @@ private fun ViewControlsRow(env: PageEnv, size: Dp, modifier: Modifier) {
                         contentDescription = label,
                         size = size,
                     ) { ControlGlyph(control, env, Modifier.size(size * 0.5f)) }
-                    if (control == ViewControl.More && env.menuOpen) MoreMenu(size, (env.heightDp * 0.6f).dp) { env.onMenu(false) }
+                    if (control == ViewControl.More && input.menuOpen) {
+                        MoreMenu(size, (env.heightDp * 0.6f).dp, above = env.options.viewControlsAtBottom && !state.immersive) { input.onMenu(false) }
+                    }
                 }
             }
         }
@@ -642,15 +922,17 @@ private fun ControlGlyph(control: ViewControl, env: PageEnv, modifier: Modifier)
 }
 
 /**
- * The lyrics choices beyond the view: source, translation, romanization style ([LocalLyricsActions]).
- * Scrolls past [maxHeight] in short windows.
+ * The lyrics choices beyond the view: source, translation, romanization style ([LocalLyricsActions]),
+ * under the button, or [above] it for controls along the bottom. Scrolls past [maxHeight] in short
+ * windows.
  */
 @Composable
-private fun MoreMenu(anchor: Dp, maxHeight: Dp, onDismiss: () -> Unit) {
+private fun MoreMenu(anchor: Dp, maxHeight: Dp, above: Boolean, onDismiss: () -> Unit) {
     val density = LocalDensity.current
+    val gap = with(density) { (anchor + 8.dp).roundToPx() }
     Popup(
-        alignment = Alignment.TopCenter,
-        offset = with(density) { IntOffset(0, (anchor + 8.dp).roundToPx()) },
+        alignment = if (above) Alignment.BottomCenter else Alignment.TopCenter,
+        offset = IntOffset(0, if (above) -gap else gap),
         onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = true),
     ) {

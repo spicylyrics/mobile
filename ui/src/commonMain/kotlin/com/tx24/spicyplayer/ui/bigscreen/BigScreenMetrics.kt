@@ -11,14 +11,18 @@ import com.tx24.spicyplayer.ui.nowplaying.LyricsBox
  *
  * On the page the now-playing bar keeps a little closer to the edge than in cinema and
  * fullscreen (`:not(.Fullscreen)` scales its gap by .7 and the lyrics' start by .9).
+ *
+ * With [timelineOutside] (cinema and fullscreen, the setting on) the timeline sits between the cover
+ * and the song text rather than on the cover, and the cover moves up to make room.
  */
 class BigScreenMetrics(
     val widthPx: Float,
     val heightPx: Float,
     val density: Float,
     val mode: ViewMode,
+    val timelineOutside: Boolean = false,
 ) {
-    private val landscape = LandscapeMetrics(widthPx, heightPx, density)
+    private val landscape = LandscapeMetrics(widthPx, heightPx, density, timelineOutside = timelineOutside)
     private val onPage = mode == ViewMode.Page
 
     /** `--NowBarWidth: calc(min(30cqw, 52cqh) * 1.1)`; the cover is as wide as the bar. */
@@ -43,8 +47,36 @@ class BigScreenMetrics(
         else -> edgeSpacingPx
     }
 
-    /** `.Header:not(:has(> .Timeline)) .Metadata { margin: 5cqw 0 0 }` under the cover. */
-    val textTopPx: Float = coverTopPx + coverSizePx + coverSizePx * 0.05f
+    /**
+     * Where the closed bar waits, off the page on its side (`--unactive-spacing:
+     * calc((NowBarWidth + NowBarLeftSpacing + 5cqw) * -1)`), so it slides in and out.
+     */
+    fun hiddenCoverLeftPx(onRight: Boolean): Float {
+        val away = coverSizePx + edgeSpacingPx + widthPx * 0.05f
+        return if (onRight) widthPx + away else -away
+    }
+
+    /**
+     * The timeline under the cover (`.Header > .Timeline { padding: 4.5cqw 1cqw 3cqw }` against the
+     * cover, its bar `1cqh` of the page), as tall as its padding and its times.
+     */
+    val outsideTimeline = TimelineGeometry(
+        insetXPx = coverSizePx * 0.01f,
+        insetTopPx = coverSizePx * 0.045f,
+        insetBottomPx = coverSizePx * 0.03f,
+        barHeightPx = heightPx * 0.01f,
+        barMarginPx = coverSizePx * 0.015f,
+    )
+    val outsideTimelineTopPx: Float = coverTopPx + coverSizePx
+    val outsideTimelineHeightPx: Float =
+        outsideTimeline.insetTopPx + maxOf(landscape.baseFontSizeSp * density * TIME_LINE_HEIGHT, outsideTimeline.barHeightPx + BAR_HIT_SLOP_DP * density) + outsideTimeline.insetBottomPx
+
+    /**
+     * The song text: right under the timeline when it's outside the cover, else
+     * `.Header:not(:has(> .Timeline)) .Metadata { margin: 5cqw 0 0 }` under the cover.
+     */
+    val textTopPx: Float =
+        if (timelineOutside) outsideTimelineTopPx + outsideTimelineHeightPx else coverTopPx + coverSizePx + coverSizePx * 0.05f
 
     /** The song name's and the artists' sizes and line heights, measured against the cover. */
     val titleSizeSp: Float = landscape.panel.titleSizeSp
@@ -105,7 +137,27 @@ class BigScreenMetrics(
     val toggleWidthPx: Float = coverSizePx * 0.07f
 
     /** `.MediaContent .Timeline { bottom: 0; padding: 5cqw 7cqw }`, its bar `height: 1.3cqh`. */
-    val timelineInsetXPx: Float = coverSizePx * 0.07f
-    val timelineInsetYPx: Float = coverSizePx * 0.05f
-    val timelineBarHeightPx: Float = coverSizePx * 0.013f
+    val coverTimeline = TimelineGeometry(
+        insetXPx = coverSizePx * 0.07f,
+        insetTopPx = coverSizePx * 0.05f,
+        insetBottomPx = coverSizePx * 0.05f,
+        barHeightPx = coverSizePx * 0.013f,
+        barMarginPx = 6f * density,
+    )
+
+    companion object {
+        /** A line of the timeline's times, against their size. */
+        private const val TIME_LINE_HEIGHT = 1.2f
+        /** The room the timeline's bar takes above and below for the pointer, in dp. */
+        const val BAR_HIT_SLOP_DP = 10f
+    }
 }
+
+/** A timeline's padding and bar, in px: [barMarginPx] is the gap between the bar and each time. */
+data class TimelineGeometry(
+    val insetXPx: Float,
+    val insetTopPx: Float,
+    val insetBottomPx: Float,
+    val barHeightPx: Float,
+    val barMarginPx: Float,
+)

@@ -2,6 +2,7 @@ package com.tx24.spicyplayer.desktop
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -10,6 +11,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -17,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -28,7 +31,9 @@ import com.tx24.spicyplayer.ui.bigscreen.BigScreenPage
 import com.tx24.spicyplayer.ui.bigscreen.BigScreenState
 import com.tx24.spicyplayer.ui.bigscreen.LocalLyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.LocalTooltipHost
+import com.tx24.spicyplayer.ui.bigscreen.ScrollToActiveButton
 import com.tx24.spicyplayer.ui.bigscreen.ViewMode
+import com.tx24.spicyplayer.ui.bigscreen.bigScreenOptions
 import com.tx24.spicyplayer.ui.bigscreen.pageKeyOf
 import com.tx24.spicyplayer.ui.bigscreen.saveView
 import com.tx24.spicyplayer.ui.bigscreen.withSavedView
@@ -41,6 +46,8 @@ import com.tx24.spicyplayer.lyrics.spicy.canvas.CjkFonts
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsLayoutCalculator
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsView
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsViewState
+import com.tx24.spicyplayer.lyrics.spicy.canvas.PinnedFooterMode
+import com.tx24.spicyplayer.lyrics.spicy.canvas.PinnedLyricsFooter
 import com.tx24.spicyplayer.lyrics.spicy.models.Line
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsCredit
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsFooter
@@ -344,10 +351,13 @@ fun main(args: Array<String>) {
                                 fontSizeScale = display.fontSizeScale,
                                 romanizationMode = display.romanizationMode,
                                 viewState = mainLyricsView,
+                                pinnedFooter = display.pinnedFooter,
+                                scrollToActiveButton = desktopSettings.showScrollToActive,
                             )
                         },
                         renderConfig = display.config,
                         blurGlass = !desktopSettings.lowPerformance,
+                        options = desktopSettings.bigScreenOptions(),
                     )
                     UpdateBanner(updates.update, Modifier.align(Alignment.BottomCenter))
                 }
@@ -417,6 +427,10 @@ private fun Lyrics(
     fontSizeScale: Float,
     romanizationMode: RomanizationMode,
     viewState: LyricsViewState? = null,
+    /** Credits held at the bottom of the lyrics instead of scrolling after them. */
+    pinnedFooter: PinnedFooterMode = PinnedFooterMode.Off,
+    /** The button back to the active line while the lyrics are scrolled away (Scroll to Active Button). */
+    scrollToActiveButton: Boolean = false,
 ) {
     val original = remember(lyrics.lines) {
         lyrics.lines.map { line ->
@@ -443,12 +457,20 @@ private fun Lyrics(
     val presentation = remember(original, lines, translation, translationMode) {
         translation?.let { TranslationPresentation.forTimeline(original, lines, it, translationMode) }
     }
+    val viewState = remember { LyricsViewState() }
+    var pinnedHeightPx by remember { mutableIntStateOf(0) }
+    val pinnedGapPx = with(LocalDensity.current) { PINNED_FOOTER_GAP.toPx() }
+    Box(modifier) {
     LyricsView(
         lines = lines,
         documentId = remember(trackKey, lyrics.lines) { "$trackKey:${lyrics.lines.hashCode()}" },
         currentTimeMs = currentTimeMs,
         onSeekWord = onSeek,
-        modifier = modifier,
+        modifier = Modifier.fillMaxSize(),
+        viewState = viewState,
+        pinnedFooter = pinnedFooter,
+        // The lyrics fade out above the pinned credits.
+        maskBottomPx = { if (pinnedHeightPx > 0) pinnedHeightPx + 2f * pinnedGapPx else 0f },
         romanize = romanize,
         romanizationMode = romanizationMode,
         translation = presentation,
@@ -469,4 +491,20 @@ private fun Lyrics(
             )
         },
     )
+    if (pinnedFooter != PinnedFooterMode.Off) PinnedLyricsFooter(
+        state = viewState,
+        mode = pinnedFooter,
+        fontSizeScale = fontSizeScale,
+        tappable = true,
+        onHeight = { pinnedHeightPx = it },
+        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = PINNED_FOOTER_GAP),
+    )
+    ScrollToActiveButton(
+        viewState, scrollToActiveButton,
+        bottomPx = { if (pinnedHeightPx > 0) pinnedHeightPx + pinnedGapPx else 0f },
+    )
+    }
 }
+
+/** Between the pinned credits and the bottom of the lyrics. */
+private val PINNED_FOOTER_GAP = 20.dp

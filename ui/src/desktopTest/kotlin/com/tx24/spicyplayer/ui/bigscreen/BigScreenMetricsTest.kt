@@ -79,4 +79,26 @@ class BigScreenMetricsTest {
         assertTrue(transportSlots(PlayerCapabilities()).all { it.enabled })
         assertTrue(transportSlots(PlayerCapabilities(false, false, false, false)).none { it.enabled })
     }
+
+    @Test
+    fun `with the timeline outside the cover rises and the song moves below the timeline`() {
+        val outside = BigScreenMetrics(1100f, 760f, 1f, ViewMode.Cinema, timelineOutside = true)
+        assertEquals(380f - 363f * 0.625f, outside.coverTopPx, 0.01f)
+        assertEquals(outside.coverTopPx + 363f, outside.outsideTimelineTopPx, 0.01f)
+        assertEquals(outside.outsideTimelineTopPx + outside.outsideTimelineHeightPx, outside.textTopPx, 0.01f)
+        // Padding 4.5cqw and 3cqw of the cover around a bar 1cqh of the page.
+        assertEquals(363f * 0.045f, outside.outsideTimeline.insetTopPx, 0.01f)
+        assertEquals(363f * 0.03f, outside.outsideTimeline.insetBottomPx, 0.01f)
+        assertEquals(7.6f, outside.outsideTimeline.barHeightPx, 0.01f)
+        assertTrue(outside.outsideTimelineHeightPx > 363f * 0.075f)
+        // On the cover the song keeps its 5cqw margin.
+        assertEquals(cinema.coverTopPx + 363f * 1.05f, cinema.textTopPx, 0.01f)
+    }
+
+    @Test
+    fun `the closed bar waits off the page on its own side`() {
+        val away = 363f + 96.25f * 0.7f + 55f
+        assertEquals(-away, page.hiddenCoverLeftPx(onRight = false), 0.01f)
+        assertEquals(1100f + away, page.hiddenCoverLeftPx(onRight = true), 0.01f)
+    }
 }

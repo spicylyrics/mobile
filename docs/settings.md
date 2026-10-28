@@ -36,3 +36,16 @@ The languages come from `TranslationLanguages.common` in `translation/Translatio
 Moving a row changes only where it appears. Keep its label, callback and storage key. Romanize and Romanize button remain `ui.romanize` and `ui.romanizeButton`, and Translate button is `ui.translateButton`; the display choices remain `ui.romanizationMode` and `ui.translationMode`. Human romanizations remains `lyrics_sources.humanRomanizations`; translation preferences stay in `translation`, and per-song language overrides in `song_languages`.
 
 Settings backups include the `ui`, `lyrics_sources`, `translation` and `song_languages` stores through `SettingsBackup.STORES`. `SettingsBackupStore` validates types when restoring. DeepL and AI API keys stay in their separate device-only store (the AI address and models are backed up with `translation`); translation disclosure consent is also kept on the device. Do not migrate preferences or change backup schemas for a row move.
+
+## Big-screen page
+
+The big-screen page (`ui/bigscreen/`, the desktop window and, later, tablets and DeX) reads its settings through `CommonAppSettings.bigScreenOptions()` into `BigScreenOptions`, and the host passes them to `BigScreenPage`. Phones never show this page, so these settings change nothing there unless the phone's own screens read them too. The page follows:
+
+- Hide Controls, Hide After and Hide While Paused: in cinema and fullscreen the cover's controls fade once the pointer has rested off the cover for the delay (`IdleControls.kt`). Paused, they stay unless Hide While Paused is on.
+- Timeline Outside Media Box: in cinema and fullscreen the timeline sits between the cover and the song instead of on the cover.
+- View Controls Position (`viewControlsPosition`, Top or Bottom): where the page's view controls sit, 24 px in from that edge. Big screens only.
+- No Lyrics Notice (`showNoLyricsNotice`): off, a song without lyrics in cinema and fullscreen shows only the song, its cover centred. Other notices still show. Big screens only.
+- Hide the Song Header: no now-playing bar on the page and no song bar in the compact layout. Cinema and fullscreen keep the cover.
+- Pinned Lyrics Footer: the host's lyrics view pins the credits at the bottom of the lyrics box.
+
+A new setting for the page goes in `BigScreenOptions` and `bigScreenOptions()`, with a test in `BigScreenOptionsTest`, and in the settings panel (`ui/settings/panel/SettingsPanelSections.kt`).
