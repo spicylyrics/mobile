@@ -23,8 +23,11 @@ import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -227,11 +230,17 @@ class DesktopLyricsTest {
         assertSame(first, s.lyrics.shown.value?.lyrics)
     }
 
-    /** Blocks its first lookup until it is cancelled, then answers with an error, as a lookup that swallows the cancel would. */
+    /**
+     * Blocks its first lookup until it is cancelled, then, once [release]d, answers with an error, as
+     * a lookup that swallows the cancel would: the stale answer comes after the fresh one.
+     */
     private inner class CancelSwallowingLookup : SongLookup {
         private val real = FakeLookup()
         override val sources = real.sources
         val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        /** The stale answer has been handed back. */
+        val done = CompletableDeferred<Unit>()
         private var calls = 0
 
         override suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?): LyricsLookup.Found {
@@ -240,6 +249,8 @@ class DesktopLyricsTest {
                 try {
                     awaitCancellation()
                 } catch (e: CancellationException) {
+                    withContext(NonCancellable) { release.await() }
+                    done.complete(Unit)
                     return LyricsLookup.Found(LyricsNotices.lookupFailed(e), null)
                 }
             }
@@ -255,6 +266,10 @@ class DesktopLyricsTest {
         lookup.started.await()
         lyrics.useSource("b")
         lyrics.settle()
+        assertEquals("from b", (lyrics.shown.value?.lyrics as LyricsState.Ready).provider)
+        lookup.release.complete(Unit)
+        lookup.done.await()
+        yield()
         assertEquals("from b", (lyrics.shown.value?.lyrics as LyricsState.Ready).provider)
     }
 }

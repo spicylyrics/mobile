@@ -55,6 +55,8 @@ dependencies {
     implementation(project(":renderer"))
     implementation(project(":ui"))
     implementation(compose.desktop.currentOs)
+    // Dispatchers.Main, the UI thread the lyrics state lives on.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
     // :core compiles against the XmlPull API that Android ships.
     runtimeOnly("net.sf.kxml:kxml2:2.3.0")
     testImplementation("junit:junit:4.13.2")
