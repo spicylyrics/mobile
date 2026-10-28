@@ -1,5 +1,7 @@
 package com.tx24.spicyplayer.ui.bigscreen
 
+import androidx.compose.ui.input.key.Key
+
 /**
  * What the platform can do for the big-screen page: which of [com.tx24.spicyplayer.ui.nowplaying.PlaybackTransport]'s
  * commands reach the player, and whether the window can go fullscreen (a desktop window can; a
@@ -36,3 +38,51 @@ fun progressOf(positionMs: Long, durationMs: Long): Float =
 /** The position a click [fraction] (0..1) of the way along the timeline asks for. */
 fun seekTarget(fraction: Float, durationMs: Long): Long =
     if (durationMs <= 0) 0L else (fraction.coerceIn(0f, 1f) * durationMs).toLong()
+
+/** The page's playback keys: Space, ←/→ (seek), Shift+←/→ (previous/next song). */
+enum class PlaybackKey { PlayPause, SeekBack, SeekForward, Previous, Next }
+
+/**
+ * [key] as a playback key, with Shift held or not; null for anything else, and for any key with
+ * Ctrl, Alt or Meta held ([otherModifier]), which belong to the app's own shortcuts.
+ */
+fun playbackKeyOf(key: Key, shift: Boolean, otherModifier: Boolean): PlaybackKey? {
+    if (otherModifier) return null
+    return when (key) {
+        Key.Spacebar -> PlaybackKey.PlayPause.takeIf { !shift }
+        Key.DirectionLeft -> if (shift) PlaybackKey.Previous else PlaybackKey.SeekBack
+        Key.DirectionRight -> if (shift) PlaybackKey.Next else PlaybackKey.SeekForward
+        else -> null
+    }
+}
+
+/** What a playback key asks the player for. */
+sealed interface PlaybackCommand {
+    data object PlayPause : PlaybackCommand
+    data object Previous : PlaybackCommand
+    data object Next : PlaybackCommand
+    data class Seek(val positionMs: Long) : PlaybackCommand
+}
+
+/** How far ←/→ move. */
+const val KEY_SEEK_MS = 5_000L
+
+/**
+ * The command [key] asks for at [positionMs] of a song [durationMs] long (0: unknown), or null
+ * where the platform or the player ([canSeek]) can't do it. A seek stays inside the song.
+ */
+fun playbackCommand(key: PlaybackKey, positionMs: Long, durationMs: Long, capabilities: PlayerCapabilities, canSeek: Boolean): PlaybackCommand? =
+    when (key) {
+        PlaybackKey.PlayPause -> PlaybackCommand.PlayPause.takeIf { capabilities.playPause }
+        PlaybackKey.Previous -> PlaybackCommand.Previous.takeIf { capabilities.skipPrevious }
+        PlaybackKey.Next -> PlaybackCommand.Next.takeIf { capabilities.skipNext }
+        PlaybackKey.SeekBack, PlaybackKey.SeekForward -> {
+            if (!capabilities.seek || !canSeek) {
+                null
+            } else {
+                val step = if (key == PlaybackKey.SeekBack) -KEY_SEEK_MS else KEY_SEEK_MS
+                val target = (positionMs + step).coerceAtLeast(0L)
+                PlaybackCommand.Seek(if (durationMs > 0) target.coerceAtMost(durationMs) else target)
+            }
+        }
+    }

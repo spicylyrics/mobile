@@ -225,6 +225,7 @@ fun main(args: Array<String>) {
                         )
                     },
                     renderConfig = display.config,
+                    blurGlass = !desktopSettings.lowPerformance,
                 )
             }
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
