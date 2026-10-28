@@ -60,8 +60,12 @@ interface LyricsActions {
     fun setTranslationMode(mode: TranslationMode)
     fun setRomanizationMode(mode: RomanizationMode)
 
-    /** The answer to [LyricsOptions.pendingConsent] [id]: allowed, the waiting choice goes ahead and is remembered. */
-    fun answerConsent(id: String, allowed: Boolean)
+    /**
+     * The answer to [LyricsOptions.pendingConsent] [id]: allowed, the waiting choice goes ahead and is remembered.
+     * Does nothing by default: an implementation that never asks for consent leaves `pendingConsent` null and
+     * needs no answer.
+     */
+    fun answerConsent(id: String, allowed: Boolean) {}
 }
 
 /** The page's lyrics choices; none leaves the More menu's entries unavailable. */
