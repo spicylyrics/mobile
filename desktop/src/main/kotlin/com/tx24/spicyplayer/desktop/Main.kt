@@ -83,7 +83,8 @@ fun main(args: Array<String>) {
     CoreLog.sink = { level, tag, message -> if (level >= CoreLog.Level.WARN) System.err.println("[$tag] $message") }
 
     val session = MediaSession(opts["--app"], opts["--offset"]?.toLongOrNull() ?: 0L)
-    val lookup = LyricsLookup()
+    val lyricsLibrary = DesktopLyricsLibrary(coverOf = { session.cover })
+    val lookup = LyricsLookup(local = lyricsLibrary)
     val screen = MutableStateFlow<Screen>(Screen.Waiting)
     val playing = MutableStateFlow(false)
     val cover = MutableStateFlow<File?>(null)
@@ -137,9 +138,10 @@ fun main(args: Array<String>) {
             windowState.placement = if (page.mode == ViewMode.Fullscreen) WindowPlacement.Fullscreen else WindowPlacement.Floating
         }
         val settingsWindow = remember { SettingsWindowState() }
+        val lyricsManager = remember { LyricsManagerWindowState() }
         Window(
             onCloseRequest = { source.close(); exitApplication() },
-            onPreviewKeyEvent = settingsWindow::onKey,
+            onPreviewKeyEvent = { settingsWindow.onKey(it) || lyricsManager.onKey(it) },
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
@@ -203,6 +205,7 @@ fun main(args: Array<String>) {
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
         }
         SettingsWindow(settingsWindow)
+        LyricsManagerWindow(lyricsManager, lyricsLibrary, songLyrics)
     }
 }
 
