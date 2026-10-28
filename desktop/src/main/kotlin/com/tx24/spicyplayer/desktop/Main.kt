@@ -140,8 +140,10 @@ fun main(args: Array<String>) {
         LaunchedEffect(page.mode) {
             windowState.placement = if (page.mode == ViewMode.Fullscreen) WindowPlacement.Fullscreen else WindowPlacement.Floating
         }
+        val settingsWindow = remember { SettingsWindowState() }
         Window(
             onCloseRequest = { source.close(); exitApplication() },
+            onPreviewKeyEvent = settingsWindow::onKey,
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
@@ -202,6 +204,7 @@ fun main(args: Array<String>) {
             }
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
         }
+        SettingsWindow(settingsWindow)
     }
 }
 
