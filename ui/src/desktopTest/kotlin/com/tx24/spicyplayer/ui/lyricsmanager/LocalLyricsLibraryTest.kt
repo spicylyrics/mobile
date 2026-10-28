@@ -28,10 +28,17 @@ class LocalLyricsLibraryTest {
         assertEquals(all, pinCurrent(all, "not saved"))
     }
 
-    @Test fun fileNamesKeepOnlySafeCharacters() {
+    @Test fun fileNamesDropOnlyWhatFileSystemsRefuse() {
         assertEquals("AC_DC - Back in Black", sanitizeFilename("AC/DC - Back in Black"))
-        assertEquals("____", sanitizeFilename("君と歩く"))
+        assertEquals("君と歩く", sanitizeFilename("君と歩く"))
+        assertEquals("Café Ünïcode", sanitizeFilename("Café Ünïcode"))
+        assertEquals("What_ _Live_ _1_", sanitizeFilename("What? \"Live\" <1>"))
+        assertEquals("a_b_c", sanitizeFilename("a\tb\u0000c"))
+        assertEquals("Hello", sanitizeFilename("Hello. . "))
+        assertEquals("lyrics", sanitizeFilename("..."))
         assertEquals(100, sanitizeFilename("x".repeat(300)).length)
+        // A cut through an emoji drops the half that's left.
+        assertEquals("x".repeat(99), sanitizeFilename("x".repeat(99) + "🎵"))
     }
 
     @Test fun onlyLyricsFilesAreTaken() {

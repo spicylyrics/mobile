@@ -67,8 +67,16 @@ fun pinCurrent(entries: List<LibraryEntry>, currentId: String?): List<LibraryEnt
     return listOf(current) + entries.filter { it !== current }
 }
 
-/** A file name from [name]: letters, digits, `_ - .` and spaces kept, the rest `_`, 100 at most. */
-fun sanitizeFilename(name: String): String = name.replace(Regex("[^a-zA-Z0-9_\\- .]"), "_").take(100)
+/**
+ * A file name from [name], 100 characters at most: what file systems refuse (`<>:"/\|?*` and
+ * control characters) becomes `_`, and trailing dots and spaces go. Letters in any script stay.
+ */
+fun sanitizeFilename(name: String): String {
+    val cut = name.replace(Regex("""[<>:"/\\|?*\x00-\x1F\x7F]"""), "_").take(100)
+    // Don't leave half of a character outside the Basic Multilingual Plane.
+    val whole = if (cut.lastOrNull()?.isHighSurrogate() == true) cut.dropLast(1) else cut
+    return whole.trimEnd('.', ' ').ifEmpty { "lyrics" }
+}
 
 /** Whether [fileName] is a kind of file the library takes. A name without an extension is let through to be read. */
 fun acceptsFile(fileName: String?): Boolean {
