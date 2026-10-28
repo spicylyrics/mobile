@@ -29,6 +29,7 @@ import com.tx24.spicyplayer.ui.bigscreen.BigScreenPage
 import com.tx24.spicyplayer.ui.bigscreen.BigScreenState
 import com.tx24.spicyplayer.ui.bigscreen.LocalLyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.LocalTooltipHost
+import com.tx24.spicyplayer.ui.bigscreen.ScrollToActiveButton
 import com.tx24.spicyplayer.ui.bigscreen.ViewMode
 import com.tx24.spicyplayer.ui.bigscreen.bigScreenOptions
 import com.tx24.spicyplayer.ui.bigscreen.pageKeyOf
@@ -286,6 +287,7 @@ fun main(args: Array<String>) {
                             fontSizeScale = display.fontSizeScale,
                             romanizationMode = display.romanizationMode,
                             pinnedFooter = display.pinnedFooter,
+                            scrollToActiveButton = desktopSettings.showScrollToActive,
                         )
                     },
                     renderConfig = display.config,
@@ -349,6 +351,8 @@ private fun Lyrics(
     romanizationMode: RomanizationMode,
     /** Credits held at the bottom of the lyrics instead of scrolling after them. */
     pinnedFooter: PinnedFooterMode = PinnedFooterMode.Off,
+    /** The button back to the active line while the lyrics are scrolled away (Scroll to Active Button). */
+    scrollToActiveButton: Boolean = false,
 ) {
     val original = remember(lyrics.lines) {
         lyrics.lines.map { line ->
@@ -415,6 +419,10 @@ private fun Lyrics(
         tappable = true,
         onHeight = { pinnedHeightPx = it },
         modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = PINNED_FOOTER_GAP),
+    )
+    ScrollToActiveButton(
+        viewState, scrollToActiveButton,
+        bottomPx = { if (pinnedHeightPx > 0) pinnedHeightPx + pinnedGapPx else 0f },
     )
     }
 }
