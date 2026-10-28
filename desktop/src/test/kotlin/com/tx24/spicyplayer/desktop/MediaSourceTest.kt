@@ -2,6 +2,7 @@ package com.tx24.spicyplayer.desktop
 
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -36,6 +37,17 @@ class MediaSourceTest {
         assertEquals(Transport.entries.toSet(), GsmtcMediaSource(File("x")).capabilities)
         assertEquals(Transport.entries.toSet(), MprisMediaSource(path = null).capabilities)
         assertNotNull(MprisMediaSource(path = null).unavailableReason)
+    }
+
+    @Test
+    fun `shuffle and repeat where the platform takes them`() {
+        for (source in listOf(GsmtcMediaSource(File("x")), MprisMediaSource(path = null), MacMediaSource())) {
+            assertTrue(source.canShuffle)
+            assertTrue(source.canRepeat)
+        }
+        val none = mediaSource(File("x"), osName = "SunOS")
+        assertFalse(none.canShuffle)
+        assertFalse(none.canRepeat)
     }
 
     @Test

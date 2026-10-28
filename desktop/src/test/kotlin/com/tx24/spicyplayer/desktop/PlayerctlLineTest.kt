@@ -14,7 +14,7 @@ class PlayerctlLineTest {
 
     @Test
     fun `the format has every field once`() {
-        assertEquals(8, PLAYERCTL_FORMAT.split("\u001f").size)
+        assertEquals(10, PLAYERCTL_FORMAT.split("\u001f").size)
         assertEquals(listOf("playerctl", "--follow", "metadata", "--format", PLAYERCTL_FORMAT), playerctlFollowArgs())
     }
 
@@ -100,5 +100,39 @@ class PlayerctlLineTest {
         assertEquals(MediaUpdate.Removed("spotify"), parsePlayerctlLine("", 0, lastApp = "spotify"))
         assertEquals(MediaUpdate.Removed("vlc"), parsePlayerctlLine("No players found\n", 0, lastApp = "vlc"))
         assertNull(parsePlayerctlLine("", 0, lastApp = null))
+    }
+
+    @Test
+    fun `shuffle and loop`() {
+        val base = arrayOf("spotify", "Playing", "1000000", "200000000", "One", "A", "", "")
+        val on = snapshot(line(*base, "true", "Playlist"))
+        assertEquals(true, on.shuffle)
+        assertEquals(RepeatMode.All, on.repeat)
+        val off = snapshot(line(*base, "false", "None"))
+        assertEquals(false, off.shuffle)
+        assertEquals(RepeatMode.Off, off.repeat)
+        assertEquals(RepeatMode.One, snapshot(line(*base, "", "Track")).repeat)
+        // A player without them leaves the fields empty; the format before them has eight fields.
+        val none = snapshot(line(*base, "", ""))
+        assertNull(none.shuffle)
+        assertNull(none.repeat)
+        val older = snapshot(line(*base))
+        assertNull(older.shuffle)
+        assertNull(older.repeat)
+        assertNull(parsePlayerctlLine(line(*base, "true"), 0))
+    }
+
+    @Test
+    fun `shuffle and loop commands`() {
+        assertEquals(listOf("playerctl", "--player=spotify", "shuffle", "On"), playerctlShuffleArgs("playerctl", "spotify", true))
+        assertEquals(listOf("playerctl", "--player=spotify", "shuffle", "Off"), playerctlShuffleArgs("playerctl", "spotify", false))
+        assertEquals(listOf("playerctl", "--player=vlc", "loop", "None"), playerctlLoopArgs("playerctl", "vlc", RepeatMode.Off))
+        assertEquals(listOf("playerctl", "--player=vlc", "loop", "Track"), playerctlLoopArgs("playerctl", "vlc", RepeatMode.One))
+        assertEquals(listOf("playerctl", "--player=vlc", "loop", "Playlist"), playerctlLoopArgs("playerctl", "vlc", RepeatMode.All))
+    }
+
+    @Test
+    fun `mpris players can repeat one track`() {
+        assertTrue(snapshot(line("spotify", "Playing", "1", "2", "One", "A", "", "", "true", "Track")).repeatOneSupported)
     }
 }

@@ -94,4 +94,37 @@ class GsmtcLineTest {
         assertEquals(listOf("ctl", "Spotify", "next"), gsmtcCtlArgs("Spotify", Transport.NEXT, 0))
         assertEquals(listOf("ctl", "Spotify", "previous"), gsmtcCtlArgs("Spotify", Transport.PREVIOUS, 0))
     }
+
+    @Test
+    fun `shuffle and repeat, and an older helper without them`() {
+        // A helper from before shuffle and repeat: the line still parses, with both unknown.
+        val old = snapshot(spotify)
+        assertNull(old.shuffle)
+        assertNull(old.repeat)
+        fun withModes(fields: String) = snapshot(spotify.replace("\"rate\":1.0", "\"rate\":1.0,$fields"))
+        assertEquals(true, withModes("\"shuffle\":true,\"repeat\":\"List\"").shuffle)
+        assertEquals(RepeatMode.All, withModes("\"shuffle\":true,\"repeat\":\"List\"").repeat)
+        assertEquals(false, withModes("\"shuffle\":false,\"repeat\":\"None\"").shuffle)
+        assertEquals(RepeatMode.Off, withModes("\"shuffle\":false,\"repeat\":\"None\"").repeat)
+        assertEquals(RepeatMode.One, withModes("\"repeat\":\"Track\"").repeat)
+        // A player that doesn't say gets nulls from the helper.
+        val unknown = withModes("\"shuffle\":null,\"repeat\":null")
+        assertNull(unknown.shuffle)
+        assertNull(unknown.repeat)
+        assertNull(withModes("\"shuffle\":\"yes\",\"repeat\":\"Unknown\"").shuffle)
+    }
+
+    @Test
+    fun `shuffle and repeat ctl arguments`() {
+        assertEquals(listOf("ctl", "Spotify", "shuffle", "on"), gsmtcShuffleArgs("Spotify", true))
+        assertEquals(listOf("ctl", "Spotify", "shuffle", "off"), gsmtcShuffleArgs("Spotify", false))
+        assertEquals(listOf("ctl", "Spotify", "repeat", "off"), gsmtcRepeatArgs("Spotify", RepeatMode.Off))
+        assertEquals(listOf("ctl", "Spotify", "repeat", "one"), gsmtcRepeatArgs("Spotify", RepeatMode.One))
+        assertEquals(listOf("ctl", "Spotify", "repeat", "all"), gsmtcRepeatArgs("Spotify", RepeatMode.All))
+    }
+
+    @Test
+    fun `gsmtc players can repeat one track`() {
+        assertTrue(snapshot(spotify).repeatOneSupported)
+    }
 }

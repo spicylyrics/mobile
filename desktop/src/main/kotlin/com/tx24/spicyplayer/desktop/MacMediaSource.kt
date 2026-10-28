@@ -71,6 +71,19 @@ class MacMediaSource(
         ProcessBuilder(osascript, "-e", script).redirectErrorStream(true).start()
     }
 
+    override val canShuffle = true
+    override val canRepeat = true
+
+    override fun setShuffle(app: String, on: Boolean) {
+        val script = macShuffleScript(app, on) ?: return
+        ProcessBuilder(osascript, "-e", script).redirectErrorStream(true).start()
+    }
+
+    override fun setRepeat(app: String, mode: RepeatMode) {
+        val script = macRepeatScript(app, mode) ?: return
+        ProcessBuilder(osascript, "-e", script).redirectErrorStream(true).start()
+    }
+
     override fun close() {
         stopped = true
     }
@@ -89,10 +102,20 @@ class MacMediaSource(
 
 fun macMediaSource(): MediaSource = MacMediaSource()
 
-/** A player the poll asks: its application name, and the unit its track duration comes in. */
-enum class MacPlayer(val appName: String, val durationInMs: Boolean, val hasArtworkUrl: Boolean) {
-    SPOTIFY("Spotify", durationInMs = true, hasArtworkUrl = true),
-    MUSIC("Music", durationInMs = false, hasArtworkUrl = false),
+/**
+ * A player the poll asks: its application name, the unit its track duration comes in, and its
+ * shuffle and repeat properties. Spotify's repeat is a boolean; Music's is off, one or all.
+ */
+enum class MacPlayer(
+    val appName: String,
+    val durationInMs: Boolean,
+    val hasArtworkUrl: Boolean,
+    val shuffleProperty: String,
+    val repeatProperty: String,
+    val repeatsOne: Boolean,
+) {
+    SPOTIFY("Spotify", durationInMs = true, hasArtworkUrl = true, shuffleProperty = "shuffling", repeatProperty = "repeating", repeatsOne = false),
+    MUSIC("Music", durationInMs = false, hasArtworkUrl = false, shuffleProperty = "shuffle enabled", repeatProperty = "song repeat", repeatsOne = true),
 }
 
 /** Separates the fields of a poll line. */
@@ -109,8 +132,9 @@ fun installedMacPlayers(home: String = System.getProperty("user.home").orEmpty()
 
 /**
  * `osascript` arguments for one poll of [players]: per running player, one line of name, state,
- * position (s), duration (Spotify ms, Music s), title, artist, album and artwork URL; a player
- * with no track gives just its name and state.
+ * position (s), duration (Spotify ms, Music s), title, artist, album, artwork URL, shuffle and
+ * repeat; a player with no track gives just its name, state, shuffle and repeat. Shuffle and repeat
+ * are read on their own, so a player without them still reports its track.
  */
 fun macPollArgs(players: List<MacPlayer>): List<String> {
     val lines = mutableListOf("set sep to character id 31", "set out to \"\"")
@@ -120,11 +144,19 @@ fun macPollArgs(players: List<MacPlayer>): List<String> {
             "if application \"${p.appName}\" is running then",
             "tell application \"${p.appName}\"",
             "set st to player state as string",
+            "set sh to \"\"",
+            "try",
+            "set sh to (${p.shuffleProperty} as string)",
+            "end try",
+            "set rp to \"\"",
+            "try",
+            "set rp to (${p.repeatProperty} as string)",
+            "end try",
             "try",
             "set t to current track",
-            "set out to out & \"${p.appName}\" & sep & st & sep & (player position as string) & sep & (duration of t as string) & sep & (name of t) & sep & (artist of t) & sep & (album of t) & sep & ($art) & linefeed",
+            "set out to out & \"${p.appName}\" & sep & st & sep & (player position as string) & sep & (duration of t as string) & sep & (name of t) & sep & (artist of t) & sep & (album of t) & sep & ($art) & sep & sh & sep & rp & linefeed",
             "on error",
-            "set out to out & \"${p.appName}\" & sep & st & linefeed",
+            "set out to out & \"${p.appName}\" & sep & st & sep & sh & sep & rp & linefeed",
             "end try",
             "end tell",
             "end if",
@@ -138,15 +170,28 @@ fun macPollArgs(players: List<MacPlayer>): List<String> {
 fun parseMacLine(raw: String, stampWall: Long): MediaSnapshot? {
     val fields = raw.trimEnd('\r', '\n').split(MAC_SEP)
     val player = MacPlayer.entries.firstOrNull { it.appName == fields[0] } ?: return null
-    if (fields.size != 2 && fields.size != 8) return null
+    // Two and eight fields are the lines from before shuffle and repeat.
+    if (fields.size !in setOf(2, 4, 8, 10)) return null
     val status = when (fields[1].trim().lowercase()) {
         "playing" -> PlaybackStatus.Playing
         "paused" -> PlaybackStatus.Paused
         "stopped" -> PlaybackStatus.Stopped
         else -> PlaybackStatus.Unknown
     }
+    val shuffle = when (fields.getOrNull(fields.size - 2)?.trim()?.takeIf { fields.size == 4 || fields.size == 10 }) {
+        "true" -> true
+        "false" -> false
+        else -> null
+    }
+    // Spotify's repeat is on or off, which reads as repeating the list.
+    val repeat = when (fields.last().trim().takeIf { fields.size == 4 || fields.size == 10 }) {
+        "off", "false" -> RepeatMode.Off
+        "one" -> RepeatMode.One
+        "all", "true" -> RepeatMode.All
+        else -> null
+    }
     // No track: nothing to follow, whatever the state says.
-    if (fields.size == 2) return MediaSnapshot(player.appName, false, "", "", "", 0, 0, stampWall, status, null, event = "poll")
+    if (fields.size <= 4) return MediaSnapshot(player.appName, false, "", "", "", 0, 0, stampWall, status, null, event = "poll", shuffle = shuffle, repeat = repeat, repeatOneSupported = player.repeatsOne)
     val position = seconds(fields[2]) ?: return null
     val duration = number(fields[3]) ?: 0.0
     return MediaSnapshot(
@@ -162,6 +207,9 @@ fun parseMacLine(raw: String, stampWall: Long): MediaSnapshot? {
         rate = 1f,
         artUrl = fields[7].trim().takeIf { it.isNotEmpty() && it != "missing value" },
         event = "poll",
+        shuffle = shuffle,
+        repeat = repeat,
+        repeatOneSupported = player.repeatsOne,
     )
 }
 
@@ -187,6 +235,25 @@ fun macControlScript(app: String, action: Transport, positionMs: Long): String? 
         Transport.SEEK -> "set player position to " + String.format(Locale.ROOT, "%.3f", positionMs.coerceAtLeast(0L) / 1000.0)
     }
     return "tell application \"${player.appName}\" to $command"
+}
+
+/** The AppleScript to turn [app]'s shuffle on or off, or null for an app that isn't a [MacPlayer]. */
+fun macShuffleScript(app: String, on: Boolean): String? {
+    val player = MacPlayer.entries.firstOrNull { it.appName == app } ?: return null
+    return "tell application \"${player.appName}\" to set ${player.shuffleProperty} to $on"
+}
+
+/**
+ * The AppleScript to set [app]'s repeat to [mode], or null for an app that isn't a [MacPlayer].
+ * Spotify only repeats or doesn't, so [RepeatMode.One] turns on the same repeat as [RepeatMode.All].
+ */
+fun macRepeatScript(app: String, mode: RepeatMode): String? {
+    val player = MacPlayer.entries.firstOrNull { it.appName == app } ?: return null
+    val value = when (player) {
+        MacPlayer.SPOTIFY -> (mode != RepeatMode.Off).toString()
+        MacPlayer.MUSIC -> mode.name.lowercase()
+    }
+    return "tell application \"${player.appName}\" to set ${player.repeatProperty} to $value"
 }
 
 /** A number as AppleScript printed it, in whatever decimal separator the user's locale uses. */

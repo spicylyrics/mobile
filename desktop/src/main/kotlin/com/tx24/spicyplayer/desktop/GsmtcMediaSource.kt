@@ -46,12 +46,30 @@ class GsmtcMediaSource(val helper: File) : MediaSource {
         ProcessBuilder(listOf(helper.path) + gsmtcCtlArgs(app, action, positionMs)).redirectErrorStream(true).start()
     }
 
+    // A helper from before shuffle and repeat answers these with "ok": false and changes nothing.
+    override val canShuffle = true
+    override val canRepeat = true
+
+    override fun setShuffle(app: String, on: Boolean) {
+        ProcessBuilder(listOf(helper.path) + gsmtcShuffleArgs(app, on)).redirectErrorStream(true).start()
+    }
+
+    override fun setRepeat(app: String, mode: RepeatMode) {
+        ProcessBuilder(listOf(helper.path) + gsmtcRepeatArgs(app, mode)).redirectErrorStream(true).start()
+    }
+
     override fun close() {
         running.getAndSet(null)?.destroy()
     }
 }
 
 /** The helper's arguments for [action] on the session whose app id contains [app]. */
+/** The helper's arguments to turn shuffle on or off for the session whose app id contains [app]. */
+fun gsmtcShuffleArgs(app: String, on: Boolean) = listOf("ctl", app, "shuffle", if (on) "on" else "off")
+
+/** The helper's arguments to set [app]'s repeat mode. */
+fun gsmtcRepeatArgs(app: String, mode: RepeatMode) = listOf("ctl", app, "repeat", mode.name.lowercase())
+
 fun gsmtcCtlArgs(app: String, action: Transport, positionMs: Long): List<String> = when (action) {
     Transport.PLAY -> listOf("ctl", app, "play")
     Transport.PAUSE -> listOf("ctl", app, "pause")
@@ -93,6 +111,14 @@ fun parseGsmtcJson(line: JsonObject): MediaUpdate? {
             rate = line.get("rate")?.takeUnless { it.isJsonNull }?.let { runCatching { it.asFloat }.getOrNull() },
             cover = line.str("cover").takeIf(String::isNotBlank)?.let(::File),
             event = line.str("event"),
+            // A helper from before these fields leaves them out: null, as for a player that doesn't say.
+            shuffle = line.get("shuffle")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean,
+            repeat = when (line.str("repeat")) {
+                "None" -> RepeatMode.Off
+                "Track" -> RepeatMode.One
+                "List" -> RepeatMode.All
+                else -> null
+            },
         ),
     )
 }
