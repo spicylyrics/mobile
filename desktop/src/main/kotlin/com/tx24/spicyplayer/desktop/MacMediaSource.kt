@@ -21,6 +21,9 @@ import kotlinx.coroutines.isActive
  * a playing one takes over. macOS asks once per player for permission to control it (Automation);
  * until that's granted, the poll comes back empty.
  *
+ * Music's artwork is written to a file by a second `osascript` call, only when its track changes
+ * ([MacArtwork]); Spotify's comes as a URL in the poll.
+ *
  * Other players (browsers, VLC) would need the private MediaRemote framework, which macOS 15.4 and
  * later only lets Apple-signed processes read.
  */
@@ -35,6 +38,8 @@ class MacMediaSource(
 
     @Volatile private var stopped = false
 
+    private val musicArtwork = MacArtwork { key -> fetchMusicArtwork(key) }
+
     override fun updates(): Flow<Received> = flow {
         stopped = false
         var current: String? = null
@@ -47,6 +52,8 @@ class MacMediaSource(
             val (exit, output) = run(listOf(osascript) + macPollArgs(players))
             // The positions were read somewhere inside the call: its middle is the best guess.
             val receivedMono = monoMs()
+            // Taken now, not at each emit: a cover fetch below must not age the stamp.
+            val receivedWall = System.currentTimeMillis()
             val stampWall = startedWall + (receivedMono - startedMono) / 2
             if (exit != 0 && !warned) {
                 System.err.println("osascript exited $exit; is Automation allowed for Spicy Lyrics in System Settings > Privacy & Security?")
@@ -55,12 +62,13 @@ class MacMediaSource(
             val snapshots = output.lines().mapNotNull { parseMacLine(it, stampWall) }
             current = pickMacCurrent(snapshots, current)
             for (gone in seen - snapshots.map { it.app }.toSet()) {
-                emit(Received(MediaUpdate.Removed(gone), receivedMono, System.currentTimeMillis(), ""))
+                emit(Received(MediaUpdate.Removed(gone), receivedMono, receivedWall, ""))
             }
             seen = snapshots.map { it.app }.toSet()
             for (s in snapshots) {
-                val snapshot = s.copy(current = s.app == current)
-                emit(Received(MediaUpdate.Snapshot(snapshot), receivedMono, System.currentTimeMillis(), output))
+                val cover = if (s.app == MacPlayer.MUSIC.appName) musicArtwork.coverFor(s) else null
+                val snapshot = s.copy(current = s.app == current, cover = cover)
+                emit(Received(MediaUpdate.Snapshot(snapshot), receivedMono, receivedWall, output))
             }
             delay(POLL_MS)
         }
@@ -86,6 +94,15 @@ class MacMediaSource(
 
     override fun close() {
         stopped = true
+    }
+
+    /** Writes the current Music track's first artwork to its file; null when there's none. */
+    private fun fetchMusicArtwork(key: String): File? {
+        val file = macArtworkFile(key)
+        if (file.length() > 0) return file
+        file.parentFile?.mkdirs()
+        val (exit, _) = run(listOf(osascript) + macMusicArtworkArgs(file.path))
+        return file.takeIf { exit == 0 && it.length() > 0 }
     }
 
     private fun run(command: List<String>): Pair<Int, String> = runCatching {
@@ -235,6 +252,56 @@ fun macControlScript(app: String, action: Transport, positionMs: Long): String? 
         Transport.SEEK -> "set player position to " + String.format(Locale.ROOT, "%.3f", positionMs.coerceAtLeast(0L) / 1000.0)
     }
     return "tell application \"${player.appName}\" to $command"
+}
+
+/**
+ * Music's cover, fetched only when its track changes: [coverFor] asks [fetch] once per new track
+ * (title, artist and album) and hands back the same file on every poll in between, or null for a
+ * track without artwork or with nothing playing.
+ */
+class MacArtwork(private val fetch: (key: String) -> File?) {
+    private var key: String? = null
+    private var file: File? = null
+
+    fun coverFor(snapshot: MediaSnapshot): File? {
+        if (snapshot.title.isBlank()) return null
+        val next = macTrackKey(snapshot)
+        if (next != key) {
+            key = next
+            file = runCatching { fetch(next) }.getOrNull()
+        }
+        return file
+    }
+}
+
+/** What tells one track from another for its artwork. */
+fun macTrackKey(snapshot: MediaSnapshot) = listOf(snapshot.title, snapshot.artist, snapshot.album).joinToString(MAC_SEP)
+
+/** Where a track's artwork goes: one file per track, named by its key, beside the other players' covers. */
+fun macArtworkFile(key: String, dir: File = File(System.getProperty("java.io.tmpdir"), "spicy-lyrics-covers")) =
+    File(dir, String.format(Locale.ROOT, "music-%08x%08x.img", key.hashCode(), key.reversed().hashCode()))
+
+/**
+ * `osascript` arguments that write Music's current track's first artwork to [path] as it's stored
+ * (JPEG or PNG), and print nothing; it exits with an error when there's no artwork or Music isn't
+ * running, and never launches it.
+ */
+fun macMusicArtworkArgs(path: String): List<String> {
+    val quoted = path.replace("\\", "\\\\").replace("\"", "\\\"")
+    return listOf(
+        "if application \"Music\" is not running then error \"not running\"",
+        "tell application \"Music\" to set d to raw data of artwork 1 of current track",
+        "set f to open for access (POSIX file \"$quoted\") with write permission",
+        "try",
+        "set eof f to 0",
+        "write d to f",
+        "on error e",
+        "close access f",
+        "error e",
+        "end try",
+        "close access f",
+        "return \"\"",
+    ).flatMap { listOf("-e", it) }
 }
 
 /** The AppleScript to turn [app]'s shuffle on or off, or null for an app that isn't a [MacPlayer]. */

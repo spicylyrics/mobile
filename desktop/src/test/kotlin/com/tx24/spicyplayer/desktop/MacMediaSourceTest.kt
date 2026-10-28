@@ -1,5 +1,6 @@
 package com.tx24.spicyplayer.desktop
 
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -175,5 +176,60 @@ class MacMediaSourceTest {
         assertFalse(parseMacLine(line("Spotify", "playing", "1", "2000", "Song", "Band", "Record", ""), 0)!!.repeatOneSupported)
         assertTrue(parseMacLine(line("Music", "playing", "1", "2", "T", "S", "A", "", "false", "one"), 0)!!.repeatOneSupported)
         assertTrue(parseMacLine(line("Music", "stopped"), 0)!!.repeatOneSupported)
+    }
+
+    @Test
+    fun `music's artwork is fetched once per track`() {
+        val asked = mutableListOf<String>()
+        val art = MacArtwork { key -> asked += key; File("/tmp/${asked.size}.img") }
+        fun music(title: String, position: Long = 0) = MediaSnapshot("Music", false, title, "Singer", "Album", 200_000, position, 0, PlaybackStatus.Playing, 1f)
+        val first = art.coverFor(music("One"))
+        // Every poll in between gets the same file without asking again.
+        assertEquals(first, art.coverFor(music("One", 1_000)))
+        assertEquals(first, art.coverFor(music("One", 2_000)))
+        assertEquals(1, asked.size)
+        // A new track asks again.
+        val second = art.coverFor(music("Two"))
+        assertEquals(2, asked.size)
+        assertFalse(first == second)
+        // No track: no cover, and nothing asked.
+        assertNull(art.coverFor(music("")))
+        assertEquals(2, asked.size)
+    }
+
+    @Test
+    fun `a track without artwork isn't asked about every poll`() {
+        var asked = 0
+        val art = MacArtwork { asked++; null }
+        val track = MediaSnapshot("Music", false, "One", "Singer", "Album", 200_000, 0, 0, PlaybackStatus.Playing, 1f)
+        assertNull(art.coverFor(track))
+        assertNull(art.coverFor(track.copy(positionMs = 1_000)))
+        assertEquals(1, asked)
+        // A fetch that throws counts as no artwork, also asked once.
+        val failing = MacArtwork { asked++; error("osascript failed") }
+        assertNull(failing.coverFor(track))
+        assertNull(failing.coverFor(track))
+        assertEquals(2, asked)
+    }
+
+    @Test
+    fun `artwork files are named per track`() {
+        val dir = File("covers")
+        val one = MediaSnapshot("Music", false, "One", "Singer", "Album", 1, 0, 0, PlaybackStatus.Playing, 1f)
+        assertEquals(macArtworkFile(macTrackKey(one), dir), macArtworkFile(macTrackKey(one.copy(positionMs = 5)), dir))
+        assertFalse(macArtworkFile(macTrackKey(one), dir) == macArtworkFile(macTrackKey(one.copy(title = "Two")), dir))
+        assertEquals(dir, macArtworkFile("x", dir).parentFile)
+        assertTrue(macArtworkFile("x", dir).name.matches(Regex("""music-[0-9a-f]{16}\.img""")))
+    }
+
+    @Test
+    fun `the artwork script writes to the file without launching music`() {
+        val args = macMusicArtworkArgs("/tmp/a \"b\".img")
+        assertTrue(args.filterIndexed { i, _ -> i % 2 == 0 }.all { it == "-e" })
+        val script = args.filterIndexed { i, _ -> i % 2 == 1 }
+        assertEquals("if application \"Music\" is not running then error \"not running\"", script.first())
+        assertTrue("tell application \"Music\" to set d to raw data of artwork 1 of current track" in script)
+        assertTrue("set f to open for access (POSIX file \"/tmp/a \\\"b\\\".img\") with write permission" in script)
+        assertEquals(2, script.count { it == "close access f" })
     }
 }
