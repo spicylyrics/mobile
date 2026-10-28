@@ -53,7 +53,12 @@ import com.tx24.spicyplayer.translation.TranslationMode
 import com.tx24.spicyplayer.translation.TranslationPresentation
 import com.tx24.spicyplayer.translation.TranslationResult
 import java.awt.GraphicsEnvironment
+import com.tx24.spicyplayer.ui.settings.FileSettingsStore
+import com.tx24.spicyplayer.ui.settings.InstanceLock
 import java.io.File
+import javax.swing.JOptionPane
+import kotlin.concurrent.thread
+import kotlin.system.exitProcess
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -64,6 +69,23 @@ import kotlinx.coroutines.launch
 
 /** Where Spotify's audio analyses are kept between runs. */
 private val cacheDir = File(System.getenv("LOCALAPPDATA") ?: System.getProperty("java.io.tmpdir"), "Spicy Lyrics/cache")
+
+/** Held from start to exit, so a second copy never writes the settings over this one's. */
+private var instanceLock: InstanceLock? = null
+
+/** Takes the settings folder's [InstanceLock], or tells the user a copy is already running and exits. */
+private fun holdInstanceLock() {
+    val dir = FileSettingsStore.appDataDir(System.getProperty("os.name").orEmpty(), System::getenv, System.getProperty("user.home"))
+    when (val lock = InstanceLock.acquire(dir)) {
+        InstanceLock.TakenByAnother -> {
+            val message = "Spicy Lyrics is already running."
+            System.err.println(message)
+            if (!GraphicsEnvironment.isHeadless()) JOptionPane.showMessageDialog(null, message, "Spicy Lyrics", JOptionPane.INFORMATION_MESSAGE)
+            exitProcess(0)
+        }
+        else -> instanceLock = lock
+    }
+}
 
 /** What the window shows: nothing playing, a track being looked up, or its lyrics or notice. */
 private sealed interface Screen {
@@ -80,6 +102,7 @@ private sealed interface Screen {
  */
 fun main(args: Array<String>) {
     if ("--demo" in args) return runDemo(args)
+    holdInstanceLock()
     val opts = args.toList().zipWithNext().filter { it.first.startsWith("--") }.toMap()
     val source = mediaSource(opts["--helper"]?.let(::File))
     source.unavailableReason?.let { error(it) }

@@ -5,24 +5,39 @@ import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
+import java.util.Collections
 import java.util.Properties
+import java.util.WeakHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 
 /**
- * [SettingsStore] in a properties file, rewritten whole on each change (temp file, then moved over
- * the old one, so a crash mid-write leaves the last good copy). Each value carries its type as a
- * prefix (`b:true`, `i:42`, `s:text`), so reading one as the wrong type gives null as on Android.
+ * [SettingsStore] in a properties file. A change lands in memory at once; the file is rewritten
+ * whole at most every [saveDelayMs] on one background thread (temp file, then moved over the old
+ * one, so a crash mid-write leaves the last good copy), and [flush] or the app's exit writes what
+ * is still waiting. Each value carries its type as a prefix (`b:true`, `i:42`, `s:text`), so
+ * reading one as the wrong type gives null as on Android.
  *
  * A file rather than `java.util.prefs`: on Windows that is the registry, with its own escaping and
  * value-length limits, and a file can be read, backed up or deleted by hand.
  *
- * Each store reads its file once and writes all of it back on every change, so two stores over one
+ * Each store reads its file once and writes all of it back on each save, so two stores over one
  * file overwrite each other's changes. Use [default] for `settings.properties`; never construct a
  * second store over the same file.
  */
-class FileSettingsStore(private val file: File) : SettingsStore {
+class FileSettingsStore(private val file: File, private val saveDelayMs: Long = SAVE_DELAY_MS) : SettingsStore {
     private val lock = Any()
+    /** Held while writing, so two writes never cross and the newest values land last. */
+    private val writeLock = Any()
     private val values: MutableMap<String, String> = load(file)
     private val listeners = mutableListOf<SettingsStore.Listener>()
+    /** Guarded by [lock]: [values] has changes not on disk yet, and whether a save is queued for them. */
+    private var dirty = false
+    private var saveQueued = false
+
+    init {
+        stores += this
+    }
 
     override val keys: Set<String> get() = synchronized(lock) { values.keys.toSet() }
     override fun contains(key: String) = synchronized(lock) { key in values }
@@ -42,7 +57,7 @@ class FileSettingsStore(private val file: File) : SettingsStore {
     override fun putStringSet(key: String, value: Set<String>) = put(key, STRING_SET, encodeSet(value))
 
     override fun remove(key: String) {
-        val removed = synchronized(lock) { (values.remove(key) != null).also { if (it) save() } }
+        val removed = synchronized(lock) { (values.remove(key) != null).also { if (it) queueSave() } }
         if (removed) notify(key)
     }
 
@@ -61,7 +76,7 @@ class FileSettingsStore(private val file: File) : SettingsStore {
 
     private fun put(key: String, type: Char, value: String) {
         val stored = "$type:$value"
-        val changed = synchronized(lock) { (values.put(key, stored) != stored).also { if (it) save() } }
+        val changed = synchronized(lock) { (values.put(key, stored) != stored).also { if (it) queueSave() } }
         if (changed) notify(key)
     }
 
@@ -70,11 +85,35 @@ class FileSettingsStore(private val file: File) : SettingsStore {
         current.forEach { it.onChanged(key) }
     }
 
-    /** Called holding [lock]. A failed write keeps the values in memory for this run. */
-    private fun save() {
+    /**
+     * Writes the changes still waiting now, on the caller's thread. A failed write is logged and
+     * stays waiting, so the next change or the app's exit tries again; the values stay in memory
+     * for this run either way.
+     */
+    fun flush() {
+        synchronized(writeLock) {
+            val snapshot = synchronized(lock) {
+                saveQueued = false
+                if (!dirty) return
+                dirty = false
+                values.toMap()
+            }
+            if (!write(snapshot)) synchronized(lock) { dirty = true }
+        }
+    }
+
+    /** Called holding [lock]: one save at most per [saveDelayMs], however many changes come in. */
+    private fun queueSave() {
+        dirty = true
+        if (saveQueued) return
+        saveQueued = true
+        saver.schedule({ flush() }, saveDelayMs, TimeUnit.MILLISECONDS)
+    }
+
+    private fun write(snapshot: Map<String, String>): Boolean {
         val properties = Properties()
-        values.forEach { (k, v) -> properties.setProperty(k, v) }
-        try {
+        snapshot.forEach { (k, v) -> properties.setProperty(k, v) }
+        return try {
             file.absoluteFile.parentFile?.mkdirs()
             val temp = File(file.absolutePath + ".tmp")
             temp.outputStream().use { properties.store(it, "Spicy Lyrics settings") }
@@ -83,7 +122,10 @@ class FileSettingsStore(private val file: File) : SettingsStore {
             } catch (_: AtomicMoveNotSupportedException) {
                 Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
             }
-        } catch (_: IOException) {
+            true
+        } catch (e: IOException) {
+            System.err.println("[Settings] Couldn't save $file: $e")
+            false
         }
     }
 
@@ -94,6 +136,19 @@ class FileSettingsStore(private val file: File) : SettingsStore {
         private const val FLOAT = 'f'
         private const val STRING = 's'
         private const val STRING_SET = 'S'
+
+        /** The shortest time between two writes of one file: a dragged slider writes once or twice, not a hundred times. */
+        const val SAVE_DELAY_MS = 150L
+
+        /** The one thread every store writes on; a daemon, so it never keeps the app open. */
+        private val saver = Executors.newSingleThreadScheduledExecutor { Thread(it, "settings-saver").apply { isDaemon = true } }
+
+        /** Every store made, so the app's exit writes what each still has waiting. */
+        private val stores: MutableSet<FileSettingsStore> = Collections.synchronizedSet(Collections.newSetFromMap(WeakHashMap()))
+
+        init {
+            Runtime.getRuntime().addShutdownHook(Thread({ synchronized(stores) { stores.toList() }.forEach { it.flush() } }, "settings-flush"))
+        }
 
         /** Ends each element of a stored set, so an empty set and a set of one empty string differ. */
         private const val SET_END = '\u0000'
