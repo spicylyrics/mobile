@@ -521,7 +521,7 @@ private fun ControlGlyph(control: ViewControl, env: PageEnv, modifier: Modifier)
     }
 }
 
-/** The mobile app's extras, listed for now. */
+/** The lyrics choices beyond the view: source, translation, romanization style ([LocalLyricsActions]). */
 @Composable
 private fun MoreMenu(anchor: Dp, onDismiss: () -> Unit) {
     val density = LocalDensity.current
@@ -533,19 +533,13 @@ private fun MoreMenu(anchor: Dp, onDismiss: () -> Unit) {
     ) {
         Column(
             Modifier
-                .width(220.dp)
+                .width(280.dp)
                 .shadow(24.dp, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp))
                 .background(SpicyColors.BgElevated)
                 .padding(vertical = 6.dp),
         ) {
-            // TODO: the lyrics source picker, translation and romanization style from the mobile app.
-            for (entry in listOf("Lyrics source", "Translate lyrics", "Romanization style")) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp)) {
-                    BasicText(entry, style = TextStyle(color = SpicyColors.TextTertiary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold))
-                    BasicText("Coming soon", style = TextStyle(color = SpicyColors.TextTertiary, fontSize = 12.sp))
-                }
-            }
+            MoreMenuEntries(LocalLyricsActions.current)
         }
     }
 }
