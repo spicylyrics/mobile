@@ -28,10 +28,19 @@ enum class ControlsLevel(val controlsAlpha: Float, val artworkBrightness: Float)
 /**
  * The cover's controls for where the pointer is: on the cover they stay up however long it rests
  * there; elsewhere on the page ([onPage], or [revealed] by a tap) they fade once [idle]. While
- * [held] (the timeline is being dragged, the More menu is open) they stay as bright as on the cover.
+ * [held] (the timeline is being dragged, the More menu is open) they keep the [previous] level, at
+ * least [ControlsLevel.Page], wherever the pointer wanders.
  */
-fun controlsLevel(onPage: Boolean, onCover: Boolean, revealed: Boolean, idle: Boolean, held: Boolean): ControlsLevel = when {
-    held || onCover -> ControlsLevel.Cover
+fun controlsLevel(
+    onPage: Boolean,
+    onCover: Boolean,
+    revealed: Boolean,
+    idle: Boolean,
+    held: Boolean,
+    previous: ControlsLevel = ControlsLevel.Hidden,
+): ControlsLevel = when {
+    held -> maxOf(previous, ControlsLevel.Page)
+    onCover -> ControlsLevel.Cover
     (onPage || revealed) && !idle -> ControlsLevel.Page
     else -> ControlsLevel.Hidden
 }

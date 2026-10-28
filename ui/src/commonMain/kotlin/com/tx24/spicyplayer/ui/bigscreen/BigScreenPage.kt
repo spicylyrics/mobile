@@ -2,6 +2,7 @@ package com.tx24.spicyplayer.ui.bigscreen
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -29,11 +30,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameMillis
@@ -54,6 +57,8 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -103,6 +108,9 @@ import com.tx24.spicyplayer.ui.nowplaying.NowPlayingState
 import com.tx24.spicyplayer.ui.nowplaying.RepeatState
 import com.tx24.spicyplayer.ui.theme.SpicyColors
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 
 /**
  * How a view control gets its tooltip. The desktop wraps the button in its own tooltip area;
@@ -187,15 +195,54 @@ private fun BigScreenContent(
     LaunchedEffect(keys) { runCatching { keys.requestFocus() } }
     val pageHover = remember { MutableInteractionSource() }
     val pageHovered by pageHover.collectIsHoveredAsState()
-    // A tap where nothing else took it shows the controls; the next one hides them.
+    val rowHover = remember { MutableInteractionSource() }
+    val rowHovered by rowHover.collectIsHoveredAsState()
+    val coverHover = remember { MutableInteractionSource() }
+    val coverHovered by coverHover.collectIsHoveredAsState()
+    // A tap where nothing else took it brings hidden controls up and puts shown ones away.
     var revealed by remember { mutableStateOf(false) }
-    val showControls = pageHovered || revealed
+    // The More menu lives here, not in the row: the row leaves when the controls fade, and an
+    // open menu (like a timeline being dragged) holds them up instead.
+    var menuOpen by remember { mutableStateOf(false) }
+    var dragging by remember { mutableStateOf(false) }
+    val held = menuOpen || dragging
+
+    // In cinema and fullscreen the controls fade a while after the pointer last moved. Each move
+    // goes into a flow rather than state, so the page doesn't recompose at the pointer's rate.
+    val moves = remember { MutableStateFlow(0L) }
+    var idle by remember { mutableStateOf(false) }
+    val idleAfter = idleAfterMs(options.idle, playing.isPlaying).takeIf { state.immersive }
+    LaunchedEffect(idleAfter) {
+        idle = false
+        if (idleAfter == null) return@LaunchedEffect
+        moves.collectLatest {
+            idle = false
+            delay(idleAfter)
+            idle = true
+            revealed = false
+        }
+    }
+    var lastLevel by remember { mutableStateOf(ControlsLevel.Hidden) }
+    val level = controlsLevel(pageHovered, coverHovered, revealed, idle, held, previous = lastLevel)
+    SideEffect { lastLevel = level }
+    val currentLevel by rememberUpdatedState(level)
+    // Off cinema and fullscreen the row has three steps; in the compact layout it idles too.
+    val rowAlpha = viewControlsAlpha(pageHovered && !idle, rowHovered, revealed && !idle, held)
+    val input = PageInput(level, rowHover, coverHover, menuOpen, { menuOpen = it }, { dragging = it })
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .background(Color.Black)
             .hoverable(pageHover)
-            .pointerInput(Unit) { detectTapGestures { revealed = !revealed } }
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        if (event.type == PointerEventType.Move || event.type == PointerEventType.Press) moves.value++
+                    }
+                }
+            }
+            .pointerInput(Unit) { detectTapGestures { revealed = revealedAfterTap(currentLevel) } }
             .focusRequester(keys)
             .focusable()
             .onKeyEvent { event -> onPlaybackKey(event, nowPlaying, capabilities) },
@@ -213,7 +260,7 @@ private fun BigScreenContent(
         val cover = LocalNowPlayingPlatform.current
             .rememberCover(playing.artwork, playing.artworkUri, metrics.coverSizePx.roundToInt().coerceAtLeast(1), playing.hasSession)
             ?.image
-        val env = PageEnv(state, capabilities, actions, widthDp, heightDp, metrics, options)
+        val env = PageEnv(state, capabilities, actions, widthDp, heightDp, metrics, options, input)
         Box(Modifier.fillMaxSize().backdropSource()) { background() }
 
         if (!playing.hasSession) {
@@ -222,11 +269,11 @@ private fun BigScreenContent(
                 modifier = Modifier.fillMaxSize(),
                 body = "Play something in Spotify or another player that shows in the system's media controls.",
             )
-            PageControls(env, showControls, Modifier.fillMaxWidth())
+            PageControls(env, rowAlpha, Modifier.fillMaxWidth())
             return@BoxWithConstraints
         }
         if (state.layoutFor(widthDp, heightDp) == BigScreenLayout.Compact) {
-            CompactPage(env, playing, cover, lyrics, noticeActions, showControls, lyricsSlot)
+            CompactPage(env, playing, cover, lyrics, noticeActions, rowAlpha, lyricsSlot)
             return@BoxWithConstraints
         }
 
@@ -238,8 +285,8 @@ private fun BigScreenContent(
             Modifier.offset { IntOffset(box.leftPx.roundToInt(), 0) }.width(box.widthPx.toDp(density)).fillMaxHeight(),
             noticeActions, lyricsSlot,
         )
-        if (withBar) NowBar(env, playing, cover, nowPlaying, showControls, lyricsHidden)
-        if (!state.immersive) PageControls(env, showControls, Modifier.fillMaxWidth())
+        if (withBar) NowBar(env, playing, cover, nowPlaying, lyricsHidden)
+        if (!state.immersive) PageControls(env, rowAlpha, Modifier.fillMaxWidth())
     }
 }
 
@@ -252,16 +299,34 @@ private class PageEnv(
     val heightDp: Float,
     val metrics: BigScreenMetrics,
     val options: BigScreenOptions,
+    val input: PageInput,
 )
 
 /**
- * `.ViewControls` on the page: a row 24px from the top, or from the bottom with the setting,
- * faded in while the page is hovered.
+ * Where the pointer is and what holds the controls up: the cover's [level] in cinema and
+ * fullscreen, the hover of the view controls row and of the cover, the More menu, and a timeline
+ * drag ([onDragging]).
+ */
+private class PageInput(
+    val level: ControlsLevel,
+    val rowHover: MutableInteractionSource,
+    val coverHover: MutableInteractionSource,
+    val menuOpen: Boolean,
+    val onMenu: (Boolean) -> Unit,
+    val onDragging: (Boolean) -> Unit,
+)
+
+/** The overdamped spring the cover's controls and its dimming move on. */
+private val CoverControlsSpring = spring<Float>(dampingRatio = 2f, stiffness = 158f)
+
+/**
+ * `.ViewControls` on the page: a row 24px from the top, or from the bottom with the setting, at
+ * [target] opacity ([viewControlsAlpha]).
  */
 @Composable
-private fun PageControls(env: PageEnv, shown: Boolean, modifier: Modifier) {
+private fun PageControls(env: PageEnv, target: Float, modifier: Modifier) {
     val density = LocalDensity.current.density
-    val alpha by animateFloatAsState(if (shown) 1f else 0f, tween(300), label = "viewControls")
+    val alpha by animateFloatAsState(target, tween(300), label = "viewControls")
     if (alpha == 0f) return
     val metrics = env.metrics
     val size = metrics.pageControlSizePx
@@ -304,8 +369,9 @@ private fun LyricsArea(
 
 /**
  * The now-playing bar: the cover and, centred under it, the name (`font-weight: 900`, .95) and
- * the artists (.7). Off the page, hovering (or tapping) the cover darkens it and brings up the
- * view controls along its top and the playback row and timeline along its bottom. With the timeline
+ * the artists (.7). Off the page the pointer on the page dims the cover a little and brings up the
+ * view controls along its top and the playback row and timeline along its bottom, faintly; on the
+ * cover it dims it more and brings them up fully ([ControlsLevel]), both on a slow spring. With the timeline
  * outside the cover it sits, always shown, between the cover and the song. [lyricsHidden] centres it all.
  */
 @Composable
@@ -314,29 +380,27 @@ private fun NowBar(
     playing: NowPlayingState,
     cover: ImageBitmap?,
     nowPlaying: NowPlaying,
-    pageRevealed: Boolean,
     lyricsHidden: Boolean,
 ) {
     val density = LocalDensity.current.density
     val metrics = env.metrics
     val left = metrics.coverLeftPx(env.state.nowBarOnRight, lyricsHidden)
     val coverSize = metrics.coverSizePx.toDp(density)
-    val coverHover = remember { MutableInteractionSource() }
-    val coverHovered by coverHover.collectIsHoveredAsState()
-    val overlay by animateFloatAsState(
-        if (env.state.immersive && (coverHovered || pageRevealed)) 1f else 0f, tween(300), label = "coverControls",
-    )
+    val level = if (env.state.immersive) env.input.level else ControlsLevel.Hidden
+    val controls by animateFloatAsState(level.controlsAlpha, CoverControlsSpring, label = "coverControls")
+    val brightness by animateFloatAsState(level.artworkBrightness, CoverControlsSpring, label = "coverBrightness")
     Box(
         Modifier
             .offset { IntOffset(left.roundToInt(), metrics.coverTopPx.roundToInt()) }
             .size(coverSize)
-            .hoverable(coverHover),
+            .hoverable(env.input.coverHover),
     ) {
         val shape = RoundedCornerShape(metrics.coverCornerPx.toDp(density))
         Cover(cover, Modifier.fillMaxSize().shadow(20.dp, shape, clip = false).clip(shape).alpha(0.95f).backdropSource(zIndex = 1f))
-        if (overlay > 0f) {
-            Box(Modifier.fillMaxSize().clip(shape).background(Color.Black.copy(alpha = 0.45f * overlay)))
-            Box(Modifier.fillMaxSize().alpha(overlay)) {
+        // The spring only nears its rest, so the overlay goes once it's out of sight.
+        if (brightness < 0.995f) Box(Modifier.fillMaxSize().clip(shape).background(Color.Black.copy(alpha = 1f - brightness)))
+        if (controls > 0.005f) {
+            Box(Modifier.fillMaxSize().alpha(controls)) {
                 ViewControlsRow(
                     env, metrics.coverControlSizePx.toDp(density),
                     Modifier.fillMaxWidth().offset { IntOffset(0, metrics.coverControlsTopPx.roundToInt()) },
@@ -498,7 +562,7 @@ private fun PlaybackToggle(glyph: ImageVector, active: Boolean, shown: Boolean, 
 private fun PlaybackTimeline(env: PageEnv, playing: NowPlayingState, nowPlaying: NowPlaying, geometry: TimelineGeometry, modifier: Modifier) {
     var now by remember { mutableLongStateOf(nowPlaying.positionMs()) }
     LaunchedEffect(nowPlaying) { while (true) withFrameMillis { now = nowPlaying.positionMs() } }
-    Timeline(now, playing.track.durationMs, env.capabilities.seek && playing.canSeek, env.metrics, geometry, nowPlaying::seekTo, modifier)
+    Timeline(now, playing.track.durationMs, env.capabilities.seek && playing.canSeek, env.metrics, geometry, nowPlaying::seekTo, env.input.onDragging, modifier)
 }
 
 /** `.Timeline`: the position, the bar (white for what has played), and the length. */
@@ -510,6 +574,7 @@ private fun Timeline(
     metrics: BigScreenMetrics,
     geometry: TimelineGeometry,
     onSeek: (Long) -> Unit,
+    onDragging: (Boolean) -> Unit,
     modifier: Modifier,
 ) {
     val density = LocalDensity.current.density
@@ -544,12 +609,19 @@ private fun Timeline(
                         }
                         .pointerInput(durationMs) {
                             detectHorizontalDragGestures(
-                                onDragStart = { dragFraction = it.x / barWidth },
+                                onDragStart = {
+                                    dragFraction = it.x / barWidth
+                                    onDragging(true)
+                                },
                                 onDragEnd = {
                                     dragFraction?.let { onSeek(seekTarget(it, durationMs)) }
                                     dragFraction = null
+                                    onDragging(false)
                                 },
-                                onDragCancel = { dragFraction = null },
+                                onDragCancel = {
+                                    dragFraction = null
+                                    onDragging(false)
+                                },
                             ) { change, _ -> dragFraction = (change.position.x / barWidth).coerceIn(0f, 1f) }
                         },
                 ),
@@ -575,7 +647,7 @@ private fun CompactPage(
     cover: ImageBitmap?,
     lyrics: LyricsState,
     noticeActions: NoticeActions?,
-    showControls: Boolean,
+    rowAlpha: Float,
     lyricsView: @Composable (Modifier, Boolean, Float?) -> Unit,
 ) {
     val density = LocalDensity.current.density
@@ -589,7 +661,7 @@ private fun CompactPage(
         activeLineTopPx = bar.activeLineTopPx.takeIf { withHeader },
     )
     if (withHeader) CompactSongBar(playing, cover, bar)
-    val alpha by animateFloatAsState(if (showControls) 1f else 0f, tween(300), label = "compactControls")
+    val alpha by animateFloatAsState(rowAlpha, tween(300), label = "compactControls")
     val atBottom = env.options.viewControlsAtBottom
     if (alpha > 0f) Box(
         Modifier
@@ -636,9 +708,9 @@ private fun CompactSongBar(playing: NowPlayingState, cover: ImageBitmap?, bar: C
 private fun ViewControlsRow(env: PageEnv, size: Dp, modifier: Modifier) {
     val tooltips = LocalTooltipHost.current
     val state = env.state
-    var menuOpen by remember { mutableStateOf(false) }
+    val input = env.input
     Row(
-        modifier,
+        modifier.hoverable(input.rowHover),
         horizontalArrangement = Arrangement.spacedBy(env.metrics.controlGapPx.toDp(LocalDensity.current.density), Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -649,7 +721,7 @@ private fun ViewControlsRow(env: PageEnv, size: Dp, modifier: Modifier) {
                     GlassButton(
                         onClick = {
                             when (control) {
-                                ViewControl.More -> menuOpen = true
+                                ViewControl.More -> input.onMenu(true)
                                 ViewControl.Settings -> env.actions.onOpenSettings()
                                 else -> env.actions.onState(state.click(control, env.widthDp, env.heightDp, env.capabilities))
                             }
@@ -657,7 +729,9 @@ private fun ViewControlsRow(env: PageEnv, size: Dp, modifier: Modifier) {
                         contentDescription = label,
                         size = size,
                     ) { ControlGlyph(control, env, Modifier.size(size * 0.5f)) }
-                    if (control == ViewControl.More && menuOpen) MoreMenu(size, above = env.options.viewControlsAtBottom && !state.immersive) { menuOpen = false }
+                    if (control == ViewControl.More && input.menuOpen) {
+                        MoreMenu(size, above = env.options.viewControlsAtBottom && !state.immersive) { input.onMenu(false) }
+                    }
                 }
             }
         }
