@@ -20,12 +20,12 @@ You need JDK 17, and on Windows Rust (`cargo`): Gradle builds the helper with `c
 
 ## Media sources
 
-The app follows other players through a `MediaSource` (`MediaSource.kt`): a flow of now-playing snapshots (app id, title, artist, album, duration, position with the time it was true, status, rate, artwork) and transport commands, with a `capabilities` set saying which commands the platform takes. `mediaSource()` picks the implementation from `os.name`. `MediaSession` turns the snapshots into the lyric clock the same way on every platform, including the per-player corrections and the `--offset`.
+The app follows other players through a `MediaSource` (`MediaSource.kt`): a flow of now-playing snapshots (app id, title, artist, album, duration, position with the time it was true, status, rate, artwork, shuffle and repeat) and transport commands, with a `capabilities` set saying which commands the platform takes. Shuffle and repeat have their own commands (`setShuffle`, `setRepeat`) and flags (`canShuffle`, `canRepeat`); a snapshot's `shuffle` and `repeat` are null when the player doesn't say. Volume and liking a track aren't in Windows' media sessions, so the interface has neither. `mediaSource()` picks the implementation from `os.name`. `MediaSession` turns the snapshots into the lyric clock the same way on every platform, including the per-player corrections and the `--offset`.
 
 | Platform | Source | Status |
 | --- | --- | --- |
-| Windows | `GsmtcMediaSource` | Works. Reads the gsmtc helper's JSON lines (`parseGsmtcLine`). Play, pause, seek, next and previous. |
-| Linux | `MprisMediaSource` | Untested on a real desktop. Runs `playerctl --follow metadata --format ...` and parses its lines (`parsePlayerctlLine`), so it needs `playerctl` installed. All commands, through `playerctl --player=<instance>`. MPRIS gives no position stamp or rate, so each line counts from when it arrived, at 1x. Remote artwork (`https://` art URLs, e.g. Spotify) isn't downloaded yet; `file://` artwork works. |
+| Windows | `GsmtcMediaSource` | Works. Reads the gsmtc helper's JSON lines (`parseGsmtcLine`). Play, pause, seek, next and previous, shuffle and repeat (`IsShuffleActive`, `AutoRepeatMode`). A helper built before shuffle and repeat still parses, with both unknown. |
+| Linux | `MprisMediaSource` | Untested on a real desktop. Runs `playerctl --follow metadata --format ...` and parses its lines (`parsePlayerctlLine`), so it needs `playerctl` installed. All commands, through `playerctl --player=<instance>`, with shuffle and repeat as `shuffle` and `loop` (None, Track, Playlist). MPRIS gives no position stamp or rate, so each line counts from when it arrived, at 1x. Remote artwork (`https://` art URLs, e.g. Spotify) isn't downloaded yet; `file://` artwork works. |
 | macOS | `macMediaSource()` | Not supported; it reports nothing. The likely routes are the MediaRemote framework through a helper, or AppleScript for Spotify and Music. |
 
 To add a platform, implement `MediaSource`, keep the line parsing in a pure function with tests in `src/test/kotlin`, and add it to `mediaSource()`.

@@ -50,6 +50,17 @@ class MprisMediaSource(private val playerctl: String = "playerctl", private val 
         ProcessBuilder(playerctlArgs(playerctl, app, action, positionMs)).redirectErrorStream(true).start()
     }
 
+    override val canShuffle = true
+    override val canRepeat = true
+
+    override fun setShuffle(app: String, on: Boolean) {
+        ProcessBuilder(playerctlShuffleArgs(playerctl, app, on)).redirectErrorStream(true).start()
+    }
+
+    override fun setRepeat(app: String, mode: RepeatMode) {
+        ProcessBuilder(playerctlLoopArgs(playerctl, app, mode)).redirectErrorStream(true).start()
+    }
+
     override fun close() {
         running.getAndSet(null)?.destroy()
     }
@@ -58,10 +69,14 @@ class MprisMediaSource(private val playerctl: String = "playerctl", private val 
 /** Separates the fields of a playerctl line; players don't put it in titles. */
 private const val SEP = "\u001f"
 
-/** Player instance, status, position and length (both µs), title, artist, album, artwork URL. */
+/**
+ * Player instance, status, position and length (both µs), title, artist, album, artwork URL, then
+ * shuffle and loop status, empty for a player that doesn't have them.
+ */
 val PLAYERCTL_FORMAT = listOf(
     "{{playerInstance}}", "{{status}}", "{{position}}", "{{mpris:length}}",
     "{{xesam:title}}", "{{xesam:artist}}", "{{xesam:album}}", "{{mpris:artUrl}}",
+    "{{shuffle}}", "{{loop}}",
 ).joinToString(SEP)
 
 fun playerctlFollowArgs(playerctl: String = "playerctl") = listOf(playerctl, "--follow", "metadata", "--format", PLAYERCTL_FORMAT)
@@ -78,6 +93,19 @@ fun playerctlArgs(playerctl: String, app: String, action: Transport, positionMs:
     }
 }
 
+/** The playerctl command to turn [app]'s shuffle on or off. */
+fun playerctlShuffleArgs(playerctl: String, app: String, on: Boolean) = listOf(playerctl, "--player=$app", "shuffle", if (on) "On" else "Off")
+
+/** The playerctl command to set [app]'s loop status. */
+fun playerctlLoopArgs(playerctl: String, app: String, mode: RepeatMode) = listOf(
+    playerctl, "--player=$app", "loop",
+    when (mode) {
+        RepeatMode.Off -> "None"
+        RepeatMode.One -> "Track"
+        RepeatMode.All -> "Playlist"
+    },
+)
+
 /**
  * One line of `playerctl --follow` in [PLAYERCTL_FORMAT], received at [receivedWall] (epoch ms), or
  * null for one that isn't in the format. playerctl prints a blank line (or "No players found") when
@@ -87,7 +115,8 @@ fun parsePlayerctlLine(raw: String, receivedWall: Long, lastApp: String? = null)
     val line = raw.trimEnd('\r', '\n')
     if (line.isBlank() || line.trim() == "No players found") return lastApp?.let { MediaUpdate.Removed(it) }
     val fields = line.split(SEP)
-    if (fields.size != 8) return null
+    // Eight fields is the format before shuffle and loop.
+    if (fields.size != 8 && fields.size != 10) return null
     val (app, status, position, length, title) = fields
     if (app.isBlank()) return null
     val artUrl = fields[7].takeIf(String::isNotBlank)
@@ -112,6 +141,17 @@ fun parsePlayerctlLine(raw: String, receivedWall: Long, lastApp: String? = null)
             cover = artUrl?.takeIf { it.startsWith("file:") }?.let { runCatching { File(URI(it)) }.getOrNull() },
             artUrl = artUrl,
             event = "follow",
+            shuffle = when (fields.getOrNull(8)?.trim()?.lowercase()) {
+                "true", "on" -> true
+                "false", "off" -> false
+                else -> null
+            },
+            repeat = when (fields.getOrNull(9)?.trim()) {
+                "None" -> RepeatMode.Off
+                "Track" -> RepeatMode.One
+                "Playlist" -> RepeatMode.All
+                else -> null
+            },
         ),
     )
 }
