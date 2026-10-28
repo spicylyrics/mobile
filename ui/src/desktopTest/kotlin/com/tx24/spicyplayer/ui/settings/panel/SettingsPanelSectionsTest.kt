@@ -119,11 +119,11 @@ class SettingsPanelSectionsTest {
 
     @Test
     fun `hidden rows leave the panel, and a group left empty goes with them`() {
-        assertEquals(rows.map { it.id }, settingsPanelSections(settings, PanelActions(clearLyricsCache = {}), emptySet()).flatMap { it.rows }.map { it.id })
+        assertEquals(rows.map { it.id }, settingsPanelSections(settings, PanelActions(clearLyricsCache = {}), hiddenRows = emptySet()).flatMap { it.rows }.map { it.id })
         val hidden = setOf("headerSize", "profilesInBrowser")
-        val shown = settingsPanelSections(settings, PanelActions(clearLyricsCache = {}), hidden)
+        val shown = settingsPanelSections(settings, PanelActions(clearLyricsCache = {}), hiddenRows = hidden)
         assertEquals(rows.map { it.id }.filter { it !in hidden }, shown.flatMap { it.rows }.map { it.id })
-        val advanced = settingsPanelSections(settings, PanelActions(clearLyricsCache = {}), setOf("clearStoredLyricsCache"))
+        val advanced = settingsPanelSections(settings, PanelActions(clearLyricsCache = {}), hiddenRows = setOf("clearStoredLyricsCache"))
             .single { it.id == PanelSectionId.Advanced }
         assertTrue(advanced.groups.isEmpty())
     }

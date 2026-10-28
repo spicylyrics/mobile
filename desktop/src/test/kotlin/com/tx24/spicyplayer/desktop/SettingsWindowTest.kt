@@ -11,7 +11,7 @@ import org.junit.Test
 class SettingsWindowTest {
     private val settings = CommonAppSettings(InMemorySettingsStore(), pipButtonByDefault = false, prereleasesByDefault = true)
     private fun rowIds(actions: PanelActions, hidden: Set<String> = emptySet()) =
-        settingsPanelSections(settings, actions, hidden).flatMap { it.rows }.map { it.id }
+        settingsPanelSections(settings, actions, hiddenRows = hidden).flatMap { it.rows }.map { it.id }
 
     @Test
     fun `the rows the desktop hides are real rows, and gone from its panel`() {

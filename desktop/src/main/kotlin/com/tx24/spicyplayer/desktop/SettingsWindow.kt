@@ -122,7 +122,7 @@ fun ApplicationScope.SettingsWindow(state: SettingsWindowState, sources: Desktop
                 sourceGroups = sources?.let(::sourceGroups).orEmpty(),
             )
         }
-        val sections = remember(settings, actions) { settingsPanelSections(settings, actions, DESKTOP_HIDDEN_ROWS) }
+        val sections = remember(settings, actions) { settingsPanelSections(settings, actions, hiddenRows = DESKTOP_HIDDEN_ROWS) }
         CompositionLocalProvider(LocalPlatformActions provides platform, LocalPopupPalette provides settings.popupTheme.palette) {
             SettingsPanel(sections, settings.settingsTheme, onClose = { state.open = false }, actions = actions)
         }
