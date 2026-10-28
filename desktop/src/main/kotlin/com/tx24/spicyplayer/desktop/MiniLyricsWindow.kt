@@ -208,7 +208,10 @@ private fun MiniLyricsContent(
                 }
             },
     ) {
-        val chrome = miniChrome(maxWidth.value, maxHeight.value)
+        // Read here: the scopes nested below have their own receivers.
+        val widthDp = maxWidth.value
+        val heightDp = maxHeight.value
+        val chrome = miniChrome(widthDp, heightDp)
         // The song's cover, dimmed so the lyrics read over it.
         playing.artwork?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = COVER_DIM)))
@@ -222,10 +225,10 @@ private fun MiniLyricsContent(
                     songCard -> PipSongCard(track.title, track.artists, playing.artwork, null, playing.hasSession)
                     lyrics is LyricsState.Ready -> {
                         val staticBoost = if (lyrics.lyricsType == LyricsType.Static) {
-                            LyricsLayoutMetrics.baseFontSizeSp(LyricsType.Syllable, maxWidth.value) /
-                                LyricsLayoutMetrics.baseFontSizeSp(LyricsType.Static, maxWidth.value)
+                            LyricsLayoutMetrics.baseFontSizeSp(LyricsType.Syllable, widthDp) /
+                                LyricsLayoutMetrics.baseFontSizeSp(LyricsType.Static, widthDp)
                         } else 1f
-                        val scale = miniLyricsFontScale(maxWidth.value, maxHeight.value, settings.pipLyricsSize, staticBoost)
+                        val scale = miniLyricsFontScale(widthDp, heightDp, settings.pipLyricsSize, staticBoost)
                         lyricsView(Modifier.fillMaxSize(), scale)
                     }
                     lyrics is LyricsState.Error -> LyricsNotice(lyrics, actions = null, bottomPx = { 0f })
