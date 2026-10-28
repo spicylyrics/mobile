@@ -1,6 +1,7 @@
 package com.tx24.spicyplayer.ui.controls
 
 import android.view.KeyEvent
+import com.tx24.spicyplayer.ui.lyrics.ScreenKeys
 import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
@@ -11,11 +12,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
  * see. A gamepad's shoulder and face buttons are shortcuts: L1 and R1 skip back and on, X plays or
  * pauses, Y resyncs. Media, volume and Back keys go on as they are.
  */
-class KeyInput {
+class KeyInput : ScreenKeys {
     /** When the last key went down (uptime), for the controls' idle timer; 0 before any. */
-    val presses = MutableStateFlow(0L)
+    override val presses = MutableStateFlow(0L)
     /** Whether the controls (or a screen over them) are up; set by the lyrics screen. */
-    var controlsShown: () -> Boolean = { true }
+    override var controlsShown: () -> Boolean = { true }
     var onPlayPause: () -> Unit = {}
     var onPrevious: () -> Unit = {}
     var onNext: () -> Unit = {}

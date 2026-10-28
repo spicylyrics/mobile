@@ -31,9 +31,6 @@ import com.tx24.spicyplayer.ui.lyricsmanager.LyricsManagerContent
 import com.tx24.spicyplayer.ui.theme.SpicySpacing
 import dev.chrisbanes.haze.HazeState
 
-/** The screens of quick settings; a floating button can open it on its own. */
-enum class QuickScreen { Main, Queue, LyricsManager, Source }
-
 /**
  * The quick settings pop-up, from its floating button: one card leading to the player's queue
  * (when it shares one), the song's lyrics source and the Lyrics Manager, then the language and delays, tuned while the lyrics keep playing behind it rather

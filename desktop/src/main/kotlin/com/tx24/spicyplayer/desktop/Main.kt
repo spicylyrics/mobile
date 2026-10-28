@@ -1,6 +1,7 @@
 package com.tx24.spicyplayer.desktop
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -33,11 +34,15 @@ import com.tx24.spicyplayer.ui.bigscreen.LocalLyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.LocalTooltipHost
 import com.tx24.spicyplayer.ui.bigscreen.ScrollToActiveButton
 import com.tx24.spicyplayer.ui.bigscreen.ViewMode
+import com.tx24.spicyplayer.ui.bigscreen.onPlaybackKey
+import com.tx24.spicyplayer.ui.lyrics.LyricsScreen
+import com.tx24.spicyplayer.ui.lyrics.LyricsScreenState
 import com.tx24.spicyplayer.ui.bigscreen.bigScreenOptions
 import com.tx24.spicyplayer.ui.bigscreen.pageKeyOf
 import com.tx24.spicyplayer.ui.bigscreen.saveView
 import com.tx24.spicyplayer.ui.bigscreen.withSavedView
 import com.tx24.spicyplayer.ui.components.LocalPopupPalette
+import com.tx24.spicyplayer.ui.components.LocalUiAnimations
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalDisplayRefreshRate
@@ -86,6 +91,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.emptyFlow
 import org.jetbrains.skia.Image
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -269,7 +275,10 @@ fun main(args: Array<String>) {
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
-            onKeyEvent = { event -> MiniLyrics.onKey(event) || nav.onPageKey(event) || pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: false },
+            onKeyEvent = { event ->
+                MiniLyrics.onKey(event) || nav.onPageKey(event) ||
+                    pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: onPlaybackKey(event, nowPlaying, capabilities)
+            },
         ) {
             // Back from another window or a page, the lyrics jump to the line being sung, wherever they were scrolled.
             OnWindowFocus(window) { mainLyricsView.scrollToActive() }
@@ -288,19 +297,12 @@ fun main(args: Array<String>) {
                 LocalTooltipHost provides DesktopTooltips,
                 LocalLyricsActions provides songLyrics,
                 LocalPopupPalette provides popupPalette,
+                LocalUiAnimations provides (desktopSettings.uiAnimations && !desktopSettings.lowPerformance),
             ) {
                 val shown by screen.collectAsState()
-                val isPlaying by playing.collectAsState()
-                val coverFile by cover.collectAsState()
                 val translated by songLyrics.shown.collectAsState()
-                val actions = remember {
-                    BigScreenActions(onState = { page = it }, onOpenSettings = { nav.open(Destination.Settings) }, onOpenLyricsManager = { nav.open(Destination.LyricsManager) }, onEnterPip = { MiniLyrics.open = true })
-                }
-                // Settings are Compose state: these follow the settings page as it changes them.
                 val track = shown as? Screen.Track
                 val lyricsState = track?.lyrics ?: LyricsState.Idle
-                val display = desktopSettings.desktopLyrics(lyricsState, track?.track?.durationMs ?: 0L)
-                val backdrop = desktopSettings.desktopBackground()
                 val noticeActions = remember {
                     desktopNoticeActions(
                         track = { session.track },
@@ -308,62 +310,63 @@ fun main(args: Array<String>) {
                         report = { session.track?.let { "Track: ${it.title} by ${it.artist}\nPlayer: ${it.app}" }.orEmpty() },
                     )
                 }
-                Box(Modifier.fillMaxSize()) {
-                    BigScreenPage(
-                        state = page,
-                        nowPlaying = nowPlaying,
-                        capabilities = capabilities.copy(lyricsManager = desktopSettings.lyricsManagerButton),
-                        lyrics = lyricsState,
-                        waitingBody = (shown as? Screen.Waiting)?.problem,
-                        actions = actions,
-                        noticeActions = noticeActions,
-                        background = {
+                val overlays = remember { DesktopOverlays(nav) }
+                val host = remember {
+                    DesktopLyricsHost(
+                        transport = nowPlaying,
+                        positionMs = { session.clock.positionAt(monoMs()) },
+                        seek = { session.seek(source, it) },
+                        openMiniWindow = { MiniLyrics.open = true },
+                        background = { animate, modifier ->
                             val type = desktopSettings.backgroundType
-                            DesktopBackgrounds(
-                                type = type,
-                                blurDp = desktopSettings.backgroundBlurFor(type),
-                                animate = backdrop.animate,
-                                cover = coverFile,
-                                trackKey = track?.track?.key,
-                                findArtistHeader = { session.track?.let { artistHeaderUrl(spotify, it) } },
-                                images = backgroundImages,
-                            ) {
-                                DesktopKawarp(
-                                    coverFile,
-                                    isPlaying,
-                                    speed = {
-                                        analysis.value?.let { BackgroundSpeed.at(session.clock.positionAt(monoMs()) / 1000f, it) }
-                                    }.takeIf { backdrop.beatReactive },
-                                    animate = backdrop.animate,
-                                    blurPasses = backdrop.blurPasses,
-                                )
+                            val backgroundPlaying by playing.collectAsState()
+                            val backgroundCover by cover.collectAsState()
+                            val backgroundTrack = (screen.collectAsState().value as? Screen.Track)?.track
+                            val moving = desktopSettings.desktopBackground()
+                            Box(modifier) {
+                                DesktopBackgrounds(
+                                    type = type,
+                                    blurDp = desktopSettings.backgroundBlurFor(type),
+                                    animate = moving.animate && animate,
+                                    cover = backgroundCover,
+                                    trackKey = backgroundTrack?.key,
+                                    findArtistHeader = { session.track?.let { artistHeaderUrl(spotify, it) } },
+                                    images = backgroundImages,
+                                ) {
+                                    DesktopKawarp(
+                                        backgroundCover,
+                                        backgroundPlaying,
+                                        speed = {
+                                            analysis.value?.let { BackgroundSpeed.at(session.clock.positionAt(monoMs()) / 1000f, it) }
+                                        }.takeIf { moving.beatReactive },
+                                        animate = moving.animate && animate,
+                                        blurPasses = moving.blurPasses,
+                                    )
+                                }
                             }
                         },
-                        lyricsView = { modifier, romanize, activeLineTopPx, renderConfig ->
-                            val s = shown as? Screen.Track
-                            val lyrics = s?.lyrics as? LyricsState.Ready
-                            if (s != null && lyrics != null) Lyrics(
-                                lyrics = lyrics,
-                                trackKey = s.track.key,
-                                currentTimeMs = { session.clock.positionAt(monoMs()) },
-                                onSeek = { session.seek(source, it) },
-                                isPlaying = isPlaying,
-                                modifier = modifier,
-                                romanize = romanize,
-                                activeLineTopPx = activeLineTopPx,
-                                config = renderConfig,
-                                translation = translated?.takeIf { it.lyrics === lyrics }?.translation,
-                                translationMode = desktopSettings.translationMode,
-                                fontSizeScale = display.fontSizeScale,
-                                romanizationMode = display.romanizationMode,
-                                viewState = mainLyricsView,
-                                pinnedFooter = display.pinnedFooter,
-                                scrollToActiveButton = desktopSettings.showScrollToActive,
-                            )
-                        },
-                        renderConfig = display.config,
-                        blurGlass = !desktopSettings.lowPerformance,
-                        options = desktopSettings.bigScreenOptions(),
+                    )
+                }
+                val nowPlayingState by nowPlaying.state.collectAsState()
+                val readyLyrics = lyricsState as? LyricsState.Ready
+                val translation = translated?.takeIf { readyLyrics != null && it.lyrics === readyLyrics }?.translation
+                // The screen picks portrait or landscape from the window's size, as the phone does from its screen's.
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    LyricsScreen(
+                        state = LyricsScreenState(
+                            nowPlaying = nowPlayingState,
+                            lyrics = lyricsState,
+                            translation = translation,
+                            translationEnabled = translation != null,
+                        ),
+                        settings = desktopSettings,
+                        host = host,
+                        overlays = overlays,
+                        noticeActions = noticeActions,
+                        screenWidthDp = maxWidth.value.toInt(),
+                        screenHeightDp = maxHeight.value.toInt(),
+                        messages = remember { emptyFlow<String>() },
+                        lyricsViewState = mainLyricsView,
                     )
                     UpdateBanner(updates.update, Modifier.align(Alignment.BottomCenter))
                     // The lyrics stay composed under a page, so they and the background carry on where they were.
