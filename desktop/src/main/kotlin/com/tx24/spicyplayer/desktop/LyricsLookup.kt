@@ -67,7 +67,7 @@ class LyricsLookup(clientKey: String = spicyLyricsKey()) : SongLookup {
 
     private suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, romanize: Boolean, spotifyId: String? = null): Found {
         val request = LyricsLookupRequest(track.artist, track.title, track.album, (track.durationMs / 1000).toInt(), spotifyTrackId = spotifyId)
-        val policy = sourceId?.let(::only) ?: policy
+        val policy = sourceId?.let(::only) ?: this.policy
         val result = runCatching { source.resolveLyrics(request, policy, known = known) }.getOrElse { return Found(LyricsNotices.lookupFailed(it), null) }
         if (result !is RemoteLyricsResolution.Found) {
             return Found(LyricsNotices.noLyrics(result.attempts) { id -> providers.firstOrNull { it.descriptor.id == id }?.descriptor?.displayName ?: id }, result)
