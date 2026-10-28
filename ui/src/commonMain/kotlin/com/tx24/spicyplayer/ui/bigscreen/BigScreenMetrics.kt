@@ -48,6 +48,15 @@ class BigScreenMetrics(
     }
 
     /**
+     * Where the closed bar waits, off the page on its side (`--unactive-spacing:
+     * calc((NowBarWidth + NowBarLeftSpacing + 5cqw) * -1)`), so it slides in and out.
+     */
+    fun hiddenCoverLeftPx(onRight: Boolean): Float {
+        val away = coverSizePx + edgeSpacingPx + widthPx * 0.05f
+        return if (onRight) widthPx + away else -away
+    }
+
+    /**
      * The timeline under the cover (`.Header > .Timeline { padding: 4.5cqw 1cqw 3cqw }` against the
      * cover, its bar `1cqh` of the page), as tall as its padding and its times.
      */

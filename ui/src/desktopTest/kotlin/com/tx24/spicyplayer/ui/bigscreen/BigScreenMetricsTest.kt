@@ -94,4 +94,11 @@ class BigScreenMetricsTest {
         // On the cover the song keeps its 5cqw margin.
         assertEquals(cinema.coverTopPx + 363f * 1.05f, cinema.textTopPx, 0.01f)
     }
+
+    @Test
+    fun `the closed bar waits off the page on its own side`() {
+        val away = 363f + 96.25f * 0.7f + 55f
+        assertEquals(-away, page.hiddenCoverLeftPx(onRight = false), 0.01f)
+        assertEquals(1100f + away, page.hiddenCoverLeftPx(onRight = true), 0.01f)
+    }
 }

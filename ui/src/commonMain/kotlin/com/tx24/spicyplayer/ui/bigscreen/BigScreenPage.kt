@@ -1,6 +1,8 @@
 package com.tx24.spicyplayer.ui.bigscreen
 
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -279,13 +281,22 @@ private fun BigScreenContent(
 
         val withBar = showsNowBar(state, options)
         val lyricsHidden = hidesLyrics(lyrics, state.immersive, options)
+        // Opening, closing and moving the bar slide the cover and the lyrics over 400 ms; a closed
+        // bar only waits off the page, so moving it then doesn't sweep it across.
+        val layoutChange: Any = if (withBar) listOf(state.nowBarOnRight, lyricsHidden, state.mode) else false
         val box = metrics.lyricsBox(withBar, state.nowBarOnRight)
+        val boxLeft = slidingPx(box.leftPx, layoutChange, LAYOUT_SLIDE_MS)
+        val boxWidth = slidingPx(box.widthPx, layoutChange, LAYOUT_SLIDE_MS)
         if (!lyricsHidden) LyricsArea(
-            lyrics, state.romanized, metrics, box.leftPx, box.widthPx, 0f,
-            Modifier.offset { IntOffset(box.leftPx.roundToInt(), 0) }.width(box.widthPx.toDp(density)).fillMaxHeight(),
+            lyrics, state.romanized, metrics, boxLeft, boxWidth, 0f,
+            Modifier.offset { IntOffset(boxLeft.roundToInt(), 0) }.width(boxWidth.toDp(density)).fillMaxHeight(),
             noticeActions, lyricsSlot,
         )
-        if (withBar) NowBar(env, playing, cover, nowPlaying, lyricsHidden)
+        val hiddenLeft = metrics.hiddenCoverLeftPx(state.nowBarOnRight)
+        val coverLeft = slidingPx(
+            if (withBar) metrics.coverLeftPx(state.nowBarOnRight, lyricsHidden) else hiddenLeft, layoutChange, LAYOUT_SLIDE_MS,
+        )
+        if (withBar || coverLeft != hiddenLeft) NowBar(env, playing, cover, nowPlaying, coverLeft)
         if (!state.immersive) PageControls(env, rowAlpha, Modifier.fillMaxWidth())
     }
 }
@@ -318,6 +329,42 @@ private class PageInput(
 
 /** The overdamped spring the cover's controls and its dimming move on. */
 private val CoverControlsSpring = spring<Float>(dampingRatio = 2f, stiffness = 158f)
+
+/** `transition: left 0.4s`: the bar opening, closing and changing sides. */
+private const val LAYOUT_SLIDE_MS = 400
+
+/** `transition: height 0.35s`: the compact layout's song bar. */
+private const val COMPACT_SLIDE_MS = 350
+
+/** CSS `ease`. */
+private val CssEase = CubicBezierEasing(0.25f, 0.1f, 0.25f, 1f)
+
+/**
+ * [targetPx], moved there over [durationMs] when [trigger] changes (a view control, a setting),
+ * but straight away when only the window's size moved it, so nothing trails a resize.
+ */
+@Composable
+private fun slidingPx(targetPx: Float, trigger: Any, durationMs: Int): Float {
+    val anim = remember { Animatable(targetPx) }
+    var seen by remember { mutableStateOf(trigger) }
+    var sliding by remember { mutableStateOf(false) }
+    val changed = trigger != seen
+    LaunchedEffect(trigger, targetPx) {
+        if (trigger != seen) {
+            seen = trigger
+            sliding = true
+            try {
+                anim.animateTo(targetPx, tween(durationMs, easing = CssEase))
+            } finally {
+                sliding = false
+            }
+        } else {
+            anim.snapTo(targetPx)
+        }
+    }
+    // The frame the trigger changes on still shows where the slide starts from.
+    return if (sliding || changed) anim.value else targetPx
+}
 
 /**
  * `.ViewControls` on the page: a row 24px from the top, or from the bottom with the setting, at
@@ -371,8 +418,9 @@ private fun LyricsArea(
  * The now-playing bar: the cover and, centred under it, the name (`font-weight: 900`, .95) and
  * the artists (.7). Off the page the pointer on the page dims the cover a little and brings up the
  * view controls along its top and the playback row and timeline along its bottom, faintly; on the
- * cover it dims it more and brings them up fully ([ControlsLevel]), both on a slow spring. With the timeline
- * outside the cover it sits, always shown, between the cover and the song. [lyricsHidden] centres it all.
+ * cover it dims it more and brings them up fully ([ControlsLevel]), both on a slow spring. With the
+ * timeline outside the cover it sits, always shown, between the cover and the song. It all sits at
+ * [leftPx], which slides.
  */
 @Composable
 private fun NowBar(
@@ -380,11 +428,11 @@ private fun NowBar(
     playing: NowPlayingState,
     cover: ImageBitmap?,
     nowPlaying: NowPlaying,
-    lyricsHidden: Boolean,
+    leftPx: Float,
 ) {
     val density = LocalDensity.current.density
     val metrics = env.metrics
-    val left = metrics.coverLeftPx(env.state.nowBarOnRight, lyricsHidden)
+    val left = leftPx
     val coverSize = metrics.coverSizePx.toDp(density)
     val level = if (env.state.immersive) env.input.level else ControlsLevel.Hidden
     val controls by animateFloatAsState(level.controlsAlpha, CoverControlsSpring, label = "coverControls")
@@ -654,7 +702,8 @@ private fun CompactPage(
     val metrics = env.metrics
     val bar = remember(metrics) { CompactHeaderMetrics(metrics.widthPx, metrics.heightPx, density, metrics.lyricFontSizeSp) }
     val withHeader = !(env.options.hideHeader && !env.state.immersive)
-    val lyricsTop = if (withHeader) bar.lyricsTopPx else 0f
+    // Hiding or showing the song bar slides the lyrics up or down over 350 ms.
+    val lyricsTop = slidingPx(if (withHeader) bar.lyricsTopPx else 0f, withHeader, COMPACT_SLIDE_MS)
     LyricsArea(
         lyrics, env.state.romanized, metrics, 0f, metrics.widthPx, lyricsTop,
         Modifier.fillMaxSize().padding(top = lyricsTop.toDp(density)), noticeActions, lyricsView,
