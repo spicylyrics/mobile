@@ -1,13 +1,11 @@
 package com.tx24.spicyplayer.lyrics.spicy.canvas
 
-import androidx.compose.runtime.InternalComposeApi
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.alphaMultiplier
 import androidx.compose.ui.graphics.asComposeCanvas
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -61,7 +59,6 @@ private fun maskOf(layout: TextLayoutResult): Mask = masks.getOrPut(LayoutKey(la
 }
 
 /** Draws [layout]'s mask at [topLeft], coloured by the paint [setUp] gives it (an alpha-only image takes the paint's colour or shader). */
-@OptIn(InternalComposeApi::class)
 private inline fun DrawScope.drawMask(layout: TextLayoutResult, topLeft: Offset, setUp: (Paint) -> Unit) {
     if (layout.size.width <= 0 || layout.size.height <= 0) return
     val mask = maskOf(layout)
@@ -73,8 +70,6 @@ private inline fun DrawScope.drawMask(layout: TextLayoutResult, topLeft: Offset,
     drawIntoCanvas { canvas ->
         val skia = canvas.skiaCanvas
         val skiaPaint = paint.skiaPaint
-        val multiplier = canvas.alphaMultiplier
-        if (multiplier < 1f) paint.alpha *= multiplier
         val w = mask.image.width.toFloat()
         val h = mask.image.height.toFloat()
         val pad = mask.pad.toFloat()
