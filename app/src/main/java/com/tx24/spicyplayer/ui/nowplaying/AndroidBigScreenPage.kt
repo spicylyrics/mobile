@@ -33,6 +33,9 @@ fun androidCapabilities(canSeek: Boolean, pictureInPicture: Boolean): PlayerCapa
     skipPrevious = true,
     seek = canSeek,
     fullscreen = false,
+    // The platform session reports neither mode, so the page can't show where they stand.
+    shuffle = false,
+    repeat = false,
     pictureInPicture = pictureInPicture,
 )
 
