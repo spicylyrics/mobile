@@ -44,6 +44,12 @@ internal enum class MoreEntry { Source, Blends, Spotify, Translation, Romanizati
  */
 @Composable
 internal fun MoreMenuEntries(actions: LyricsActions?) {
+    // Translation open with a key field runs taller than a small window: the menu scrolls.
+    Column(Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState())) { Entries(actions) }
+}
+
+@Composable
+private fun Entries(actions: LyricsActions?) {
     if (actions == null) {
         for (entry in listOf("Lyrics source", "Blends", "Spotify match", "Translate lyrics", "Romanization style")) {
             EntryHeader(entry, "Not available here", open = false, enabled = false) {}
