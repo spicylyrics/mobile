@@ -237,6 +237,7 @@ fun main(args: Array<String>) {
                             )
                         },
                         renderConfig = display.config,
+                        blurGlass = !desktopSettings.lowPerformance,
                     )
                     UpdateBanner(updates.update, Modifier.align(Alignment.BottomCenter))
                 }

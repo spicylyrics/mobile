@@ -81,6 +81,19 @@ import com.tx24.spicyplayer.ui.controls.formatClock
 import com.tx24.spicyplayer.ui.nowplaying.CompactHeaderMetrics
 import com.tx24.spicyplayer.ui.nowplaying.LocalNowPlayingPlatform
 import com.tx24.spicyplayer.ui.nowplaying.LyricsNotice
+import com.tx24.spicyplayer.ui.nowplaying.MarqueeLine
+import com.tx24.spicyplayer.ui.components.LocalBackdrop
+import androidx.compose.foundation.focusable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.onKeyEvent
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.hazeSource
 import com.tx24.spicyplayer.ui.nowplaying.NoticeActions
 import com.tx24.spicyplayer.ui.nowplaying.NowPlaying
 import com.tx24.spicyplayer.ui.nowplaying.NowPlayingState
@@ -135,9 +148,39 @@ fun BigScreenPage(
     renderConfig: RenderConfig = RenderConfig.FULL,
     /** Whether the controls show, where the platform decides (a touch screen's own idle timer); null follows hover and taps. */
     controlsShown: Boolean? = null,
+    /** The glass buttons blur what's behind them; off (Low Performance), they keep their translucent fill. */
+    blurGlass: Boolean = true,
+) {
+    // What the glass blurs: the background, the lyrics and the covers, each marked as a source.
+    val backdrop = remember(blurGlass) { if (blurGlass) HazeState() else null }
+    CompositionLocalProvider(LocalBackdrop provides backdrop) {
+        BigScreenContent(state, nowPlaying, capabilities, lyrics, actions, noticeActions, background, lyricsView, renderConfig, controlsShown)
+    }
+}
+
+/** Marks what the page's glass blurs, where there is a [LocalBackdrop]. */
+@Composable
+private fun Modifier.backdropSource(zIndex: Float = 0f): Modifier =
+    LocalBackdrop.current?.let { this.hazeSource(it, zIndex) } ?: this
+
+@Composable
+private fun BigScreenContent(
+    state: BigScreenState,
+    nowPlaying: NowPlaying,
+    capabilities: PlayerCapabilities,
+    lyrics: LyricsState,
+    actions: BigScreenActions,
+    noticeActions: NoticeActions?,
+    background: @Composable () -> Unit,
+    lyricsView: @Composable (modifier: Modifier, romanize: Boolean, activeLineTopPx: Float?, renderConfig: RenderConfig) -> Unit,
+    renderConfig: RenderConfig,
+    controlsShown: Boolean?,
 ) {
     val lyricsSlot: @Composable (Modifier, Boolean, Float?) -> Unit = { modifier, romanize, top -> lyricsView(modifier, romanize, top, renderConfig) }
     val playing by nowPlaying.state.collectAsState()
+    // The page takes the keyboard while nothing inside it (a text field, a focused button) does.
+    val keys = remember { FocusRequester() }
+    LaunchedEffect(keys) { runCatching { keys.requestFocus() } }
     val pageHover = remember { MutableInteractionSource() }
     val pageHovered by pageHover.collectIsHoveredAsState()
     // A tap where nothing else took it shows the controls; the next one hides them.
@@ -148,7 +191,10 @@ fun BigScreenPage(
             .fillMaxSize()
             .background(Color.Black)
             .hoverable(pageHover)
-            .then(if (controlsShown != null) Modifier else Modifier.pointerInput(Unit) { detectTapGestures { revealed = !revealed } }),
+            .then(if (controlsShown != null) Modifier else Modifier.pointerInput(Unit) { detectTapGestures { revealed = !revealed } })
+            .focusRequester(keys)
+            .focusable()
+            .onKeyEvent { event -> onPlaybackKey(event, nowPlaying, capabilities) },
     ) {
         val density = LocalDensity.current.density
         val widthPx = constraints.maxWidth.toFloat()
@@ -160,7 +206,7 @@ fun BigScreenPage(
             .rememberCover(playing.artwork, playing.artworkUri, metrics.coverSizePx.roundToInt().coerceAtLeast(1), playing.hasSession)
             ?.image
         val env = PageEnv(state, capabilities, actions, widthDp, heightDp, metrics)
-        background()
+        Box(Modifier.fillMaxSize().backdropSource()) { background() }
 
         if (!playing.hasSession) {
             LyricsNotice(
@@ -225,6 +271,7 @@ private fun LyricsArea(
     activeLineTopPx: Float? = null,
 ) {
     val inset = boxWidthPx * CompactHeaderMetrics.LYRICS_SIDE_INSET
+    Box(Modifier.fillMaxSize().backdropSource()) {
     when (lyrics) {
         is LyricsState.Ready -> lyricsView(modifier, romanize, activeLineTopPx)
         is LyricsState.Error -> LyricsNotice(lyrics, noticeActions, bottomPx = { 0f }, modifier = modifier)
@@ -235,6 +282,7 @@ private fun LyricsArea(
             lineMaxWidthPx = boxWidthPx - 2f * inset,
             topPx = topPx + (metrics.heightPx - topPx) * 0.25f,
         )
+    }
     }
 }
 
@@ -261,7 +309,7 @@ private fun NowBar(env: PageEnv, playing: NowPlayingState, cover: ImageBitmap?, 
             .hoverable(coverHover),
     ) {
         val shape = RoundedCornerShape(metrics.coverCornerPx.toDp(density))
-        Cover(cover, Modifier.fillMaxSize().shadow(20.dp, shape, clip = false).clip(shape).alpha(0.95f))
+        Cover(cover, Modifier.fillMaxSize().shadow(20.dp, shape, clip = false).clip(shape).alpha(0.95f).backdropSource(zIndex = 1f))
         if (overlay > 0f) {
             Box(Modifier.fillMaxSize().clip(shape).background(Color.Black.copy(alpha = 0.45f * overlay)))
             Box(Modifier.fillMaxSize().alpha(overlay)) {
@@ -277,11 +325,18 @@ private fun NowBar(env: PageEnv, playing: NowPlayingState, cover: ImageBitmap?, 
         playing,
         metrics.titleSizeSp, metrics.titleLineHeightSp, metrics.artistsSizeSp, metrics.artistsLineHeightSp,
         Alignment.CenterHorizontally,
+        metrics.coverSizePx,
         Modifier.offset { IntOffset(left.roundToInt(), metrics.textTopPx.roundToInt()) }.width(coverSize),
     )
 }
 
-/** The song's name over its artists, one line each, cut off with an ellipsis. */
+/**
+ * The song's name over its artists, one line each. A name too long for its line scrolls back and
+ * forth like the header's (`HeaderMarquee`) with its edges faded; one that fits sits still.
+ * [widthPx] is the text block's width: centred under the cover the name gets 85% of it and the
+ * artists 80% (`.SongName { max-width: 85cqw }`, `.Artists { max-width: 80cqw }`); in the compact
+ * bar both get all of it.
+ */
 @Composable
 private fun SongText(
     playing: NowPlayingState,
@@ -290,21 +345,23 @@ private fun SongText(
     artistsSp: Float,
     artistsLineSp: Float,
     align: Alignment.Horizontal,
+    widthPx: Float,
     modifier: Modifier,
 ) {
-    val textAlign = if (align == Alignment.Start) TextAlign.Start else TextAlign.Center
     val family = LyricsLayoutCalculator.spicyFontFamily
+    val centred = align != Alignment.Start
     Column(modifier, horizontalAlignment = align) {
-        // TODO: the marquee (`HeaderMarquee`) for names too long to fit.
-        BasicText(
-            playing.track.title, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            style = TextStyle(color = Color.White.copy(alpha = 0.95f), fontSize = titleSp.sp, fontWeight = FontWeight.Black,
-                fontFamily = family, lineHeight = titleLineSp.sp, textAlign = textAlign),
+        MarqueeLine(
+            playing.track.title,
+            TextStyle(fontSize = titleSp.sp, fontWeight = FontWeight.Black, fontFamily = family, lineHeight = titleLineSp.sp),
+            Color.White.copy(alpha = 0.95f),
+            containerWidthPx = widthPx * if (centred) 0.85f else 1f,
         )
-        BasicText(
-            playing.track.artists, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            style = TextStyle(color = Color.White.copy(alpha = 0.7f), fontSize = artistsSp.sp, fontWeight = FontWeight.Normal,
-                fontFamily = family, lineHeight = artistsLineSp.sp, textAlign = textAlign),
+        MarqueeLine(
+            playing.track.artists,
+            TextStyle(fontSize = artistsSp.sp, fontWeight = FontWeight.Normal, fontFamily = family, lineHeight = artistsLineSp.sp),
+            Color.White.copy(alpha = 0.7f),
+            containerWidthPx = widthPx * if (centred) 0.8f else 1f,
         )
     }
 }
@@ -449,7 +506,8 @@ private fun CompactPage(
             .offset { IntOffset(bar.contentStartPx.roundToInt(), bar.barTopPx.roundToInt()) }
             .size(bar.artSizePx.toDp(density))
             .shadow(bar.artShadowBlurDp.dp, shape, clip = false)
-            .clip(shape),
+            .clip(shape)
+            .backdropSource(zIndex = 1f),
     )
     Box(
         Modifier
@@ -458,7 +516,7 @@ private fun CompactPage(
             .height(bar.barHeightPx.toDp(density)),
         contentAlignment = Alignment.CenterStart,
     ) {
-        SongText(playing, bar.titleSizeSp, bar.titleLineHeightSp, bar.artistsSizeSp, bar.artistsLineHeightSp, Alignment.Start, Modifier)
+        SongText(playing, bar.titleSizeSp, bar.titleLineHeightSp, bar.artistsSizeSp, bar.artistsLineHeightSp, Alignment.Start, bar.textWidthPx, Modifier)
     }
     val alpha by animateFloatAsState(if (showControls) 1f else 0f, tween(300), label = "compactControls")
     if (alpha > 0f) Box(
@@ -558,6 +616,26 @@ fun pageKeyOf(event: KeyEvent): PageKey? {
         Key.Escape, Key.Back -> PageKey.Escape
         else -> null
     }
+}
+
+/**
+ * Carries out a playback key ([playbackKeyOf], [playbackCommand]) on [nowPlaying]; true when it
+ * did, so the key goes no further. Only key presses count.
+ */
+private fun onPlaybackKey(event: KeyEvent, nowPlaying: NowPlaying, capabilities: PlayerCapabilities): Boolean {
+    if (event.type != KeyEventType.KeyDown) return false
+    val key = playbackKeyOf(event.key, event.isShiftPressed, event.isCtrlPressed || event.isAltPressed || event.isMetaPressed)
+        ?: return false
+    val state = nowPlaying.state.value
+    if (!state.hasSession) return false
+    val command = playbackCommand(key, nowPlaying.positionMs(), state.track.durationMs, capabilities, state.canSeek) ?: return false
+    when (command) {
+        PlaybackCommand.PlayPause -> nowPlaying.playPause()
+        PlaybackCommand.Previous -> nowPlaying.skipPrevious()
+        PlaybackCommand.Next -> nowPlaying.skipNext()
+        is PlaybackCommand.Seek -> nowPlaying.seekTo(command.positionMs)
+    }
+    return true
 }
 
 private fun Float.toDp(density: Float): Dp = (this / density).dp
