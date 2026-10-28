@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -115,6 +116,9 @@ fun SettingsPanel(
         var tab by remember { mutableStateOf<PanelSectionId?>(null) }
         var query by remember { mutableStateOf("") }
         val searchFocus = remember { FocusRequester() }
+        // One search field, moved between the section list and the results, so what's typed and
+        // the caret carry over instead of a fresh field starting again.
+        val searchBar = remember { movableContentOf { SearchBar(query, { query = it }, searchFocus) } }
         val searching = searchTerms(query).isNotEmpty()
         val hits = if (searching) searchPanel(query, sections) else null
         val brand = palette.brand
@@ -178,17 +182,17 @@ fun SettingsPanel(
                 when {
                     layout != PanelLayout.SinglePane -> Row(Modifier.fillMaxSize()) {
                         Sidebar(
-                            sections, section.id, hits, query, { query = it }, searchFocus, select,
+                            sections, section.id, hits, searchBar, select,
                             SidebarStyle.Rail(layout.railWidth, brand?.fieldDeep ?: Color.Black),
                         )
                         Pane(section, hits, query, actions, select, onClose, back = null, gutter = layout.gutter)
                     }
                     // One pane: the section list, with the search, until a tab or a search is open.
                     tab == null && hits == null ->
-                        Sidebar(sections, null, null, query, { query = it }, searchFocus, select, SidebarStyle.Page, onClose)
+                        Sidebar(sections, null, null, searchBar, select, SidebarStyle.Page, onClose)
                     else -> Pane(
                         section, hits, query, actions, select, onClose, back = back, gutter = layout.gutter,
-                        search = if (hits != null) ({ SearchBar(query, { query = it }, searchFocus) }) else null,
+                        search = if (hits != null) searchBar else null,
                     )
                 }
             }
@@ -215,9 +219,7 @@ private fun Sidebar(
     sections: List<PanelSection>,
     selected: PanelSectionId?,
     hits: List<SearchHit>?,
-    query: String,
-    onQuery: (String) -> Unit,
-    searchFocus: FocusRequester,
+    search: @Composable () -> Unit,
     onSelect: (PanelSectionId) -> Unit,
     style: SidebarStyle,
     onClose: (() -> Unit)? = null,
@@ -245,7 +247,7 @@ private fun Sidebar(
             }
             onClose?.let { RoundButton(PanelIcons.Close, 12.dp, it) }
         }
-        SearchBar(query, onQuery, searchFocus)
+        search()
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             sections.filter { !it.secondary }.forEach { Tab(it, selected, hits, onSelect) }
             Box(Modifier.padding(horizontal = 10.dp, vertical = SpicySpacing.S2).fillMaxWidth().height(1.dp).background(SpicyColors.Hairline))
