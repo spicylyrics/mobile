@@ -22,14 +22,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEvent
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -39,70 +32,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.network.data.spotify.AudioAnalysis
-import java.awt.Dimension
-import java.awt.event.WindowAdapter
-import java.awt.event.WindowEvent
-import javax.swing.SwingUtilities
-import javax.swing.WindowConstants
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
-
-/**
- * The sync-delay window: the followed player's saved offset, nudged in steps with the current line
- * in view, or found by tapping along to the beat ([TapSync]). Changes save per player and move the
- * lyrics at once. [attach] it from the lyrics window, then [openSyncDelay] (Ctrl+D there) shows it.
- */
-object SyncDelay {
-    private class Parts(
-        val session: MediaSession,
-        val delays: SyncDelays,
-        val analysis: StateFlow<AudioAnalysis?>,
-        val lyrics: () -> LyricsState?,
-    )
-
-    @Volatile private var parts: Parts? = null
-    private var window: ComposeWindow? = null
-
-    fun attach(session: MediaSession, delays: SyncDelays, analysis: StateFlow<AudioAnalysis?>, lyrics: () -> LyricsState?) {
-        parts = Parts(session, delays, analysis, lyrics)
-    }
-
-    /** For the lyrics window's key handler: Ctrl+D opens the window. */
-    fun onKey(event: KeyEvent): Boolean {
-        if (event.type != KeyEventType.KeyDown || !event.isCtrlPressed || event.key != Key.D) return false
-        openSyncDelay()
-        return true
-    }
-
-    /** Shows the window, or brings it to the front when it is open. Does nothing before [attach]. */
-    fun openSyncDelay() = SwingUtilities.invokeLater {
-        val p = parts ?: return@invokeLater
-        window?.let { it.toFront(); return@invokeLater }
-        window = ComposeWindow().apply {
-            title = "Sync delay"
-            size = Dimension(460, 520)
-            defaultCloseOperation = WindowConstants.DISPOSE_ON_CLOSE
-            addWindowListener(object : WindowAdapter() {
-                override fun windowClosed(e: WindowEvent) {
-                    window = null
-                }
-            })
-            setContent { SyncDelayPanel(p.session, p.delays, p.analysis, p.lyrics) }
-            setLocationRelativeTo(null)
-            isVisible = true
-        }
-    }
-}
-
-/** Opens the sync-delay window; for a menu. */
-fun openSyncDelay() = SyncDelay.openSyncDelay()
 
 private val white = Color.White
 private val dim = Color.White.copy(alpha = 0.6f)
 
+/**
+ * The sync-delay page: the followed player's saved offset, nudged in steps with the current line
+ * in view, or found by tapping along to the beat ([TapSync]). Changes save per player and move the
+ * lyrics at once. [onClose] goes back to the lyrics.
+ */
 @Composable
-private fun SyncDelayPanel(session: MediaSession, delays: SyncDelays, analysis: StateFlow<AudioAnalysis?>, lyrics: () -> LyricsState?) {
-    // What the window shows, read from the session a few times a second.
+fun SyncDelayPage(session: MediaSession, delays: SyncDelays, analysis: StateFlow<AudioAnalysis?>, lyrics: () -> LyricsState?, onClose: () -> Unit) {
+    // What the page shows, read from the session a few times a second.
     val now by produceState(DelayView(), session) {
         while (true) {
             val position = session.clock.positionAt(monoMs())
@@ -122,6 +65,7 @@ private fun SyncDelayPanel(session: MediaSession, delays: SyncDelays, analysis: 
         Modifier.fillMaxSize().background(Color(0xFF121212)).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        Chip("Back", onClose)
         BasicText(app?.let { "Delay for $it" } ?: "Play something first",
             style = TextStyle(color = white, fontSize = 18.sp, fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
         BasicText("${signed(now.offsetMs)} ms", style = TextStyle(color = white, fontSize = 34.sp, fontWeight = FontWeight.Bold))

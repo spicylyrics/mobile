@@ -11,7 +11,7 @@ import kotlin.math.roundToInt
 
 /**
  * What the settings ask of the lyrics window for [lyrics] of a song [durationMs] long.
- * The settings are Compose state, so a composable reading this follows the settings window live.
+ * The settings are Compose state, so a composable reading this follows the settings page live.
  * The size is always the Lyrics Size setting the desktop shows (the landscape one), whatever
  * shape the window is.
  */

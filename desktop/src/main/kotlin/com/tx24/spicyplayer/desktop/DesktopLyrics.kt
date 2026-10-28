@@ -262,7 +262,7 @@ class DesktopLyrics(
 
     /**
      * Keeps the menu's display modes in step with [settings] when something else changes them
-     * (the settings window). Runs as long as [scope].
+     * (the settings page). Runs as long as [scope].
      */
     fun followSettings() {
         scope.launch {
