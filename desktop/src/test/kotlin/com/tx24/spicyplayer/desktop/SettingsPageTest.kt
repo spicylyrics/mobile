@@ -8,7 +8,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class SettingsWindowTest {
+class SettingsPageTest {
     private val settings = CommonAppSettings(InMemorySettingsStore(), pipButtonByDefault = false, prereleasesByDefault = true)
     private fun rowIds(actions: PanelActions, hidden: Set<String> = emptySet()) =
         settingsPanelSections(settings, actions, hiddenRows = hidden).flatMap { it.rows }.map { it.id }

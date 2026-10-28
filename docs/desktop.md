@@ -47,7 +47,7 @@ The `:ui` packages the desktop and the big-screen UI lean on:
 `CommonAppSettings` holds every shared setting as Compose state, with the phone's keys and defaults. `docs/settings.md` covers adding one.
 
 - **One instance per file.** A `FileSettingsStore` rewrites its whole file from what it holds, so two stores on one file wipe each other's writes. Each desktop file has exactly one owner, shared by every window:
-  - `desktopSettings` (`SettingsWindow.kt`) for `settings.properties`;
+  - `desktopSettings` (`SettingsPage.kt`) for `settings.properties`;
   - `DesktopLyrics.defaultStore()` for `lyrics.properties`;
   - `SyncDelays.defaultStore()` for `sync-delay.properties`.
 
@@ -80,33 +80,33 @@ The desktop's library is `DesktopLyricsLibrary`, a wrapper over `:core`'s `Local
 - `CommonAppSettings.renderConfig(songDurationMs)` maps the lyrics settings to a `RenderConfig`. The phone and the desktop call the same function.
 - `lyricsDisplay(songDurationMs, landscape, romanizationAvailable)` adds the lyrics size for the orientation, romanize, the romanization and translation modes, and the credits modes.
 - The font, the phone's landscape size correction and translation on/off stay with the host.
-- The desktop's glue is `desktopLyrics(...)` in `DesktopSettingsGlue.kt`. Settings are Compose state, so a change in the settings window reaches the lyrics window without a listener.
+- The desktop's glue is `desktopLyrics(...)` in `DesktopSettingsGlue.kt`. Settings are Compose state, so a change on the settings page reaches the lyrics without a listener.
 
 ## Desktop windows
 
-`Main.kt` builds one `MediaSource`, `MediaSession`, `DesktopNowPlaying`, `DesktopLyricsLibrary`, `LyricsLookup` and `DesktopLyrics`, and opens:
+`Main.kt` builds one `MediaSource`, `MediaSession`, `DesktopNowPlaying`, `DesktopLyricsLibrary`, `LyricsLookup` and `DesktopLyrics`, and opens one main window plus the mini window. The main window shows the lyrics, or a page over them (`DesktopNav.kt`): Settings, the Lyrics Manager or Sync delay. A page fills the window and takes clicks and focus from the lyrics, which stay composed underneath and carry on. Esc or the page's close button goes back, and the lyrics jump to the line being sung. `--page settings|manager|sync` starts on a page, for screenshots with `--snap`.
 
-- **The lyrics window:** `BigScreenPage` with the lyrics view and the background as slots.
+- **The lyrics:** `BigScreenPage` with the lyrics view and the background as slots.
   - The view modes are page, cinema and fullscreen. `layoutFor` picks the side layout (cover beside the lyrics) or the compact one (song as a bar) from the window size.
   - The background follows `backgroundType` (`DesktopBackgrounds.kt`): Kawarp (`DesktopKawarp.kt`), Legacy, Color, Cover Art, Artist Header and Auto. Each falls back to Kawarp when it has no picture.
   - The update banner sits at the bottom.
-- **Settings** (`SettingsWindow.kt`): `SettingsPanel` in its own 940 × 700 window.
-- **Lyrics Manager** (`LyricsManagerWindow.kt`): `LyricsLibraryPanel` in its own 720 × 640 window. After an upload, a reset or deleting the playing song's entry, it calls `DesktopLyrics.load` so the lyrics switch at once.
-- **Sync delay** (`SyncDelayWindow.kt`): the followed player's offset, with ±10/±50 ms nudges, Reset and a tap pad that works the offset out from taps along to the beat (`TapSync`). `--offset` on the command line overrides it for every player.
+- **Settings** (`SettingsPage.kt`): `SettingsPanel` as a page.
+- **Lyrics Manager** (`LyricsManagerPage.kt`): `LyricsLibraryPanel` as a page. After an upload, a reset or deleting the playing song's entry, it calls `DesktopLyrics.load` so the lyrics switch at once.
+- **Sync delay** (`SyncDelayPage.kt`), a page: the followed player's offset, with ±10/±50 ms nudges, Reset and a tap pad that works the offset out from taps along to the beat (`TapSync`). `--offset` on the command line overrides it for every player.
 
 ### Keyboard shortcuts
 
 | Keys | Where | Does |
 |---|---|---|
-| Ctrl+, (Cmd+, on a Mac) | any window | Opens settings |
-| Ctrl+L (Cmd+L) | any window | Opens the Lyrics Manager |
-| Ctrl+D | lyrics window | Opens the sync delay window |
-| F11 | lyrics window | Toggles fullscreen (from the page too) |
-| Esc | lyrics window | Steps back: fullscreen → cinema → page |
-| Esc | settings | Clears the search, goes back to the section list in the single-pane layout, then closes |
+| Ctrl+, (Cmd+, on a Mac) | main window | Opens the settings page |
+| Ctrl+L (Cmd+L) | main window | Opens the Lyrics Manager page |
+| Ctrl+D (Cmd+D) | main window | Opens the sync delay page |
+| F11 | main window, on the lyrics | Toggles fullscreen (from page mode too) |
+| Esc | main window | On a page, goes back to the lyrics; on the lyrics, steps back: fullscreen → cinema → page |
+| Esc | settings page | Clears the search, goes back to the section list in the single-pane layout, then closes |
 | Ctrl+F (Cmd+F) | settings | Focuses the search |
 
-Window-wide shortcuts go on `onPreviewKeyEvent`, so focused fields don't swallow them. Page keys (`pageKeyOf`) and Ctrl+D go on `onKeyEvent`.
+The page shortcuts go on the main window's `onPreviewKeyEvent`, so focused fields don't swallow them. Esc goes on `onKeyEvent`, so the settings page's own Esc steps (search, sections) run first. While a page is open, `DesktopNav.onPageKey` stops every key there, so the lyrics page's keys (`pageKeyOf`) don't act behind it.
 
 ## Where desktop data lives
 

@@ -52,11 +52,11 @@ class DesktopSettingsGlueTest {
     }
 
     @Test
-    fun `a change in the settings window reaches the lyrics window`() = runBlocking {
+    fun `a change in the settings page reaches the lyrics`() = runBlocking {
         val s = settings()
         val next = async { withTimeout(5_000L) { snapshotFlow { s.desktopLyrics(LyricsState.Idle, 0L) }.drop(1).first() } }
         repeat(5) { yield() }
-        // As the settings window does: a write to the shared settings, then the snapshot is applied.
+        // As the settings page does: a write to the shared settings, then the snapshot is applied.
         s.distanceBlur = false
         Snapshot.sendApplyNotifications()
         assertFalse(next.await().config.distanceBlurEnabled)
