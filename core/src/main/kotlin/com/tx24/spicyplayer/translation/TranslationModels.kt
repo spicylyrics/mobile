@@ -1,5 +1,6 @@
 package com.tx24.spicyplayer.translation
 
+import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.TimedLine
 import com.tx24.spicyplayer.lyrics.spicy.models.LineRole
 import java.security.MessageDigest
@@ -257,6 +258,18 @@ fun romanizationOrigins(sourceRomanized: Boolean, humanLines: Int, romanizedLine
     humanLines <= 0 -> listOf(RomanizationOrigin.OnDevice)
     humanLines >= romanizedLines -> listOf(RomanizationOrigin.Genius)
     else -> listOf(RomanizationOrigin.Genius, RomanizationOrigin.OnDevice)
+}
+
+/**
+ * "Romanization from" in the credits: where the romanization on screen comes from, while it
+ * shows ([romanize]) and the credits name it ([shown]); null otherwise, or for lyrics with none.
+ * [humanRomanizedLines] of the romanized lines are Genius's.
+ */
+fun romanizationCredit(lyrics: LyricsState?, humanRomanizedLines: Int, romanize: Boolean, shown: Boolean): String? {
+    val ready = lyrics as? LyricsState.Ready
+    val romanized = ready?.lines?.count { line -> line.words.any { it.romanized != null } } ?: 0
+    if (!romanize || !shown || ready == null || romanized == 0) return null
+    return romanizationOrigins(ready.sourceRomanized, humanRomanizedLines, romanized).joinToString(" + ") { it.label }
 }
 
 fun interface SongLanguageDetector { fun detect(originalLyrics: String): String? }

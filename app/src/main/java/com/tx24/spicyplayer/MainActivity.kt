@@ -146,7 +146,7 @@ import com.tx24.spicyplayer.playback.PlayerLimit
 import com.tx24.spicyplayer.playback.PlayerUiState
 import com.tx24.spicyplayer.playback.SessionAccessService
 import com.tx24.spicyplayer.translation.TranslationResult
-import com.tx24.spicyplayer.translation.romanizationOrigins
+import com.tx24.spicyplayer.translation.romanizationCredit
 import androidx.compose.foundation.focusGroup
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.platform.LocalFocusManager
@@ -2179,10 +2179,7 @@ private fun LyricsPanelContent(
 @Composable
 private fun rememberRomanizationCredit(state: PlayerUiState, romanize: Boolean, shown: Boolean): String? =
     remember(state.lyrics, state.humanRomanizedLines, romanize, shown) {
-        val lyrics = state.lyrics as? LyricsState.Ready
-        val romanized = lyrics?.lines?.count { line -> line.words.any { it.romanized != null } } ?: 0
-        if (!romanize || !shown || lyrics == null || romanized == 0) null
-        else romanizationOrigins(lyrics.sourceRomanized, state.humanRomanizedLines, romanized).joinToString(" + ") { it.label }
+        romanizationCredit(state.lyrics, state.humanRomanizedLines, romanize, shown)
     }
 
 /** How long the custom PiP shape has to stay put before it's sent. */
