@@ -228,7 +228,8 @@ class DesktopLyricsTest {
     }
 
     @Test fun deepLIsUsedOnlyAfterItsConsentAndWithAKey() = runBlocking {
-        val s = setup()
+        // Google already agreed to, so translation starts with it.
+        val s = setup(consented())
         assertEquals(listOf("Google", "DeepL"), s.lyrics.options.value.translators.map { it.id })
         assertEquals("Google", s.lyrics.options.value.translator)
         s.lyrics.load(song)
@@ -255,7 +256,7 @@ class DesktopLyricsTest {
         s.lyrics.settle()
         assertEquals("DeepL", s.lyrics.options.value.translator)
         assertEquals("DeepL", s.store.getString(DesktopLyrics.KEY_TRANSLATOR))
-        assertEquals(setOf("translation_deepl"), s.store.getStringSet(DesktopLyrics.KEY_DISCLOSED))
+        assertEquals(setOf("translation_google", "translation_deepl"), s.store.getStringSet(DesktopLyrics.KEY_DISCLOSED))
         assertEquals(asked, s.translator.providers.size)
         assertEquals("Add a DeepL API key to translate with DeepL.", s.lyrics.options.value.message)
 
@@ -264,10 +265,10 @@ class DesktopLyricsTest {
         assertTrue(s.lyrics.options.value.translatorKeySet)
         assertEquals(TranslationProvider.DeepL to "key:fx", s.translator.providers.last())
 
-        // Agreed once: switching back and forth asks no more.
+        // Both agreed to: switching back and forth asks no more.
         s.lyrics.setTranslator("Google")
-        assertNotNull(s.lyrics.options.value.consent)
-        s.lyrics.answerConsent(true)
+        assertNull(s.lyrics.options.value.consent)
+        assertEquals("Google", s.lyrics.options.value.translator)
         s.lyrics.setTranslator("DeepL")
         assertNull(s.lyrics.options.value.consent)
         assertEquals("DeepL", s.lyrics.options.value.translator)
