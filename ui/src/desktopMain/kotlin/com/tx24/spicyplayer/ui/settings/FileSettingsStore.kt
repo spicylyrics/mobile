@@ -14,6 +14,10 @@ import java.util.Properties
  *
  * A file rather than `java.util.prefs`: on Windows that is the registry, with its own escaping and
  * value-length limits, and a file can be read, backed up or deleted by hand.
+ *
+ * Each store reads its file once and writes all of it back on every change, so two stores over one
+ * file overwrite each other's changes. Use [default] for `settings.properties`; never construct a
+ * second store over the same file.
  */
 class FileSettingsStore(private val file: File) : SettingsStore {
     private val lock = Any()
@@ -94,9 +98,12 @@ class FileSettingsStore(private val file: File) : SettingsStore {
         /** Ends each element of a stored set, so an empty set and a set of one empty string differ. */
         private const val SET_END = '\u0000'
 
-        /** The settings file in the app's own folder ([appDataDir]), for this machine. */
-        fun default(): FileSettingsStore =
+        private val shared by lazy {
             FileSettingsStore(File(appDataDir(System.getProperty("os.name").orEmpty(), System::getenv, System.getProperty("user.home")), FILE_NAME))
+        }
+
+        /** The one store over the settings file in the app's own folder ([appDataDir]), shared by the whole app. */
+        fun default(): FileSettingsStore = shared
 
         const val FILE_NAME = "settings.properties"
 
