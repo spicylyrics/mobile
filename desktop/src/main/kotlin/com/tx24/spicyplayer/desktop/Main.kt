@@ -27,7 +27,6 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import com.google.gson.JsonParser
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalDisplayRefreshRate
@@ -48,7 +47,6 @@ import com.tx24.spicyplayer.network.data.spotify.SharedSpotify
 import com.tx24.spicyplayer.platform.CoreLog
 import java.awt.GraphicsEnvironment
 import java.io.File
-import kotlin.concurrent.thread
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -70,7 +68,7 @@ private sealed interface Screen {
 }
 
 /**
- * Usage: `run [--app <id substring>] [--offset <ms>] [--helper <gsmtc.exe>] [--snap file.png --snap-at S]`, or `run --demo ...` for the
+ * Usage: `run [--app <id substring>] [--offset <ms>] [--helper <gsmtc.exe on Windows>] [--snap file.png --snap-at S]`, or `run --demo ...` for the
  * renderer on a made-up song (see [runDemo]).
  *
  * Shows the lyrics of Windows' current media session (or the first whose app id contains
@@ -79,8 +77,8 @@ private sealed interface Screen {
 fun main(args: Array<String>) {
     if ("--demo" in args) return runDemo(args)
     val opts = args.toList().zipWithNext().filter { it.first.startsWith("--") }.toMap()
-    val helper = opts["--helper"]?.let(::File) ?: defaultHelper()
-    require(helper.exists()) { "No media session helper at $helper; build it with `cargo build --release` in desktop/gsmtc" }
+    val source = mediaSource(opts["--helper"]?.let(::File))
+    source.unavailableReason?.let { error(it) }
     CoreLog.sink = { level, tag, message -> if (level >= CoreLog.Level.WARN) System.err.println("[$tag] $message") }
 
     val session = MediaSession(opts["--app"], opts["--offset"]?.toLongOrNull() ?: 0L)
@@ -95,14 +93,11 @@ fun main(args: Array<String>) {
     var fetch: Job? = null
     var beats: Job? = null
 
-    val process = ProcessBuilder(helper.path).redirectErrorStream(true).start()
-    Runtime.getRuntime().addShutdownHook(Thread { process.destroy() })
-    thread(name = "media-session", isDaemon = true) {
-        process.inputStream.bufferedReader().forEachLine { raw ->
-            val receivedMono = monoMs()
-            val receivedWall = System.currentTimeMillis()
-            val line = runCatching { JsonParser.parseString(raw).asJsonObject }.getOrNull() ?: return@forEachLine
-            val event = session.feed(line, receivedMono, receivedWall)
+    Runtime.getRuntime().addShutdownHook(Thread { source.close() })
+    scope.launch {
+        source.updates().collect { received ->
+            val update = received.update as? MediaUpdate.Snapshot ?: return@collect
+            val event = session.feed(update.snapshot, received.receivedMono, received.receivedWall)
             playing.value = session.clock.isPlaying
             cover.value = session.cover
             if (event is SessionEvent.NewTrack) {
@@ -123,14 +118,13 @@ fun main(args: Array<String>) {
             }
         }
         screen.value = Screen.Waiting
-        System.err.println("media session helper exited (${process.waitFor()})")
     }
 
     val refreshRate = GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.displayMode.refreshRate
         .takeIf { it > 0 }?.toFloat() ?: 60f
     application {
         Window(
-            onCloseRequest = { process.destroy(); exitApplication() },
+            onCloseRequest = { source.close(); exitApplication() },
             state = rememberWindowState(size = DpSize(1100.dp, 760.dp)),
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
@@ -151,7 +145,7 @@ fun main(args: Array<String>) {
                                     lyrics = lyrics,
                                     trackKey = s.track.key,
                                     currentTimeMs = { session.clock.positionAt(monoMs()) },
-                                    onSeek = { session.seek(helper, it) },
+                                    onSeek = { session.seek(source, it) },
                                     isPlaying = isPlaying,
                                 )
                                 is LyricsState.Error -> Notice(lyrics.message, listOfNotNull(lyrics.body, lyrics.detail).joinToString("\n\n"))
