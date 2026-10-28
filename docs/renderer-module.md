@@ -74,7 +74,7 @@ Compose comes from Compose Multiplatform 1.12.2, which resolves to the androidx 
 `./gradlew :renderer:desktopTest` runs the renderer's tests (animation, layout, scroll, blur, letter synthesis) on the JVM, and `./gradlew :ui:desktopTest` the shared UI's (header and landscape metrics, marquee, stage art, cover colours). Each module has its own `CommonMainPlatformApiTest`. The full check is
 
 ```
-.\gradlew.bat assembleDebug testDebugUnitTest :core:test :renderer:desktopTest :ui:desktopTest lintDebug
+.\gradlew.bat assembleDebug testDebugUnitTest :core:test :renderer:desktopTest :ui:desktopTest :desktop:compileKotlin :desktop:test lintDebug
 ```
 
 ## Sharing the UI
