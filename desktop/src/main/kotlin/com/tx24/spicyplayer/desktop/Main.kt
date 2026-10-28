@@ -86,7 +86,8 @@ fun main(args: Array<String>) {
 
     val delays = SyncDelays(SyncDelays.defaultStore(), opts["--offset"]?.toLongOrNull())
     val session = MediaSession(opts["--app"], delays::offsetFor)
-    val lookup = LyricsLookup()
+    val lyricsLibrary = DesktopLyricsLibrary(coverOf = { session.cover })
+    val lookup = LyricsLookup(local = lyricsLibrary)
     val screen = MutableStateFlow<Screen>(Screen.Waiting())
     val playing = MutableStateFlow(false)
     val cover = MutableStateFlow<File?>(null)
@@ -185,9 +186,11 @@ fun main(args: Array<String>) {
         LaunchedEffect(page.mode) {
             windowState.placement = if (page.mode == ViewMode.Fullscreen) WindowPlacement.Fullscreen else WindowPlacement.Floating
         }
+        val settingsWindow = remember { SettingsWindowState() }
+        val lyricsManager = remember { LyricsManagerWindowState() }
         Window(
             onCloseRequest = { stop(); exitApplication() },
-            onPreviewKeyEvent = settingsWindow::onKey,
+            onPreviewKeyEvent = { settingsWindow.onKey(it) || lyricsManager.onKey(it) },
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
@@ -284,6 +287,8 @@ fun main(args: Array<String>) {
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
         }
         SettingsWindow(settingsWindow)
+        LyricsManagerWindow(lyricsManager, lyricsLibrary, songLyrics)
+
         // Ctrl+M: the lyrics in a small window that stays on top.
         val miniShown by screen.collectAsState()
         val miniTranslated by songLyrics.shown.collectAsState()
