@@ -207,8 +207,7 @@ private object MaskStats {
                     val line = "${java.time.LocalTime.now()} drawn=$drawn created=$created evicted=$evicted deferred=$deferred " +
                         "cached=${masks.size} bytes=${maskBytes / 1024}KB"
                     drawn = 0; created = 0; evicted = 0; deferred = 0
-                    runCatching { file.appendText(line + "
-") }
+                    runCatching { file.appendText(line + System.lineSeparator()) }
                 }
             }, "spicy-mask-stats").apply { isDaemon = true }.start()
         }
