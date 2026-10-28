@@ -47,10 +47,14 @@ fun playbackToggles(capabilities: PlayerCapabilities, playing: NowPlayingState):
     repeat = playing.repeat.takeIf { capabilities.repeat },
 )
 
-/** What a press on repeat asks for next: off, then the whole queue, then the one song, then off. */
-fun nextRepeat(current: RepeatState): RepeatState = when (current) {
+/**
+ * What a press on repeat asks for next: off, then the whole queue, then the one song where the
+ * player can ([oneSupported]), then off. Without it, all goes straight back to off, or the button
+ * would ask for one and read back all forever.
+ */
+fun nextRepeat(current: RepeatState, oneSupported: Boolean = true): RepeatState = when (current) {
     RepeatState.Off -> RepeatState.All
-    RepeatState.All -> RepeatState.One
+    RepeatState.All -> if (oneSupported) RepeatState.One else RepeatState.Off
     RepeatState.One -> RepeatState.Off
 }
 

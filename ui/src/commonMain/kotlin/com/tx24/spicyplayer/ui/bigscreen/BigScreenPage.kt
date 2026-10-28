@@ -431,7 +431,7 @@ private fun CoverPlayback(env: PageEnv, playing: NowPlayingState, nowPlaying: No
                 if (toggles.repeat == RepeatState.One) SpicyGlyphs.RepeatOne else SpicyGlyphs.Repeat,
                 active = toggles.repeat != null && toggles.repeat != RepeatState.Off, shown = toggles.repeat != null,
                 label = "Repeat", widthPx = metrics.toggleWidthPx,
-            ) { toggles.repeat?.let { nowPlaying.setRepeat(nextRepeat(it)) } }
+            ) { toggles.repeat?.let { nowPlaying.setRepeat(nextRepeat(it, playing.repeatOneSupported)) } }
         }
         Timeline(now, playing.track.durationMs, env.capabilities.seek && playing.canSeek, metrics, nowPlaying::seekTo)
     }

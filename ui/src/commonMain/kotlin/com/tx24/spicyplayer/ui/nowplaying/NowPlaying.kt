@@ -24,6 +24,7 @@ data class NowPlayingTrack(
  * @param customActions the player's own buttons (shuffle, repeat, like, ...).
  * @param shuffle whether the player shuffles; null where the platform doesn't say.
  * @param repeat what the player repeats; null where the platform doesn't say.
+ * @param repeatOneSupported false for a player that can't repeat one song (it reads back as [RepeatState.All]).
  */
 data class NowPlayingState(
     val track: NowPlayingTrack,
@@ -36,6 +37,7 @@ data class NowPlayingState(
     val customActions: List<SessionCustomAction> = emptyList(),
     val shuffle: Boolean? = null,
     val repeat: RepeatState? = null,
+    val repeatOneSupported: Boolean = true,
 ) {
     val hasSession: Boolean get() = player != null
 

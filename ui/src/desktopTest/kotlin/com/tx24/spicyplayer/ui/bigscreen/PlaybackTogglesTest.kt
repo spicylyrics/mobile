@@ -44,4 +44,13 @@ class PlaybackTogglesTest {
         assertEquals(RepeatState.One, nextRepeat(RepeatState.All))
         assertEquals(RepeatState.Off, nextRepeat(RepeatState.One))
     }
+
+    @Test
+    fun `without repeat one, all goes back to off`() {
+        assertEquals(RepeatState.All, nextRepeat(RepeatState.Off, oneSupported = false))
+        assertEquals(RepeatState.Off, nextRepeat(RepeatState.All, oneSupported = false))
+        // A player that somehow reports one still leaves it.
+        assertEquals(RepeatState.Off, nextRepeat(RepeatState.One, oneSupported = false))
+        assertEquals(RepeatState.One, nextRepeat(RepeatState.All, oneSupported = true))
+    }
 }

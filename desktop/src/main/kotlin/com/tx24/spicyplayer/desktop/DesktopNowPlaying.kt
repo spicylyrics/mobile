@@ -42,6 +42,7 @@ class DesktopNowPlaying(private val source: MediaSource, private val session: Me
             canSeek = Transport.SEEK in source.capabilities,
             shuffle = session.shuffle,
             repeat = repeatStateOf(session.repeat),
+            repeatOneSupported = session.repeatOneSupported,
         )
     }
 

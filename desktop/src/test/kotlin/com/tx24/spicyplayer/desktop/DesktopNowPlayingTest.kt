@@ -72,8 +72,16 @@ class DesktopNowPlayingTest {
         nowPlaying.refresh()
         assertEquals(true, nowPlaying.state.value.shuffle)
         assertEquals(RepeatState.All, nowPlaying.state.value.repeat)
+        assertEquals(true, nowPlaying.state.value.repeatOneSupported)
         nowPlaying.setShuffle(false)
         nowPlaying.setRepeat(RepeatState.One)
         assertEquals(listOf("shuffle false", "repeat One"), calls)
+        // A player that can't repeat one track says so, and the page hears it.
+        session.feed(
+            MediaSnapshot("Spotify.exe", true, "One", "Artist", "Album", 200_000, 250, wall + 250, PlaybackStatus.Playing, 1f, repeat = RepeatMode.All, repeatOneSupported = false),
+            50_250L, wall + 250,
+        )
+        nowPlaying.refresh()
+        assertEquals(false, nowPlaying.state.value.repeatOneSupported)
     }
 }
