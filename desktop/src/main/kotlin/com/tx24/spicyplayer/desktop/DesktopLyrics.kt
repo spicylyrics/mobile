@@ -7,11 +7,13 @@ import com.tx24.spicyplayer.network.data.LyricsSourceDescriptor
 import com.tx24.spicyplayer.network.data.ProviderResult
 import com.tx24.spicyplayer.network.data.RemoteLyricsQuality
 import com.tx24.spicyplayer.network.data.RemoteLyricsResolution
+import com.tx24.spicyplayer.network.data.SourceDisclosures
 import com.tx24.spicyplayer.network.data.measuredQuality
 import com.tx24.spicyplayer.translation.DiskTranslationCache
 import com.tx24.spicyplayer.translation.GoogleTranslator
 import com.tx24.spicyplayer.translation.SongLanguageDetector
 import com.tx24.spicyplayer.translation.TranslationDocument
+import com.tx24.spicyplayer.translation.TranslationConsent
 import com.tx24.spicyplayer.translation.TranslationEngine
 import com.tx24.spicyplayer.translation.TranslationLanguages
 import com.tx24.spicyplayer.translation.TranslationMode
@@ -20,6 +22,7 @@ import com.tx24.spicyplayer.translation.TranslationPreferences
 import com.tx24.spicyplayer.translation.TranslationProvider
 import com.tx24.spicyplayer.translation.TranslationResult
 import com.tx24.spicyplayer.translation.languageCode
+import com.tx24.spicyplayer.ui.bigscreen.ConsentRequest
 import com.tx24.spicyplayer.ui.bigscreen.LanguageChoice
 import com.tx24.spicyplayer.ui.bigscreen.LyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.LyricsOptions
@@ -75,7 +78,8 @@ class DesktopLyrics(
 
     private val optionsState = MutableStateFlow(
         LyricsOptions(
-            translating = store.getBoolean(KEY_TRANSLATE) ?: false,
+            // On from before consent was asked for, it stays off until it's given.
+            translating = store.getBoolean(KEY_TRANSLATE) == true && googleConsented(store),
             targetLanguage = store.getString(KEY_TARGET)?.let(::languageCode) ?: defaultTarget(),
             languages = LANGUAGES,
             translationMode = settings.translationMode,
@@ -118,6 +122,10 @@ class DesktopLyrics(
     }
 
     override fun setTranslating(on: Boolean) {
+        if (on && !googleConsented(store)) {
+            optionsState.update { it.copy(pendingConsent = googleConsentRequest(), message = null) }
+            return
+        }
         store.putBoolean(KEY_TRANSLATE, on)
         optionsState.update { it.copy(translating = on, message = null) }
         if (on) translateShown() else {
@@ -152,6 +160,17 @@ class DesktopLyrics(
             snapshotFlow { settings.translationMode to settings.romanizationMode }.collect { (translation, romanization) ->
                 optionsState.update { it.copy(translationMode = translation, romanizationMode = romanization) }
             }
+        }
+    }
+
+    override fun answerConsent(id: String, allowed: Boolean) {
+        if (optionsState.value.pendingConsent?.id != id) return
+        optionsState.update { it.copy(pendingConsent = null) }
+        if (allowed) {
+            store.putStringSet(KEY_DISCLOSED, store.getStringSet(KEY_DISCLOSED).orEmpty() + id)
+            setTranslating(true)
+        } else {
+            optionsState.update { it.copy(message = "Translation stays off; nothing was sent.") }
         }
     }
 
@@ -227,6 +246,18 @@ class DesktopLyrics(
     companion object {
         const val KEY_TRANSLATE = "translate"
         const val KEY_TARGET = "targetLanguage"
+        /** The consents given, by `TranslationConsent.id`, under the phone's key for them. */
+        const val KEY_DISCLOSED = "disclosed"
+
+        /** Google Translate, without Genius: the one translator the desktop has. */
+        fun googleConsented(store: SettingsStore): Boolean =
+            TranslationConsent.covered(store.getStringSet(KEY_DISCLOSED).orEmpty(), TranslationProvider.Google, human = false)
+
+        /** The phone's translation disclosure for Google Translate. */
+        fun googleConsentRequest(): ConsentRequest {
+            val disclosure = SourceDisclosures.translation(TranslationProvider.Google, human = false)
+            return ConsentRequest(disclosure.id, "Turn on ${disclosure.name}?", disclosure.description)
+        }
         private const val SOURCE_PREFIX = "source:"
 
         /** Where the source picked for [track] is kept. */

@@ -33,6 +33,15 @@ class LyricsActionsTest {
         assertEquals("Word-synced", rows[1].detail)
     }
 
+    @Test fun noConsentIsPendingByDefault() {
+        assertEquals(null, LyricsOptions().pendingConsent)
+        val request = ConsentRequest("translation_google", "Turn on translation?", "Translation sends…")
+        val waiting = LyricsOptions(translating = false, pendingConsent = request)
+        assertEquals("translation_google", waiting.pendingConsent?.id)
+        // Waiting on consent, translation still reads as off.
+        assertEquals("Off", translationSummary(waiting))
+    }
+
     @Test fun summaries() {
         assertEquals("Automatic", sourceSummary(LyricsOptions()))
         assertEquals("Automatic · Spicy Lyrics", sourceSummary(LyricsOptions(sources = sources)))

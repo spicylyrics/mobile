@@ -46,6 +46,10 @@ internal fun MoreMenuEntries(actions: LyricsActions?) {
         return
     }
     val options by actions.options.collectAsState()
+    options.pendingConsent?.let { request ->
+        ConsentPrompt(request, onAnswer = { allowed -> actions.answerConsent(request.id, allowed) })
+        return
+    }
     var open by remember { mutableStateOf<MoreEntry?>(null) }
     fun toggle(entry: MoreEntry) { open = if (open == entry) null else entry }
 

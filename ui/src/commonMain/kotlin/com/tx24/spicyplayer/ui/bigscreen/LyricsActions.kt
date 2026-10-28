@@ -20,6 +20,12 @@ data class LyricsSourceChoice(
 /** A language a translation can go into. */
 data class LanguageChoice(val code: String, val name: String)
 
+/**
+ * A question to answer before lyrics go somewhere new, such as a translation service: [id] is the
+ * consent asked for (`TranslationConsent.id`), [title] and [description] the disclosure's words.
+ */
+data class ConsentRequest(val id: String, val title: String, val description: String)
+
 /** What the More menu shows: the song's sources, and how its lyrics are translated and romanized. */
 data class LyricsOptions(
     /** Every source asked for lyrics, in rank order. Empty while nothing is playing. */
@@ -34,6 +40,8 @@ data class LyricsOptions(
     val romanizationMode: RomanizationMode = RomanizationMode.Replace,
     /** How the last choice went, when it needs saying ("Translating…", a source with nothing). */
     val message: String? = null,
+    /** Waiting on the user's OK before lyrics are sent ([LyricsActions.answerConsent]). */
+    val pendingConsent: ConsentRequest? = null,
 )
 
 /**
@@ -51,6 +59,9 @@ interface LyricsActions {
     fun setTargetLanguage(code: String)
     fun setTranslationMode(mode: TranslationMode)
     fun setRomanizationMode(mode: RomanizationMode)
+
+    /** The answer to [LyricsOptions.pendingConsent] [id]: allowed, the waiting choice goes ahead and is remembered. */
+    fun answerConsent(id: String, allowed: Boolean)
 }
 
 /** The page's lyrics choices; none leaves the More menu's entries unavailable. */
