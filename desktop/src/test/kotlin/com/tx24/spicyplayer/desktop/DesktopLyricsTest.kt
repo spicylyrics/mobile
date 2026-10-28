@@ -476,7 +476,7 @@ class DesktopLyricsTest {
         val done = CompletableDeferred<Unit>()
         private var calls = 0
 
-        override suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?): LyricsLookup.Found {
+        override suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, spotifyId: String?): LyricsLookup.Found {
             if (calls++ == 0) {
                 started.complete(Unit)
                 try {
@@ -487,7 +487,7 @@ class DesktopLyricsTest {
                     return LyricsLookup.Found(LyricsNotices.lookupFailed(e), null)
                 }
             }
-            return real.find(track, known, sourceId)
+            return real.find(track, known, sourceId, spotifyId)
         }
     }
 
