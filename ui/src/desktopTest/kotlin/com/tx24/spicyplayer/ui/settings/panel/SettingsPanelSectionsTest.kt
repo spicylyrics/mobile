@@ -107,7 +107,7 @@ class SettingsPanelSectionsTest {
         val row = PanelRow.Toggle("keepScreenOn", "Keep the Screen On", null, checked = { true }, onChange = {})
         assertTrue(settingsPanelSections(settings, deviceGroups = listOf(PanelGroup("Screen", emptyList()))).none { it.id == PanelSectionId.Device })
         val withDevice = settingsPanelSections(settings, deviceGroups = listOf(PanelGroup("Screen", listOf(row))))
-        assertEquals(PanelSectionId.entries.toList(), withDevice.map { it.id })
+        assertEquals(PanelSectionId.entries - PanelSectionId.Sources, withDevice.map { it.id })
         assertEquals(listOf(row), withDevice.single { it.id == PanelSectionId.Device }.rows)
     }
 
