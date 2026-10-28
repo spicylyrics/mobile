@@ -20,10 +20,11 @@ You need JDK 17, and on Windows Rust (`cargo`): Gradle builds the helper with `c
 
 ## CI builds
 
-`.github/workflows/desktop-build.yml` builds the MSI on a Windows runner for pull requests that touch `desktop/`, for `desktop-vX.Y.Z` tags and on demand (Actions → Desktop installer → Run workflow). The installer is a workflow artifact; nothing is released.
+`.github/workflows/desktop-build.yml` builds the MSI on a Windows runner, a `.deb` on Ubuntu and a `.dmg` on macOS for pull requests that touch `desktop/`, for `desktop-vX.Y.Z` tags and on demand (Actions → Desktop installer → Run workflow). The installers are workflow artifacts; nothing is released.
 
 - A `desktop-vX.Y.Z` tag sets the version through `-PdesktopVersion=X.Y.Z`. Other runs use the default in `build.gradle.kts`.
 - The Spicy Lyrics key comes from the `SPICY_LYRICS_CLIENT_KEY` repository secret, or the variable of that name. Without either, the build leaves that source out.
+- macOS won't take a version starting with 0, so the `.dmg` of 0.y.z says 1.y.z (`macPackageVersion` in `build.gradle.kts`).
 
 ## Media sources
 
@@ -36,3 +37,7 @@ The app follows other players through a `MediaSource` (`MediaSource.kt`): a flow
 | macOS | `macMediaSource()` | Not supported; it reports nothing. The likely routes are the MediaRemote framework through a helper, or AppleScript for Spotify and Music. |
 
 To add a platform, implement `MediaSource`, keep the line parsing in a pure function with tests in `src/test/kotlin`, and add it to `mediaSource()`.
+
+## Linux
+
+`./gradlew :desktop:packageDeb` builds a `.deb` (package `spicy-lyrics-desktop`) in `desktop/build/compose/binaries/main/deb/`. It installs the app under `/opt` with a menu entry. The app reads players through `playerctl`, so install that too (`sudo apt install playerctl`): without it the app stops at launch, naming what's missing. No Rust is needed on Linux.
