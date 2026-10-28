@@ -929,7 +929,8 @@ private fun LyricsApp(
                 },
                 onOpenSettings = { whenUnlocked { showSettings = true } },
                 onEnterPip = { onEnterPip?.invoke() },
-                initialRomanized = romanize,
+                romanized = romanize,
+                onToggleRomanize = { settings.romanize = !settings.romanize },
                 background = {
                     SpicySessionBackground(
                         artwork = state.artwork,

@@ -7,6 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -36,7 +37,8 @@ fun androidCapabilities(canSeek: Boolean, pictureInPicture: Boolean): PlayerCapa
 /**
  * The big-screen page on a tablet, DeX or an unfolded foldable. The controls follow the phone's
  * own idle timer ([controlsShown]): every touch on the page counts ([onTouch]) without being
- * taken from what's under it. Back steps out of cinema before it leaves the app.
+ * taken from what's under it. The romanize toggle writes to the setting ([onToggleRomanize]), so
+ * [romanized] survives a fold or a resize. Back steps out of cinema before it leaves the app.
  */
 @Composable
 internal fun AndroidBigScreenPage(
@@ -50,14 +52,27 @@ internal fun AndroidBigScreenPage(
     onTouch: () -> Unit,
     onOpenSettings: () -> Unit,
     onEnterPip: () -> Unit,
-    initialRomanized: Boolean,
+    romanized: Boolean,
+    onToggleRomanize: () -> Unit,
     background: @Composable () -> Unit,
     lyricsView: @Composable (modifier: Modifier, romanize: Boolean, activeLineTopPx: Float?, renderConfig: RenderConfig) -> Unit,
 ) {
-    var page by remember { mutableStateOf(BigScreenState(romanized = initialRomanized)) }
+    var page by remember { mutableStateOf(BigScreenState()) }
     BackHandler(enabled = page.immersive) { page = page.back() }
-    val actions = remember(onOpenSettings, onEnterPip) {
-        BigScreenActions(onState = { page = it }, onOpenSettings = onOpenSettings, onEnterPip = onEnterPip)
+    val currentRomanized by rememberUpdatedState(romanized)
+    val toggleRomanize by rememberUpdatedState(onToggleRomanize)
+    val openSettings by rememberUpdatedState(onOpenSettings)
+    val enterPip by rememberUpdatedState(onEnterPip)
+    val touch by rememberUpdatedState(onTouch)
+    val actions = remember {
+        BigScreenActions(
+            onState = {
+                if (it.romanized != currentRomanized) toggleRomanize()
+                page = it
+            },
+            onOpenSettings = { openSettings() },
+            onEnterPip = { enterPip() },
+        )
     }
     Box(
         Modifier
@@ -66,13 +81,13 @@ internal fun AndroidBigScreenPage(
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
-                        if (event.type == PointerEventType.Press) onTouch()
+                        if (event.type == PointerEventType.Press) touch()
                     }
                 }
             },
     ) {
         BigScreenPage(
-            state = page,
+            state = page.copy(romanized = romanized),
             nowPlaying = nowPlaying,
             capabilities = androidCapabilities(canSeek, pictureInPicture),
             lyrics = lyrics,
