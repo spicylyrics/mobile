@@ -71,7 +71,7 @@ private class LayoutKey(val layout: TextLayoutResult) {
  * letters), and a cache smaller than one frame's worth makes, uploads and drops every mask on
  * every frame.
  */
-private const val MASK_BYTES = 160L * 1024 * 1024
+private const val MASK_BYTES = 32L * 1024 * 1024
 private var maskBytes = 0L
 private val masks = object : LinkedHashMap<LayoutKey, Mask>(256, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<LayoutKey, Mask>): Boolean {

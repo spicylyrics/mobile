@@ -17,7 +17,7 @@ internal class LayoutPacer(private val sliceMs: Long = SLICE_MS) {
     }
 
     private companion object {
-        /** Half a 60 Hz frame. */
-        const val SLICE_MS = 8L
+        /** About a 60 Hz frame: the new layout lands in a few frames, the window still drawing between them. */
+        const val SLICE_MS = 16L
     }
 }

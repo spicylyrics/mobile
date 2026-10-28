@@ -19,6 +19,6 @@ internal actual val resizeSnapsToLine: Boolean = true
 
 internal actual val textLayoutContext: CoroutineContext = EmptyCoroutineContext
 
-internal actual val resizeRelayoutDelayMs: Long = 150L
+internal actual val resizeRelayoutDelayMs: Long = 100L
 
 internal actual val slicesTextLayout: Boolean = true

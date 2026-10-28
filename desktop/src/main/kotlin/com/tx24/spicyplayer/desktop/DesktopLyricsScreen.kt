@@ -12,6 +12,8 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.delay
 import androidx.compose.ui.platform.LocalUriHandler
@@ -163,7 +165,31 @@ const val MAX_AUTO_SCALE = 1.5f
  * How long a new scale waits for the window to stop changing size: every change of scale lays
  * every piece of text out again, so a drag keeps the scale it started with until it settles.
  */
-const val SCALE_SETTLE_MS = 250L
+const val SCALE_SETTLE_MS = 120L
+
+/**
+ * Shows [content] [ratio] times its size, filling the box it's in: laid out in a box [ratio] times
+ * smaller, then drawn (and hit-tested) enlarged from the top left. While the window is dragged, a
+ * new interface scale shows at once this way, the layout as it is; when the scale settles the
+ * density takes it over and [ratio] is 1 again, the same size in pixels, so nothing jumps.
+ */
+@Composable
+fun ScaledToWindow(ratio: Float, content: @Composable () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().layout { measurable, constraints ->
+            val width = (constraints.maxWidth / ratio).roundToInt()
+            val height = (constraints.maxHeight / ratio).roundToInt()
+            val placeable = measurable.measure(Constraints.fixed(width, height))
+            layout(constraints.maxWidth, constraints.maxHeight) {
+                if (ratio == 1f) placeable.place(0, 0) else placeable.placeWithLayer(0, 0) {
+                    scaleX = ratio
+                    scaleY = ratio
+                    transformOrigin = TransformOrigin(0f, 0f)
+                }
+            }
+        },
+    ) { content() }
+}
 
 /**
  * Composes [content] once per run, out of sight, then lets it go. The first time the window turns

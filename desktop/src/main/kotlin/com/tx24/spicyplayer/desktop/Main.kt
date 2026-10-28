@@ -379,6 +379,8 @@ fun main(args: Array<String>) {
                         delay(SCALE_SETTLE_MS)
                         scale = targetScale
                     }
+                    // Until it settles, a new scale shows at once as a zoom of the current layout.
+                    ScaledToWindow(targetScale / scale) {
                     CompositionLocalProvider(LocalDensity provides Density(system.density * scale, system.fontScale)) {
                     // The screen picks portrait or landscape from the window's size, as the phone does from its screen's.
                     BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -417,6 +419,7 @@ fun main(args: Array<String>) {
                             screenHeightDp = maxWidth.value.toInt(),
                             messages = remember { emptyFlow<String>() },
                         )
+                    }
                     }
                     }
                     }
