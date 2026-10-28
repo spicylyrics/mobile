@@ -18,20 +18,13 @@ You need JDK 17, and on Windows Rust (`cargo`): Gradle builds the helper with `c
 - The publishable Spicy Lyrics key in the root `.env` (`SPICY_LYRICS_CLIENT_KEY=sl_pk_...`) is built in. Without it, the app leaves that source out.
 - The builds are unsigned, so Windows SmartScreen warns about an unknown publisher the first time.
 
-## CI builds
-
-`.github/workflows/desktop-build.yml` builds the MSI on a Windows runner for pull requests that touch `desktop/`, for `desktop-vX.Y.Z` tags and on demand (Actions → Desktop installer → Run workflow). The installer is a workflow artifact; nothing is released.
-
-- A `desktop-vX.Y.Z` tag sets the version through `-PdesktopVersion=X.Y.Z`. Other runs use the default in `build.gradle.kts`.
-- The Spicy Lyrics key comes from the `SPICY_LYRICS_CLIENT_KEY` repository secret, or the variable of that name. Without either, the build leaves that source out.
-
 ## Media sources
 
 The app follows other players through a `MediaSource` (`MediaSource.kt`): a flow of now-playing snapshots (app id, title, artist, album, duration, position with the time it was true, status, rate, artwork) and transport commands, with a `capabilities` set saying which commands the platform takes. `mediaSource()` picks the implementation from `os.name`. `MediaSession` turns the snapshots into the lyric clock the same way on every platform, including the per-player corrections and the `--offset`.
 
 | Platform | Source | Status |
 | --- | --- | --- |
-| Windows | `GsmtcMediaSource` | Works. Reads the gsmtc helper's JSON lines (`parseGsmtcLine`). Play, pause and seek; next and previous aren't in the helper yet. |
+| Windows | `GsmtcMediaSource` | Works. Reads the gsmtc helper's JSON lines (`parseGsmtcLine`). Play, pause, seek, next and previous. |
 | Linux | `MprisMediaSource` | Untested on a real desktop. Runs `playerctl --follow metadata --format ...` and parses its lines (`parsePlayerctlLine`), so it needs `playerctl` installed. All commands, through `playerctl --player=<instance>`. MPRIS gives no position stamp or rate, so each line counts from when it arrived, at 1x. Remote artwork (`https://` art URLs, e.g. Spotify) isn't downloaded yet; `file://` artwork works. |
 | macOS | `macMediaSource()` | Not supported; it reports nothing. The likely routes are the MediaRemote framework through a helper, or AppleScript for Spotify and Music. |
 
@@ -40,3 +33,10 @@ To add a platform, implement `MediaSource`, keep the line parsing in a pure func
 ## Updates
 
 An installed build checks GitHub's releases for a newer `desktop-vX.Y.Z` tag at most once a day (`update/UpdateCheck.kt`) and shows a dismissible banner that opens the release page. Drafts and the phone app's `v*` tags are ignored; prereleases count while the version is below 1.0.0. The last check is kept in `%APPDATA%\Spicy Lyrics Desktop\update-check.json` (Windows) or `~/.config/spicy-lyrics-desktop/` (elsewhere). Runs from the checkout report their version as `dev` and never check; pass `-Djpackage.app-version=0.0.1` to try the banner. Offline, it shows the last answer or nothing.
+
+## CI builds
+
+`.github/workflows/desktop-build.yml` builds the MSI on a Windows runner for pull requests that touch `desktop/`, for `desktop-vX.Y.Z` tags and on demand (Actions → Desktop installer → Run workflow). The installer is a workflow artifact; nothing is released.
+
+- A `desktop-vX.Y.Z` tag sets the version through `-PdesktopVersion=X.Y.Z`. Other runs use the default in `build.gradle.kts`.
+- The Spicy Lyrics key comes from the `SPICY_LYRICS_CLIENT_KEY` repository secret, or the variable of that name. Without either, the build leaves that source out.

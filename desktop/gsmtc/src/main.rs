@@ -147,10 +147,10 @@ fn subscribe(session: &Session, manager: &Manager) -> windows::core::Result<()> 
     Ok(())
 }
 
-/// `gsmtc ctl <app id substring> play|pause|seek <ms>`: drives a session, for scripted tests.
+/// `gsmtc ctl <app id substring> play|pause|next|previous|seek <ms>`: drives a session.
 fn control(manager: &Manager, args: &[String]) -> windows::core::Result<()> {
     let [app, action, rest @ ..] = args else {
-        eprintln!("usage: gsmtc ctl <app> play|pause|seek <ms>");
+        eprintln!("usage: gsmtc ctl <app> play|pause|next|previous|seek <ms>");
         std::process::exit(2);
     };
     let session = manager.GetSessions()?.into_iter()
@@ -162,6 +162,8 @@ fn control(manager: &Manager, args: &[String]) -> windows::core::Result<()> {
     let ok = match action.as_str() {
         "play" => session.TryPlayAsync()?.get()?,
         "pause" => session.TryPauseAsync()?.get()?,
+        "next" => session.TrySkipNextAsync()?.get()?,
+        "previous" => session.TrySkipPreviousAsync()?.get()?,
         "seek" => {
             let ms: i64 = rest.first().and_then(|v| v.parse().ok()).unwrap_or(0);
             let start = session.GetTimelineProperties()?.StartTime()?.Duration;

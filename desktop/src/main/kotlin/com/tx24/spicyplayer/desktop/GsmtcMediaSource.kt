@@ -12,15 +12,14 @@ import kotlinx.coroutines.flow.flowOn
 
 /**
  * Windows' media sessions (GSMTC), read through the gsmtc helper in `desktop/gsmtc`: it writes
- * one JSON line per session per change, and `gsmtc ctl <app> play|pause|seek <ms>` drives one.
+ * one JSON line per session per change, and `gsmtc ctl <app> play|pause|next|previous|seek <ms>` drives one.
  */
 class GsmtcMediaSource(val helper: File) : MediaSource {
     override val name = "gsmtc"
     override val unavailableReason
         get() = if (helper.exists()) null else "No media session helper at $helper; build it with `cargo build --release` in desktop/gsmtc"
 
-    /** The helper takes play, pause and seek; next and previous aren't in it yet. */
-    override val capabilities = setOf(Transport.PLAY, Transport.PAUSE, Transport.SEEK)
+    override val capabilities = Transport.entries.toSet()
 
     private val running = AtomicReference<Process?>()
 
@@ -44,8 +43,7 @@ class GsmtcMediaSource(val helper: File) : MediaSource {
     }.flowOn(Dispatchers.IO)
 
     override fun control(app: String, action: Transport, positionMs: Long) {
-        val args = gsmtcCtlArgs(app, action, positionMs) ?: return
-        ProcessBuilder(listOf(helper.path) + args).redirectErrorStream(true).start()
+        ProcessBuilder(listOf(helper.path) + gsmtcCtlArgs(app, action, positionMs)).redirectErrorStream(true).start()
     }
 
     override fun close() {
@@ -53,12 +51,13 @@ class GsmtcMediaSource(val helper: File) : MediaSource {
     }
 }
 
-/** The helper's arguments for [action] on the session whose app id contains [app], or null for one it doesn't take. */
-fun gsmtcCtlArgs(app: String, action: Transport, positionMs: Long): List<String>? = when (action) {
+/** The helper's arguments for [action] on the session whose app id contains [app]. */
+fun gsmtcCtlArgs(app: String, action: Transport, positionMs: Long): List<String> = when (action) {
     Transport.PLAY -> listOf("ctl", app, "play")
     Transport.PAUSE -> listOf("ctl", app, "pause")
     Transport.SEEK -> listOf("ctl", app, "seek", positionMs.coerceAtLeast(0L).toString())
-    Transport.NEXT, Transport.PREVIOUS -> null
+    Transport.NEXT -> listOf("ctl", app, "next")
+    Transport.PREVIOUS -> listOf("ctl", app, "previous")
 }
 
 /** One line of the helper's output, or null for one that isn't a session report (or isn't JSON). */
