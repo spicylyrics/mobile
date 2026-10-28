@@ -56,6 +56,7 @@ import com.tx24.spicyplayer.lyrics.spicy.animation.LineSweepGeometry
 import com.tx24.spicyplayer.lyrics.spicy.animation.LyricsAnimator
 import com.tx24.spicyplayer.lyrics.spicy.animation.AppleMusicMotion
 import com.tx24.spicyplayer.lyrics.spicy.resizeSnapsToLine
+import com.tx24.spicyplayer.lyrics.spicy.textLayoutContext
 import com.tx24.spicyplayer.lyrics.spicy.models.Line
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
 import com.tx24.spicyplayer.lyrics.spicy.models.FooterLine
@@ -65,7 +66,6 @@ import com.tx24.spicyplayer.ui.controls.keepsControlsHidden
 import com.tx24.spicyplayer.translation.TranslationPresentation
 import com.tx24.spicyplayer.translation.TranslationMode
 import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -279,7 +279,7 @@ fun LyricsView(
             suspend fun measure(romanized: Boolean, presentation: TranslationPresentation? = translation): MeasuredLyrics {
                 val key = MeasureKey(letterConfig, canvasWidth, fontSizeScale, romanized, incomingType, fontKey, presentation, romanizationMode)
                 measuredCache[key]?.let { return it }
-                return withContext(Dispatchers.Default) {
+                return withContext(textLayoutContext) {
                     // Per-letter emphasis for held words (mode-dependent thresholds, romanized
                     // display). Syllable mode only; Line/Static never letter-split.
                     val translated = presentation?.displayLines(lines) ?: lines

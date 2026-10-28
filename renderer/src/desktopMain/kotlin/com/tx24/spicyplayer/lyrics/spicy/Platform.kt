@@ -1,5 +1,8 @@
 package com.tx24.spicyplayer.lyrics.spicy
 
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
+
 internal actual fun monotonicNanos(): Long = System.nanoTime()
 
 internal actual fun identityHash(any: Any): Int = System.identityHashCode(any)
@@ -13,3 +16,5 @@ internal actual fun charCount(codePoint: Int): Int = Character.charCount(codePoi
 internal actual fun roundHalfUp(value: Float): Int = Math.round(value)
 
 internal actual val resizeSnapsToLine: Boolean = true
+
+internal actual val textLayoutContext: CoroutineContext = EmptyCoroutineContext
