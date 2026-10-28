@@ -439,7 +439,8 @@ private fun CoverPlayback(env: PageEnv, playing: NowPlayingState, nowPlaying: No
 
 /**
  * Shuffle or repeat at an end of the playback row, in the accent with a soft glow while on (the
- * accent can be white, so the glow is what tells on from off). Not [shown], it only keeps its room.
+ * accent can be white, so the glow is what tells on from off; with Low Performance, only the tint).
+ * Not [shown], it only keeps its room.
  */
 @Composable
 private fun PlaybackToggle(glyph: ImageVector, active: Boolean, shown: Boolean, label: String, widthPx: Float, onClick: () -> Unit) {
@@ -453,7 +454,8 @@ private fun PlaybackToggle(glyph: ImageVector, active: Boolean, shown: Boolean, 
         if (!shown) return@Box
         val tint = if (active) ColorFilter.tint(SpicyColors.Accent) else null
         val glyphModifier = Modifier.fillMaxSize(0.9f)
-        if (active) Image(
+        // The glow is a blur, so Low Performance (no backdrop) leaves it out with the glass.
+        if (active && LocalBackdrop.current != null) Image(
             glyph, contentDescription = null, colorFilter = tint, alpha = 0.5f,
             modifier = glyphModifier.blur(width * 0.12f, BlurredEdgeTreatment.Unbounded),
         )
