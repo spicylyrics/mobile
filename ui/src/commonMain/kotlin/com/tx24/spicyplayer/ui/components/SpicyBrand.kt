@@ -16,21 +16,22 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.VectorPainter
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
-import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tx24.spicyplayer.R
+import com.tx24.spicyplayer.ui.resources.Res
+import com.tx24.spicyplayer.ui.resources.app_glyph
 import com.tx24.spicyplayer.ui.theme.SpicyBrand
 import com.tx24.spicyplayer.ui.theme.SpicyColors
 import com.tx24.spicyplayer.ui.theme.SpicyPalette
 import com.tx24.spicyplayer.ui.theme.SpicyType
+import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import org.jetbrains.compose.resources.vectorResource
 
 /*
  * The themed parts' look: the brand's ramp, the logo's mark cropped big in a corner, and the
@@ -49,7 +50,7 @@ val LocalPopupPalette = compositionLocalOf { ChromeTheme.Purple.palette }
 
 /** The logo's note and sparkles, to tint. */
 @Composable
-fun rememberBrandGlyph(): VectorPainter = rememberVectorPainter(ImageVector.vectorResource(R.drawable.app_glyph))
+fun rememberBrandGlyph(): VectorPainter = rememberVectorPainter(vectorResource(Res.drawable.app_glyph))
 
 /**
  * The ramp from [SpicyBrand.field] to [SpicyBrand.fieldDeep] at [fromAlpha] and [toAlpha], drawn
@@ -57,7 +58,7 @@ fun rememberBrandGlyph(): VectorPainter = rememberVectorPainter(ImageVector.vect
  * long enough that both far corners sit on its ends.
  */
 fun DrawScope.drawBrandRamp(brand: SpicyBrand, fromAlpha: Float = 1f, toAlpha: Float = 1f, degrees: Float = 165f) {
-    val radians = Math.toRadians(degrees.toDouble())
+    val radians = degrees.toDouble() * (PI / 180.0)
     val dx = sin(radians).toFloat()
     val dy = -cos(radians).toFloat()
     val half = (abs(size.width * dx) + abs(size.height * dy)) / 2f
@@ -98,7 +99,7 @@ fun DrawScope.drawBrandMark(
 @Composable
 fun SpicyBrandLine(modifier: Modifier = Modifier) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(ImageVector.vectorResource(R.drawable.app_glyph), null, Modifier.size(16.dp), tint = SpicyColors.TextSecondary)
+        Icon(vectorResource(Res.drawable.app_glyph), null, Modifier.size(16.dp), tint = SpicyColors.TextSecondary)
         Text("Spicy Lyrics Mobile", style = SpicyType.Caption.copy(fontSize = 13.12.sp, fontWeight = FontWeight.SemiBold, color = SpicyColors.TextSecondary))
     }
 }
