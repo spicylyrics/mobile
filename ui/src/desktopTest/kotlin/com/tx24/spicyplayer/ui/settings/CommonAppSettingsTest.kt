@@ -229,8 +229,9 @@ class CommonAppSettingsTest {
             }
             assertEquals(key, value, stored)
         }
-        // The types a restore checks against are the ones written, plus the switch stageArts replaced.
-        assertEquals(expected.keys + "coverStage", s.storedTypes.keys)
+        // The types a restore checks against are the ones written, plus the switches stageArts and
+        // bigCoverArts replaced.
+        assertEquals(expected.keys + "coverStage" + "bigCoverCanvas", s.storedTypes.keys)
     }
 
     @Test fun namedChoicesReadOnlyKnownNames() {
