@@ -345,7 +345,7 @@ fun coverCrop(cw: Int, ch: Int, bw: Float, bh: Float): IntArray {
 }
 
 /** [bytes] decoded, no longer than [maxSide] on its long side. */
-private fun decodeScaled(bytes: ByteArray, maxSide: Int): Image {
+internal fun decodeScaled(bytes: ByteArray, maxSide: Int): Image {
     val image = Image.makeFromEncoded(bytes)
     val longest = max(image.width, image.height)
     if (longest <= maxSide) return image

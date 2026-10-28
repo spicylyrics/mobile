@@ -146,6 +146,8 @@ fun main(args: Array<String>) {
     SyncDelay.attach(session, delays, analysis) { (screen.value as? Screen.Track)?.lyrics }
     val spotify = SharedSpotify.extras(cacheDir)
     val backgroundImages = DesktopImageCache(File(cacheDir, "backgrounds"))
+    // A folder of its own, so a pile of small pictures never pushes the backgrounds out.
+    val avatars = DesktopAvatars(DesktopImageCache(File(cacheDir, "avatars"))::bytes)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var beats: Job? = null
 
@@ -282,7 +284,7 @@ fun main(args: Array<String>) {
             }
             CompositionLocalProvider(
                 LocalDisplayRefreshRate provides refreshRate,
-                LocalLyricsImageLoader provides PlaceholderAvatars,
+                LocalLyricsImageLoader provides avatars,
                 LocalTooltipHost provides DesktopTooltips,
                 LocalLyricsActions provides songLyrics,
                 LocalPopupPalette provides popupPalette,
@@ -387,7 +389,7 @@ fun main(args: Array<String>) {
             if (miniTrack != null && ready != null) {
                 val display = desktopSettings.desktopLyrics(ready, miniTrack.track.durationMs)
                 // A window of its own: it doesn't see the main window's locals.
-                CompositionLocalProvider(LocalDisplayRefreshRate provides refreshRate, LocalLyricsImageLoader provides PlaceholderAvatars) {
+                CompositionLocalProvider(LocalDisplayRefreshRate provides refreshRate, LocalLyricsImageLoader provides avatars) {
                 Lyrics(
                     lyrics = ready,
                     trackKey = miniTrack.track.key,
