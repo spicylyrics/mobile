@@ -419,9 +419,12 @@ private fun UploadPage(
                             }
                             setBusy(true)
                             scope.launch {
-                                val result = runCatching { library.add(current, text, name, save) }
-                                    .getOrElse { if (it is CancellationException) throw it else AddResult.Refused("Upload failed.") }
-                                setBusy(false)
+                                val result = try {
+                                    runCatching { library.add(current, text, name, save) }
+                                        .getOrElse { if (it is CancellationException) throw it else AddResult.Refused("Upload failed.") }
+                                } finally {
+                                    setBusy(false)
+                                }
                                 when (result) {
                                     is AddResult.Refused -> messages.tryEmit(result.message)
                                     is AddResult.Added -> {
