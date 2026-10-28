@@ -6,7 +6,7 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 /** The settings panel's tabs, in sidebar order. */
-enum class PanelSectionId { Lyrics, Background, Playback, Interface, Appearance, Experiments, Advanced, About }
+enum class PanelSectionId { Lyrics, Background, Playback, Interface, Appearance, Device, Experiments, Advanced, About }
 
 /**
  * One tab of the panel. [secondary] tabs sit under the sidebar's divider. [intro] is a short line
@@ -201,3 +201,16 @@ fun panelLayoutFor(width: Dp): PanelLayout = when {
     width < COMPACT_BELOW -> PanelLayout.Compact
     else -> PanelLayout.Wide
 }
+
+/**
+ * From this width (an expanded window: a tablet in landscape, a DeX or desktop window) an app
+ * that also has its own small-screen settings shows this panel instead.
+ */
+val BIG_SCREEN_SETTINGS_FROM = 840.dp
+
+/** ...as long as the window is this tall too: a big phone on its side is as wide, but not as tall. */
+val BIG_SCREEN_SETTINGS_MIN_HEIGHT = 480.dp
+
+/** Whether a window [width] by [height] gets this panel rather than the small-screen settings. */
+fun usesBigScreenSettings(width: Dp, height: Dp): Boolean =
+    width >= BIG_SCREEN_SETTINGS_FROM && height >= BIG_SCREEN_SETTINGS_MIN_HEIGHT

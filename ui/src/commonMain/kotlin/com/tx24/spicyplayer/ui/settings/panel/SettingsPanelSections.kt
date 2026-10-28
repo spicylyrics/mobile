@@ -42,12 +42,23 @@ class PanelActions(
     val links: List<Pair<String, String>> = emptyList(),
 )
 
-fun settingsPanelSections(settings: CommonAppSettings, actions: PanelActions = PanelActions()): List<PanelSection> = listOf(
+/**
+ * [deviceGroups] are the platform's own settings (a phone's floating window, haptics, screen),
+ * shown in a Device tab after Appearance; no groups, no tab.
+ */
+fun settingsPanelSections(
+    settings: CommonAppSettings,
+    actions: PanelActions = PanelActions(),
+    deviceGroups: List<PanelGroup> = emptyList(),
+): List<PanelSection> = listOfNotNull(
     lyricsSection(settings),
     backgroundSection(settings),
     playbackSection(settings),
     interfaceSection(settings),
     appearanceSection(settings),
+    deviceGroups.takeIf { groups -> groups.any { it.rows.isNotEmpty() } }?.let {
+        PanelSection(PanelSectionId.Device, "Device", PanelIcons.Device, groups = it)
+    },
     experimentsSection(settings),
     advancedSection(actions),
     PanelSection(PanelSectionId.About, "About", PanelIcons.About, secondary = true),

@@ -30,6 +30,9 @@ internal object PanelIcons {
     /** A type specimen: the tab is the font and how the lyrics draw. */
     val Appearance = icon("Appearance", "M1.75 13 5.5 3l3.75 10M3.1 9.5h4.8", circle(12f, 10.75f, 2.25f), "M14.25 8.5V13")
 
+    /** A tablet: the tab holds what the device itself does. */
+    val Device = icon("Device", roundRect(3f, 1.75f, 10f, 12.5f, 1.75f), "M7 12h2")
+
     val Experiments = icon(
         "Experiments",
         "M6.25 2h3.5M6.75 2v4.25L3 12.25A1.25 1.25 0 0 0 4.1 14h7.8a1.25 1.25 0 0 0 1.1-1.75L9.25 6.25V2",
