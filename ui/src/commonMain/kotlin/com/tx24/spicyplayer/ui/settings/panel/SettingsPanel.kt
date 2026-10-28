@@ -99,7 +99,9 @@ import com.tx24.spicyplayer.ui.theme.SpicyType
  * button ([panelLayoutFor]). [theme] dresses it, in the brand's ramp or the plain plate. Links open
  * through `LocalPlatformActions`. Escape clears the search, then goes back, then closes
  * ([onClose]); Ctrl+F jumps to the search. [systemBack] hosts the platform's back gesture, if it has
- * one, and is handed the same steps as Escape.
+ * one, and is handed the same steps as Escape. [autoFocusSearch] puts the caret in the search when
+ * the panel opens and on the section list; off (where focus brings up a soft keyboard), the search
+ * only keeps its focus while it moves.
  */
 @Composable
 fun SettingsPanel(
@@ -109,6 +111,7 @@ fun SettingsPanel(
     modifier: Modifier = Modifier,
     actions: PanelActions = PanelActions(),
     systemBack: @Composable (onBack: () -> Unit) -> Unit = {},
+    autoFocusSearch: Boolean = true,
 ) {
     val palette = theme.palette
     CompositionLocalProvider(LocalSpicyPalette provides palette) {
@@ -118,7 +121,14 @@ fun SettingsPanel(
         val searchFocus = remember { FocusRequester() }
         // One search field, moved between the section list and the results, so what's typed and
         // the caret carry over instead of a fresh field starting again.
-        val searchBar = remember { movableContentOf { SearchBar(query, { query = it }, searchFocus) } }
+        var searchFocused by remember { mutableStateOf(false) }
+        // Whether the field had focus when the query last changed, for it to keep once it moves.
+        var refocus by remember { mutableStateOf(false) }
+        val searchBar = remember {
+            movableContentOf {
+                SearchBar(query, { refocus = searchFocused; query = it }, searchFocus, onFocusChange = { searchFocused = it })
+            }
+        }
         val searching = searchTerms(query).isNotEmpty()
         val hits = if (searching) searchPanel(query, sections) else null
         val brand = palette.brand
@@ -161,7 +171,9 @@ fun SettingsPanel(
                 tab == null -> 2
                 else -> null
             }
-            LaunchedEffect(searchHost) { if (searchHost != null) runCatching { searchFocus.requestFocus() } }
+            LaunchedEffect(searchHost) {
+                if (searchHost != null && (autoFocusSearch || refocus)) runCatching { searchFocus.requestFocus() }
+            }
             Box(
                 Modifier.fillMaxSize().onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
@@ -267,7 +279,7 @@ private fun BrandLine() {
 }
 
 @Composable
-private fun SearchBar(query: String, onQuery: (String) -> Unit, focus: FocusRequester) {
+private fun SearchBar(query: String, onQuery: (String) -> Unit, focus: FocusRequester, onFocusChange: (Boolean) -> Unit = {}) {
     val hover = remember { MutableInteractionSource() }
     val hovered by hover.collectIsHoveredAsState()
     var focused by remember { mutableStateOf(false) }
@@ -296,7 +308,7 @@ private fun SearchBar(query: String, onQuery: (String) -> Unit, focus: FocusRequ
             modifier = Modifier
                 .weight(1f)
                 .focusRequester(focus)
-                .onFocusChanged { focused = it.isFocused },
+                .onFocusChanged { focused = it.isFocused; onFocusChange(it.isFocused) },
             decorationBox = { field ->
                 Box(contentAlignment = Alignment.CenterStart) {
                     if (query.isEmpty()) BasicText("Search settings", style = style.copy(color = SpicyColors.TextSecondary), maxLines = 1)
