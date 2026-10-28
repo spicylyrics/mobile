@@ -142,11 +142,10 @@ fun main(args: Array<String>) {
         Window(
             onCloseRequest = { source.close(); exitApplication() },
             onPreviewKeyEvent = settingsWindow::onKey,
-            onKeyEvent = SyncDelay::onKey,
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
-            onKeyEvent = { event -> pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: false },
+            onKeyEvent = { event -> SyncDelay.onKey(event) || pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: false },
         ) {
             CompositionLocalProvider(
                 LocalDisplayRefreshRate provides refreshRate,
