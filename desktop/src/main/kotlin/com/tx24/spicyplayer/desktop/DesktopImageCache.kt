@@ -1,6 +1,9 @@
 package com.tx24.spicyplayer.desktop
 
 import java.io.File
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -30,7 +33,7 @@ class DesktopImageCache(private val dir: File, private val client: OkHttpClient 
         if (fetched == null) return cached?.let { runCatching { it.readBytes() }.getOrNull() }
         runCatching {
             dir.mkdirs()
-            file.writeBytes(fetched)
+            writeAtomically(file, fetched)
             prune()
         }
         return fetched
@@ -40,6 +43,24 @@ class DesktopImageCache(private val dir: File, private val client: OkHttpClient 
         val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".img") }.orEmpty()
         val doomed = filesToPrune(files.map { CacheEntry(it.name, it.length(), it.lastModified()) }).toSet()
         files.filter { it.name in doomed }.forEach { it.delete() }
+    }
+}
+
+/**
+ * Writes [bytes] to [file] through a temporary file beside it and a move, so a write cut short (a
+ * crash, or a second copy of the app) never leaves a half picture that would pass as fresh.
+ */
+fun writeAtomically(file: File, bytes: ByteArray) {
+    val temp = File.createTempFile(file.name, ".part", file.parentFile)
+    try {
+        temp.writeBytes(bytes)
+        try {
+            Files.move(temp.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(temp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+    } finally {
+        temp.delete()
     }
 }
 
