@@ -81,3 +81,102 @@ jobs:
       #     --repo "$GITHUB_REPOSITORY" --title "Spicy Lyrics Desktop ${{ steps.version.outputs.name }}" \
       #     --generate-notes --prerelease --verify-tag
       # guarded by `if: startsWith(github.ref, 'refs/tags/desktop-v')`.
+
+  # Linux: reads players through playerctl, so no helper to build.
+  deb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      # jpackage builds the .deb under fakeroot.
+      - name: Packaging tools
+        run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot
+      - name: Version from tag
+        id: version
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/desktop-v*)
+              version="${GITHUB_REF_NAME#desktop-v}"
+              if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "Tag $GITHUB_REF_NAME is not desktop-vMAJOR.MINOR.BUILD" >&2
+                exit 1
+              fi
+              echo "version=$version" >> "$GITHUB_OUTPUT"
+              echo "name=$version" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "name=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+      - name: Build .deb
+        env:
+          SPICY_LYRICS_CLIENT_KEY: ${{ secrets.SPICY_LYRICS_CLIENT_KEY || vars.SPICY_LYRICS_CLIENT_KEY }}
+          DESKTOP_VERSION: ${{ steps.version.outputs.version }}
+        run: ./gradlew --no-daemon :desktop:packageDeb ${DESKTOP_VERSION:+-PdesktopVersion=$DESKTOP_VERSION}
+      - name: Checksum
+        run: |
+          cd desktop/build/compose/binaries/main/deb
+          ls -l *.deb
+          sha256sum *.deb | tee SHA256SUMS
+      - name: Upload .deb
+        uses: actions/upload-artifact@v7
+        with:
+          name: spicy-lyrics-desktop-deb-${{ steps.version.outputs.name }}
+          path: |
+            desktop/build/compose/binaries/main/deb/*.deb
+            desktop/build/compose/binaries/main/deb/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
+
+  # macOS: no media source yet (it shows "waiting"), but the app builds and packages. Unsigned.
+  dmg:
+    runs-on: macos-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Version from tag
+        id: version
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/desktop-v*)
+              version="${GITHUB_REF_NAME#desktop-v}"
+              if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                echo "Tag $GITHUB_REF_NAME is not desktop-vMAJOR.MINOR.BUILD" >&2
+                exit 1
+              fi
+              echo "version=$version" >> "$GITHUB_OUTPUT"
+              echo "name=$version" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "name=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+              ;;
+          esac
+      - name: Build .dmg
+        env:
+          SPICY_LYRICS_CLIENT_KEY: ${{ secrets.SPICY_LYRICS_CLIENT_KEY || vars.SPICY_LYRICS_CLIENT_KEY }}
+          DESKTOP_VERSION: ${{ steps.version.outputs.version }}
+        run: ./gradlew --no-daemon :desktop:packageDmg ${DESKTOP_VERSION:+-PdesktopVersion=$DESKTOP_VERSION}
+      - name: Checksum
+        run: |
+          cd desktop/build/compose/binaries/main/dmg
+          ls -l *.dmg
+          shasum -a 256 *.dmg | tee SHA256SUMS
+      - name: Upload .dmg
+        uses: actions/upload-artifact@v7
+        with:
+          name: spicy-lyrics-desktop-dmg-${{ steps.version.outputs.name }}
+          path: |
+            desktop/build/compose/binaries/main/dmg/*.dmg
+            desktop/build/compose/binaries/main/dmg/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14

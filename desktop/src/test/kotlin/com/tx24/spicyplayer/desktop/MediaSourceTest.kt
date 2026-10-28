@@ -28,9 +28,7 @@ class MediaSourceTest {
         assertEquals(helper, (windows as GsmtcMediaSource).helper)
         assertNotNull(windows.unavailableReason)
         assertTrue(mediaSource(helper, osName = "Linux") is MprisMediaSource)
-        val mac = mediaSource(helper, osName = "Mac OS X")
-        assertNotNull(mac.unavailableReason)
-        assertTrue(mac.capabilities.isEmpty())
+        assertTrue(mediaSource(helper, osName = "Mac OS X") is MacMediaSource)
         assertNotNull(mediaSource(helper, osName = "SunOS").unavailableReason)
     }
 
