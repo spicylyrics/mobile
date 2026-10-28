@@ -42,12 +42,16 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
@@ -100,6 +104,7 @@ import dev.chrisbanes.haze.hazeSource
 import com.tx24.spicyplayer.ui.nowplaying.NoticeActions
 import com.tx24.spicyplayer.ui.nowplaying.NowPlaying
 import com.tx24.spicyplayer.ui.nowplaying.NowPlayingState
+import com.tx24.spicyplayer.ui.nowplaying.RepeatState
 import com.tx24.spicyplayer.ui.theme.SpicyColors
 import kotlin.math.roundToInt
 
@@ -402,6 +407,9 @@ private fun CoverPlayback(env: PageEnv, playing: NowPlayingState, nowPlaying: No
     val pause by animateFloatAsState(if (playing.isPlaying) 1f else 0f, tween(200), label = "playPause")
     val skip = remember { SkipGlyph { 0f } }
     val playPause = remember { PlayPauseGlyph { pause } }
+    val toggles = playbackToggles(env.capabilities, playing)
+    // With either toggle, both ends keep their room, so the three buttons stay centred.
+    val withToggles = toggles.shuffle != null || toggles.repeat != null
     Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(
             Modifier
@@ -411,6 +419,10 @@ private fun CoverPlayback(env: PageEnv, playing: NowPlayingState, nowPlaying: No
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            if (withToggles) PlaybackToggle(
+                SpicyGlyphs.Shuffle, active = toggles.shuffle == true, shown = toggles.shuffle != null,
+                label = "Shuffle", widthPx = metrics.toggleWidthPx,
+            ) { toggles.shuffle?.let { nowPlaying.setShuffle(!it) } }
             for (slot in transportSlots(env.capabilities)) {
                 val width = if (slot.button == TransportButton.PlayPause) metrics.playPauseWidthPx else metrics.skipWidthPx
                 val onClick: () -> Unit = when (slot.button) {
@@ -431,8 +443,39 @@ private fun CoverPlayback(env: PageEnv, playing: NowPlayingState, nowPlaying: No
                     Image(glyph, contentDescription = slot.button.name, modifier = glyphModifier)
                 }
             }
+            if (withToggles) PlaybackToggle(
+                if (toggles.repeat == RepeatState.One) SpicyGlyphs.RepeatOne else SpicyGlyphs.Repeat,
+                active = toggles.repeat != null && toggles.repeat != RepeatState.Off, shown = toggles.repeat != null,
+                label = "Repeat", widthPx = metrics.toggleWidthPx,
+            ) { toggles.repeat?.let { nowPlaying.setRepeat(nextRepeat(it, playing.repeatOneSupported)) } }
         }
         Timeline(now, playing.track.durationMs, env.capabilities.seek && playing.canSeek, metrics, nowPlaying::seekTo)
+    }
+}
+
+/**
+ * Shuffle or repeat at an end of the playback row, in the accent with a soft glow while on (the
+ * accent can be white, so the glow is what tells on from off; with Low Performance, only the tint).
+ * Not [shown], it only keeps its room.
+ */
+@Composable
+private fun PlaybackToggle(glyph: ImageVector, active: Boolean, shown: Boolean, label: String, widthPx: Float, onClick: () -> Unit) {
+    val density = LocalDensity.current.density
+    val width = widthPx.toDp(density)
+    val interaction = remember { MutableInteractionSource() }
+    Box(
+        Modifier.width(width).fillMaxHeight().clickable(interaction, indication = null, enabled = shown, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!shown) return@Box
+        val tint = if (active) ColorFilter.tint(SpicyColors.Accent) else null
+        val glyphModifier = Modifier.fillMaxSize(0.9f)
+        // The glow is a blur, so Low Performance (no backdrop) leaves it out with the glass.
+        if (active && LocalBackdrop.current != null) Image(
+            glyph, contentDescription = null, colorFilter = tint, alpha = 0.5f,
+            modifier = glyphModifier.blur(width * 0.12f, BlurredEdgeTreatment.Unbounded),
+        )
+        Image(glyph, contentDescription = label, colorFilter = tint, modifier = glyphModifier)
     }
 }
 

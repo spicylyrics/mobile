@@ -1,12 +1,15 @@
 package com.tx24.spicyplayer.ui.bigscreen
 
 import androidx.compose.ui.input.key.Key
+import com.tx24.spicyplayer.ui.nowplaying.NowPlayingState
+import com.tx24.spicyplayer.ui.nowplaying.RepeatState
 
 /**
  * What the platform can do for the big-screen page: which of [com.tx24.spicyplayer.ui.nowplaying.PlaybackTransport]'s
  * commands reach the player, and whether the window can go fullscreen (a desktop window can; a
  * tablet's app already fills the screen, so cinema is as far as it goes), and whether it has a
- * floating window to shrink the lyrics into.
+ * floating window to shrink the lyrics into. [shuffle] and [repeat] are off unless the platform can
+ * set them.
  */
 data class PlayerCapabilities(
     val playPause: Boolean = true,
@@ -15,9 +18,11 @@ data class PlayerCapabilities(
     val seek: Boolean = true,
     val fullscreen: Boolean = false,
     val pictureInPicture: Boolean = false,
+    val shuffle: Boolean = false,
+    val repeat: Boolean = false,
 )
 
-/** A button in the cover's playback row. Shuffle and repeat are left out for now. */
+/** A button in the cover's playback row; shuffle and repeat sit at its ends ([playbackToggles]). */
 enum class TransportButton { Previous, PlayPause, Next }
 
 /** One playback button and whether the player can carry it out. */
@@ -32,6 +37,28 @@ fun transportSlots(capabilities: PlayerCapabilities): List<TransportSlot> = list
     TransportSlot(TransportButton.PlayPause, capabilities.playPause),
     TransportSlot(TransportButton.Next, capabilities.skipNext),
 )
+
+/**
+ * The row's toggles: shuffle on the left and repeat on the right, each null (not shown) unless the
+ * platform can set it and the player says where it stands.
+ */
+data class PlaybackToggles(val shuffle: Boolean?, val repeat: RepeatState?)
+
+fun playbackToggles(capabilities: PlayerCapabilities, playing: NowPlayingState): PlaybackToggles = PlaybackToggles(
+    shuffle = playing.shuffle.takeIf { capabilities.shuffle },
+    repeat = playing.repeat.takeIf { capabilities.repeat },
+)
+
+/**
+ * What a press on repeat asks for next: off, then the whole queue, then the one song where the
+ * player can ([oneSupported]), then off. Without it, all goes straight back to off, or the button
+ * would ask for one and read back all forever.
+ */
+fun nextRepeat(current: RepeatState, oneSupported: Boolean = true): RepeatState = when (current) {
+    RepeatState.Off -> RepeatState.All
+    RepeatState.All -> if (oneSupported) RepeatState.One else RepeatState.Off
+    RepeatState.One -> RepeatState.Off
+}
 
 /** Share of the song played, 0..1; 0 for an unknown length. */
 fun progressOf(positionMs: Long, durationMs: Long): Float =

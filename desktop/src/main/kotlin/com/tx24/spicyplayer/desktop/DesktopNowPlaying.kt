@@ -9,6 +9,7 @@ import com.tx24.spicyplayer.ui.nowplaying.NoticeIcons
 import com.tx24.spicyplayer.ui.nowplaying.NowPlaying
 import com.tx24.spicyplayer.ui.nowplaying.NowPlayingState
 import com.tx24.spicyplayer.ui.nowplaying.NowPlayingTrack
+import com.tx24.spicyplayer.ui.nowplaying.RepeatState
 import java.awt.Desktop
 import java.awt.Toolkit
 import java.awt.datatransfer.StringSelection
@@ -39,6 +40,9 @@ class DesktopNowPlaying(private val source: MediaSource, private val session: Me
             artwork = cover(session.cover),
             isPlaying = session.clock.isPlaying,
             canSeek = Transport.SEEK in source.capabilities,
+            shuffle = session.shuffle,
+            repeat = repeatStateOf(session.repeat),
+            repeatOneSupported = session.repeatOneSupported,
         )
     }
 
@@ -63,6 +67,8 @@ class DesktopNowPlaying(private val source: MediaSource, private val session: Me
     override fun skipPrevious() = control(Transport.PREVIOUS)
     override fun seekTo(positionMs: Long) = session.seek(source, positionMs)
     override fun sendCustomAction(action: String) = Unit
+    override fun setShuffle(on: Boolean) = session.setShuffle(source, on)
+    override fun setRepeat(mode: RepeatState) = session.setRepeat(source, repeatModeOf(mode))
 
     private fun control(action: Transport) {
         val app = session.track?.app ?: return
@@ -70,14 +76,33 @@ class DesktopNowPlaying(private val source: MediaSource, private val session: Me
     }
 }
 
-/** What the page can offer with a source that takes [transport]; a desktop window can always go fullscreen. */
-fun capabilitiesOf(transport: Set<Transport>): PlayerCapabilities = PlayerCapabilities(
+/**
+ * What the page can offer with a source that takes [transport], and sets shuffle and repeat where it
+ * [canShuffle] and [canRepeat]; a desktop window can always go fullscreen.
+ */
+fun capabilitiesOf(transport: Set<Transport>, canShuffle: Boolean = false, canRepeat: Boolean = false): PlayerCapabilities = PlayerCapabilities(
     playPause = Transport.PLAY in transport && Transport.PAUSE in transport,
     skipNext = Transport.NEXT in transport,
     skipPrevious = Transport.PREVIOUS in transport,
     seek = Transport.SEEK in transport,
     fullscreen = true,
+    shuffle = canShuffle,
+    repeat = canRepeat,
 )
+
+/** The player's repeat mode as the shared screens name it. */
+fun repeatStateOf(mode: RepeatMode?): RepeatState? = when (mode) {
+    null -> null
+    RepeatMode.Off -> RepeatState.Off
+    RepeatMode.All -> RepeatState.All
+    RepeatMode.One -> RepeatState.One
+}
+
+fun repeatModeOf(state: RepeatState): RepeatMode = when (state) {
+    RepeatState.Off -> RepeatMode.Off
+    RepeatState.All -> RepeatMode.All
+    RepeatState.One -> RepeatMode.One
+}
 
 private const val DISCORD_URL = "https://discord.com/invite/uqgXU5wh8j"
 

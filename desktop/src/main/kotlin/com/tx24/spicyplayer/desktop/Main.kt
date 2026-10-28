@@ -137,7 +137,7 @@ fun main(args: Array<String>) {
     scope.launch {
         songLyrics.shown.collect { shown -> if (shown != null) screen.value = Screen.Track(shown.track, shown.lyrics) }
     }
-    val capabilities = capabilitiesOf(source.capabilities)
+    val capabilities = capabilitiesOf(source.capabilities, source.canShuffle, source.canRepeat)
 
     suspend fun lookUp(track: Track) = withContext(Dispatchers.Main) { songLyrics.load(track) }
 
@@ -210,10 +210,9 @@ fun main(args: Array<String>) {
         }
     }
 
-    // The mini window's rate: the primary screen's.
-    val refreshRate = GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.displayMode.refreshRate
-        .takeIf { it > 0 }?.toFloat() ?: 60f
     application {
+        // The screen the main window is on, again whenever it moves: the primary one may run at another rate.
+        var refreshRate by remember { mutableStateOf(60f) }
         val windowState = rememberWindowState(size = DpSize(1100.dp, 760.dp))
         val settingsWindow = remember { SettingsWindowState() }
         var page by remember { mutableStateOf(BigScreenState(romanized = desktopSettings.romanize)) }
@@ -232,17 +231,16 @@ fun main(args: Array<String>) {
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
             onKeyEvent = { event -> MiniLyrics.onKey(event) || SyncDelay.onKey(event) || pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: false },
         ) {
-            // The screen the window is on, again whenever it moves: the primary one may run at another rate.
-            var windowRefreshRate by remember { mutableStateOf(refreshRateOf(window)) }
             DisposableEffect(window) {
+                refreshRate = refreshRateOf(window)
                 val listener = object : ComponentAdapter() {
-                    override fun componentMoved(e: ComponentEvent?) { windowRefreshRate = refreshRateOf(window) }
+                    override fun componentMoved(e: ComponentEvent?) { refreshRate = refreshRateOf(window) }
                 }
                 window.addComponentListener(listener)
                 onDispose { window.removeComponentListener(listener) }
             }
             CompositionLocalProvider(
-                LocalDisplayRefreshRate provides windowRefreshRate,
+                LocalDisplayRefreshRate provides refreshRate,
                 LocalLyricsImageLoader provides PlaceholderAvatars,
                 LocalTooltipHost provides DesktopTooltips,
                 LocalLyricsActions provides songLyrics,

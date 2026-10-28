@@ -95,13 +95,14 @@ class BigScreenMetrics(
 
     /**
      * The playback row on the cover: `.PlaybackControls { height: 10cqh; padding: 0 20cqh;
-     * bottom: 6.5cqh }`, a skip button 12cqw wide and play/pause 9.25cqw.
+     * bottom: 6.5cqh }`, a skip button 12cqw wide, play/pause 9.25cqw, and shuffle and repeat 7cqw.
      */
     val playbackRowHeightPx: Float = coverSizePx * 0.10f
     val playbackRowInsetPx: Float = coverSizePx * 0.20f
     val playbackRowBottomPx: Float = coverSizePx * 0.065f
     val skipWidthPx: Float = coverSizePx * 0.12f
     val playPauseWidthPx: Float = coverSizePx * 0.0925f
+    val toggleWidthPx: Float = coverSizePx * 0.07f
 
     /** `.MediaContent .Timeline { bottom: 0; padding: 5cqw 7cqw }`, its bar `height: 1.3cqh`. */
     val timelineInsetXPx: Float = coverSizePx * 0.07f
