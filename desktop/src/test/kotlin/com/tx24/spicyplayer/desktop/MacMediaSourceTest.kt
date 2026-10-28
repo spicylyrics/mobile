@@ -219,7 +219,7 @@ class MacMediaSourceTest {
         assertEquals(macArtworkFile(macTrackKey(one), dir), macArtworkFile(macTrackKey(one.copy(positionMs = 5)), dir))
         assertFalse(macArtworkFile(macTrackKey(one), dir) == macArtworkFile(macTrackKey(one.copy(title = "Two")), dir))
         assertEquals(dir, macArtworkFile("x", dir).parentFile)
-        assertTrue(macArtworkFile("x", dir).name.matches(Regex("music-[0-9a-f]{16}\.img")))
+        assertTrue(macArtworkFile("x", dir).name.matches(Regex("""music-[0-9a-f]{16}\.img""")))
     }
 
     @Test
