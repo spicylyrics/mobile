@@ -40,3 +40,7 @@ An installed build checks GitHub's releases for a newer `desktop-vX.Y.Z` tag at 
 
 - A `desktop-vX.Y.Z` tag sets the version through `-PdesktopVersion=X.Y.Z`. Other runs use the default in `build.gradle.kts`.
 - The Spicy Lyrics key comes from the `SPICY_LYRICS_CLIENT_KEY` repository secret, or the variable of that name. Without either, the build leaves that source out.
+
+## Sync delay
+
+Ctrl+D in the lyrics window opens the sync-delay window (`SyncDelayWindow.kt`; `openSyncDelay()` for a menu). It nudges the followed player's offset in 10 or 50 ms steps with the current line in view, or works it out from taps along to the song's beats (`TapSync`, from the Spotify analysis). Positive shows the lyrics earlier. Offsets are saved per player app id in `sync-delay.properties` beside the settings file, as `desktop.offset.<app id>` and move the lyrics at once; `--offset` overrides them for every player while given.

@@ -85,13 +85,15 @@ fun main(args: Array<String>) {
     source.unavailableReason?.let { error(it) }
     CoreLog.sink = { level, tag, message -> if (level >= CoreLog.Level.WARN) System.err.println("[$tag] $message") }
 
-    val session = MediaSession(opts["--app"], opts["--offset"]?.toLongOrNull() ?: 0L)
+    val delays = SyncDelays(SyncDelays.defaultStore(), opts["--offset"]?.toLongOrNull())
+    val session = MediaSession(opts["--app"], delays::offsetFor)
     val lookup = LyricsLookup()
     val screen = MutableStateFlow<Screen>(Screen.Waiting)
     val playing = MutableStateFlow(false)
     val cover = MutableStateFlow<File?>(null)
     // The playing song's audio analysis, which the background's speed follows.
     val analysis = MutableStateFlow<AudioAnalysis?>(null)
+    SyncDelay.attach(session, delays, analysis) { (screen.value as? Screen.Track)?.lyrics }
     val spotify = SharedSpotify.extras(cacheDir)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var beats: Job? = null
@@ -152,7 +154,7 @@ fun main(args: Array<String>) {
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
-            onKeyEvent = { event -> pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: false },
+            onKeyEvent = { event -> SyncDelay.onKey(event) || pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: false },
         ) {
             CompositionLocalProvider(
                 LocalDisplayRefreshRate provides refreshRate,
