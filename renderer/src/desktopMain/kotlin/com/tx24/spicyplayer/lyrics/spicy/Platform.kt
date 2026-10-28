@@ -18,3 +18,5 @@ internal actual fun roundHalfUp(value: Float): Int = Math.round(value)
 internal actual val resizeSnapsToLine: Boolean = true
 
 internal actual val textLayoutContext: CoroutineContext = EmptyCoroutineContext
+
+internal actual val resizeRelayoutDelayMs: Long = 150L

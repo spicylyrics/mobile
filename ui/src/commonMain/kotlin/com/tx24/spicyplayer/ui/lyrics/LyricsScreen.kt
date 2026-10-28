@@ -791,6 +791,7 @@ fun LyricsScreen(
                             config = renderConfig,
                             fontSizeScale = lyricsFontScale,
                             noticeActions = noticeActions,
+                            waitingDetail = state.waitingDetail,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -1161,6 +1162,8 @@ fun LyricsPanel(
     /** Whether the credits say who translated the lyrics; [romanizationCredit] is already null when they don't. */
     textCredits: Boolean = true,
     romanizationCredit: String? = null,
+    /** Under "Waiting for a song", such as why the player can't be read. */
+    waitingDetail: String? = null,
 ) {
     // The loading skeleton: up as soon as the lookup starts, over whatever the panel
     // shows, fading in over 0.2s and out over 0.25s (ease-out).
@@ -1174,6 +1177,7 @@ fun LyricsPanel(
             romanizationMode = romanizationMode,
             textCredits = textCredits,
             romanizationCredit = romanizationCredit,
+            waitingDetail = waitingDetail,
         )
         AnimatedVisibility(
             visible = lyrics == LyricsState.Loading,
@@ -1219,9 +1223,10 @@ private fun LyricsPanelContent(
     romanizationMode: RomanizationMode = RomanizationMode.Replace,
     textCredits: Boolean = true,
     romanizationCredit: String? = null,
+    waitingDetail: String? = null,
 ) {
     when (lyrics) {
-        LyricsState.Idle -> LyricsNotice("Waiting for a song", modifier, bottomPx = noticeBottomPx, compact = noticeActions == null, animate = LocalUiAnimations.current)
+        LyricsState.Idle -> LyricsNotice("Waiting for a song", modifier, body = waitingDetail, bottomPx = noticeBottomPx, compact = noticeActions == null, animate = LocalUiAnimations.current)
         LyricsState.Loading -> Unit
         is LyricsState.Error -> LyricsNotice(lyrics, noticeActions, noticeBottomPx, modifier, animate = LocalUiAnimations.current)
         is LyricsState.Ready -> {

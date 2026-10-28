@@ -50,6 +50,8 @@ data class LyricsScreenState(
     val humanRomanizedLines: Int = 0,
     /** A notice about the player is up over the lyrics (Spotify Free's limits). */
     val playerNotice: Boolean = false,
+    /** What "Waiting for a song" says under it, such as why the player can't be read; null for nothing. */
+    val waitingDetail: String? = null,
 ) {
     val isPlaying: Boolean get() = nowPlaying.isPlaying
     val durationMs: Long get() = nowPlaying.track.durationMs

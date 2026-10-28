@@ -83,18 +83,27 @@ class PlayPauseGlyph(private val pause: () -> Float) : Painter() {
 
     override fun DrawScope.onDraw() {
         val t = pause().coerceIn(0f, 1f)
-        val w = size.width
         // The pause glyph fills the frame; the play glyph is drawn at the same width, so smaller.
-        val pauseUnit = w / PAUSE_WIDTH
-        val playUnit = w / PLAY_WIDTH
+        // A frame shorter than the glyphs' shape (a row capped at the touch height) shrinks both
+        // to its height instead, centred, so neither is cut off.
+        val pauseUnit = minOf(size.width / PAUSE_WIDTH, size.height / HEIGHT)
+        val playUnit = minOf(size.width / PLAY_WIDTH, size.height / HEIGHT)
+        val w = PAUSE_WIDTH * pauseUnit
+        val left = (size.width - w) / 2f
         val playTop = (size.height - HEIGHT * playUnit) / 2f
+        val pauseTop = (size.height - HEIGHT * pauseUnit) / 2f
+        translate(left = left) { drawMorph(t, w, pauseUnit, playUnit, playTop, pauseTop) }
+    }
+
+    private fun DrawScope.drawMorph(t: Float, w: Float, pauseUnit: Float, playUnit: Float, playTop: Float, pauseTop: Float) {
+        val playLeft = (w - PLAY_WIDTH * playUnit) / 2f
         // At rest, the real glyphs: the morph's halves would show a seam down the triangle.
-        if (t == 0f) {
-            translate(top = playTop) { scale(playUnit, playUnit, pivot = Offset.Zero) { drawPath(PLAY_PATH, Color.White) } }
+        if (t <= REST) {
+            translate(left = playLeft, top = playTop) { scale(playUnit, playUnit, pivot = Offset.Zero) { drawPath(PLAY_PATH, Color.White) } }
             return
         }
-        if (t == 1f) {
-            scale(pauseUnit, pauseUnit, pivot = Offset.Zero) { drawPath(PAUSE_PATH, Color.White) }
+        if (t >= 1f - REST) {
+            translate(top = pauseTop) { scale(pauseUnit, pauseUnit, pivot = Offset.Zero) { drawPath(PAUSE_PATH, Color.White) } }
             return
         }
         paint.color = Color.White
@@ -105,8 +114,8 @@ class PlayPauseGlyph(private val pause: () -> Float) : Painter() {
                 for (corner in 0..3) {
                     val play = PLAY[half][corner]
                     val bar = PAUSE[half][corner]
-                    val x = lerp(play.x * playUnit, bar.x * pauseUnit, t)
-                    val y = lerp(playTop + play.y * playUnit, bar.y * pauseUnit, t)
+                    val x = lerp(playLeft + play.x * playUnit, bar.x * pauseUnit, t)
+                    val y = lerp(playTop + play.y * playUnit, pauseTop + bar.y * pauseUnit, t)
                     if (corner == 0) path.moveTo(x, y) else path.lineTo(x, y)
                 }
                 path.close()
@@ -120,6 +129,8 @@ class PlayPauseGlyph(private val pause: () -> Float) : Painter() {
         const val PAUSE_WIDTH = 15f
         const val HEIGHT = 20f
         const val CORNER = 1.6f
+        /** Within this of either end the real glyph is drawn rather than the morph's halves. */
+        const val REST = 0.001f
         val PLAY_PATH: Path = PathParser().parsePathString(
             "M 1.558 20 C 2.006 20 2.381 19.838 2.874 19.561 L 16.622 11.572 C 17.527 11.053 17.894 10.65 17.894 9.997 " +
                 "C 17.894 9.35 17.527 8.948 16.622 8.419 L 2.874 0.439 C 2.381 0.153 2.006 0 1.558 0 C 0.706 0 0.106 0.654 " +

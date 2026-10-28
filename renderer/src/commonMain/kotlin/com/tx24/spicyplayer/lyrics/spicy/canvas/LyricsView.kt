@@ -57,6 +57,7 @@ import com.tx24.spicyplayer.lyrics.spicy.animation.LyricsAnimator
 import com.tx24.spicyplayer.lyrics.spicy.animation.AppleMusicMotion
 import com.tx24.spicyplayer.lyrics.spicy.resizeSnapsToLine
 import com.tx24.spicyplayer.lyrics.spicy.textLayoutContext
+import com.tx24.spicyplayer.lyrics.spicy.resizeRelayoutDelayMs
 import com.tx24.spicyplayer.lyrics.spicy.models.Line
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
 import com.tx24.spicyplayer.lyrics.spicy.models.FooterLine
@@ -67,6 +68,7 @@ import com.tx24.spicyplayer.translation.TranslationPresentation
 import com.tx24.spicyplayer.translation.TranslationMode
 import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
@@ -273,11 +275,13 @@ fun LyricsView(
         }
         val viewStateUpdated by rememberUpdatedState(viewState)
         val maskBottomUpdated by rememberUpdatedState(maskBottomPx)
+        // What the last measurement was for apart from the width, to tell a resize from new lyrics.
+        val lastMeasureInputs = remember { arrayOfNulls<Any>(1) }
         // Recalculate layouts whenever the lyrics, dimensions, or font size change.
         // A newer key cancels a measurement still running, so only the latest one lands.
-        LaunchedEffect(lines, letterConfig, canvasWidth, fontSizeScale, romanize, documentId, incomingType, incomingFooter, fontKey, translation, romanizationMode) {
+        LaunchedEffect(lines, letterConfig, canvasWidth, fontSizeScale, romanize, documentId, incomingType, incomingFooter, fontKey, translation, romanizationMode, density.density) {
             suspend fun measure(romanized: Boolean, presentation: TranslationPresentation? = translation): MeasuredLyrics {
-                val key = MeasureKey(letterConfig, canvasWidth, fontSizeScale, romanized, incomingType, fontKey, presentation, romanizationMode)
+                val key = MeasureKey(letterConfig, canvasWidth, fontSizeScale, romanized, incomingType, fontKey, presentation, romanizationMode, density.density)
                 measuredCache[key]?.let { return it }
                 return withContext(textLayoutContext) {
                     // Per-letter emphasis for held words (mode-dependent thresholds, romanized
@@ -304,6 +308,14 @@ fun LyricsView(
                     })
                 }.also { measuredCache[key] = it }
             }
+            // Only the size changed (the width, and the text size that follows it), with lyrics on
+            // screen: wait for it to hold (a window being dragged), keeping the old layout up,
+            // rather than measuring at every step.
+            val inputs = listOf(lines, letterConfig, romanize, documentId, incomingType, incomingFooter, fontKey, translation, romanizationMode)
+            val widthOnly = lastMeasureInputs[0] == inputs && measuredShown?.documentId == documentId
+            lastMeasureInputs[0] = inputs
+            val cached = measuredCache[MeasureKey(letterConfig, canvasWidth, fontSizeScale, romanize, incomingType, fontKey, translation, romanizationMode, density.density)] != null
+            if (widthOnly && !cached && resizeRelayoutDelayMs > 0) delay(resizeRelayoutDelayMs)
             // What's asked for goes up first; the layouts a toggle switches to are measured after,
             // so they're ready without holding this one back.
             val measured = measure(romanize)
@@ -859,6 +871,8 @@ private data class MeasureKey(
     val fontKey: String,
     val translation: TranslationPresentation? = null,
     val romanizationMode: RomanizationMode = RomanizationMode.Replace,
+    /** The screen density the layout was made at: the desktop's interface scale changes it without a new width. */
+    val density: Float = 1f,
 )
 
 private class MeasuredLyrics(val lines: List<Line>, val layouts: List<LineLayout>, val romanizationLines: List<Line>? = null)

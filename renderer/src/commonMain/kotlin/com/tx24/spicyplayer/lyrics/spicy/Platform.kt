@@ -33,3 +33,11 @@ internal expect val resizeSnapsToLine: Boolean
  * measures in place. Android's text layout is safe on a background thread.
  */
 internal expect val textLayoutContext: CoroutineContext
+
+/**
+ * How long a new width has to hold before the lyrics are laid out again for it, while lyrics
+ * laid out for the old one are on screen. Desktop measures on the UI thread, so a window dragged
+ * wider by a pixel a frame would otherwise measure every line every frame; the old layout stays
+ * up until the drag settles. 0 measures at once.
+ */
+internal expect val resizeRelayoutDelayMs: Long

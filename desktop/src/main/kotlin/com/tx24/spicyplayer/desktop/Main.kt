@@ -23,8 +23,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
@@ -257,6 +260,8 @@ fun main(args: Array<String>) {
         val miniLyricsView = remember { LyricsViewState() }
         // `--page` starts on a page instead of the lyrics, for screenshots of it.
         val nav = remember { DesktopNav(startPage(opts["--page"])) }
+        // A key on the lyrics shows their controls, as a touch does on the phone.
+        val desktopKeys = remember { DesktopKeys() }
         var page by remember { mutableStateOf(BigScreenState(romanized = desktopSettings.romanize).withSavedView(desktopSettings)) }
         // The now-playing bar and the compact choice come back as they were left.
         LaunchedEffect(page.nowBarWanted, page.nowBarOnRight, page.compactOverride) { desktopSettings.saveView(page) }
@@ -278,6 +283,7 @@ fun main(args: Array<String>) {
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
             onKeyEvent = { event ->
+                if (event.type == KeyEventType.KeyDown && nav.at == Destination.Lyrics) desktopKeys.press()
                 MiniLyrics.onKey(event) || nav.onPageKey(event) ||
                     pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: onPlaybackKey(event, nowPlaying, capabilities)
             },
@@ -316,8 +322,12 @@ fun main(args: Array<String>) {
                 val host = remember {
                     DesktopLyricsHost(
                         transport = nowPlaying,
+                        lyricsActions = songLyrics,
+                        overlays = overlays,
+                        keys = desktopKeys,
                         positionMs = { session.clock.positionAt(monoMs()) },
                         seek = { session.seek(source, it) },
+                        onResync = { session.resync(source) },
                         openMiniWindow = { MiniLyrics.open = true },
                         background = { animate, modifier ->
                             val type = desktopSettings.backgroundType
@@ -352,15 +362,26 @@ fun main(args: Array<String>) {
                 val nowPlayingState by nowPlaying.state.collectAsState()
                 val readyLyrics = lyricsState as? LyricsState.Ready
                 val translation = translated?.takeIf { readyLyrics != null && it.lyrics === readyLyrics }?.translation
-                // The screen picks portrait or landscape from the window's size, as the phone does from its screen's.
+                val options by songLyrics.options.collectAsState()
                 BoxWithConstraints(Modifier.fillMaxSize()) {
+                    // Drawn at the size a phone held sideways would show it, whatever the window's size
+                    // and the system's scaling, then sized by the Interface Scale setting.
+                    val system = LocalDensity.current
+                    val scale = lyricsScreenScale(maxWidth.value, maxHeight.value, desktopSettings.interfaceScale)
+                    CompositionLocalProvider(LocalDensity provides Density(system.density * scale, system.fontScale)) {
+                    // The screen picks portrait or landscape from the window's size, as the phone does from its screen's.
+                    BoxWithConstraints(Modifier.fillMaxSize()) {
                     MaterialTheme(colorScheme = darkColorScheme()) {
                     LyricsScreen(
                         state = LyricsScreenState(
                             nowPlaying = nowPlayingState,
                             lyrics = lyricsState,
+                            hasSongKey = track != null,
                             translation = translation,
-                            translationEnabled = translation != null,
+                            translationEnabled = options.translating,
+                            translating = options.translating && readyLyrics != null && translation == null,
+                            translationHelps = readyLyrics != null,
+                            waitingDetail = (shown as? Screen.Waiting)?.problem,
                         ),
                         settings = desktopSettings,
                         host = host,
@@ -371,6 +392,8 @@ fun main(args: Array<String>) {
                         messages = remember { emptyFlow<String>() },
                         lyricsViewState = mainLyricsView,
                     )
+                    }
+                    }
                     }
                     UpdateBanner(updates.update, Modifier.align(Alignment.BottomCenter))
                     // The lyrics stay composed under a page, so they and the background carry on where they were.

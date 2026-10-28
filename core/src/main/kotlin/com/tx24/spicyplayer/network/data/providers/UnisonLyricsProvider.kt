@@ -48,7 +48,10 @@ class UnisonLyricsProvider @Inject constructor(
      * its lyrics by ISRC or YouTube video. Unison's own copy is the fallback when the store list
      * doesn't have it yet, and the title lookup when the search finds nothing.
      */
-    override suspend fun fetch(request: LyricsLookupRequest): ProviderResult = try {
+    override suspend fun fetch(request: LyricsLookupRequest): ProviderResult = if (request.artist.isBlank()) {
+        // The lookup needs an artist (a blank one is a 400): a player that names none has no match here.
+        ProviderResult.Miss
+    } else try {
         search(request) ?: direct(request) ?: ProviderResult.Miss
     } catch (cancelled: CancellationException) {
         throw cancelled
