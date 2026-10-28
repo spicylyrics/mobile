@@ -20,6 +20,7 @@ import androidx.compose.ui.window.rememberWindowState
 import com.tx24.spicyplayer.ui.bigscreen.BigScreenActions
 import com.tx24.spicyplayer.ui.bigscreen.BigScreenPage
 import com.tx24.spicyplayer.ui.bigscreen.BigScreenState
+import com.tx24.spicyplayer.ui.bigscreen.LocalLyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.LocalTooltipHost
 import com.tx24.spicyplayer.ui.bigscreen.ViewMode
 import com.tx24.spicyplayer.ui.bigscreen.pageKeyOf
@@ -36,11 +37,15 @@ import com.tx24.spicyplayer.lyrics.spicy.models.LyricsProvenance
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
 import com.tx24.spicyplayer.lyrics.spicy.models.Word
 import com.tx24.spicyplayer.lyrics.spicy.models.buildDisplayTimeline
+import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
 import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.BackgroundSpeed
 import com.tx24.spicyplayer.network.data.spotify.AudioAnalysis
 import com.tx24.spicyplayer.network.data.spotify.LocalTrackMetadata
 import com.tx24.spicyplayer.network.data.spotify.SharedSpotify
 import com.tx24.spicyplayer.platform.CoreLog
+import com.tx24.spicyplayer.translation.TranslationMode
+import com.tx24.spicyplayer.translation.TranslationPresentation
+import com.tx24.spicyplayer.translation.TranslationResult
 import java.awt.GraphicsEnvironment
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
@@ -50,9 +55,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.jetbrains.skia.Image
 import kotlinx.coroutines.launch
-
-/** The background speeds up and slows down with the song's tempo, loudness and beats. */
-private const val BEAT_REACTIVE_BACKGROUND = true
 
 /** Where Spotify's audio analyses are kept between runs. */
 private val cacheDir = File(System.getenv("LOCALAPPDATA") ?: System.getProperty("java.io.tmpdir"), "Spicy Lyrics/cache")
@@ -86,19 +88,16 @@ fun main(args: Array<String>) {
     val analysis = MutableStateFlow<AudioAnalysis?>(null)
     val spotify = SharedSpotify.extras(cacheDir)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    var fetch: Job? = null
     var beats: Job? = null
     val nowPlaying = DesktopNowPlaying(source, session)
+    val songLyrics = DesktopLyrics(lookup, GoogleSongTranslator(File(cacheDir, "translations")), desktopSettings, DesktopLyrics.defaultStore(), scope)
+        .also { it.followSettings() }
+    scope.launch {
+        songLyrics.shown.collect { shown -> if (shown != null) screen.value = Screen.Track(shown.track, shown.lyrics) }
+    }
     val capabilities = capabilitiesOf(source.capabilities)
 
-    fun lookUp(track: Track) {
-        screen.value = Screen.Track(track, LyricsState.Loading)
-        fetch?.cancel()
-        fetch = scope.launch {
-            val found = lookup.find(track).lyrics
-            if (session.track?.key == track.key) screen.value = Screen.Track(track, found)
-        }
-    }
+    fun lookUp(track: Track) = songLyrics.load(track)
 
     Runtime.getRuntime().addShutdownHook(Thread { source.close() })
     scope.launch {
@@ -113,13 +112,15 @@ fun main(args: Array<String>) {
                 lookUp(track)
                 analysis.value = null
                 beats?.cancel()
-                if (BEAT_REACTIVE_BACKGROUND) beats = scope.launch {
+                // The background follows the song's beats where the settings ask for it.
+                if (desktopSettings.desktopBackground().beatReactive) beats = scope.launch {
                     val local = LocalTrackMetadata(track.title, track.artist, track.album, track.durationMs)
                     val found = spotify.trackIds(local, null).firstOrNull()?.let { spotify.audioAnalysis(it) }
                     if (session.track?.key == track.key) analysis.value = found
                 }
             }
         }
+        songLyrics.clear()
         screen.value = Screen.Waiting
         nowPlaying.clear()
     }
@@ -128,12 +129,17 @@ fun main(args: Array<String>) {
         .takeIf { it > 0 }?.toFloat() ?: 60f
     application {
         val windowState = rememberWindowState(size = DpSize(1100.dp, 760.dp))
-        var page by remember { mutableStateOf(BigScreenState()) }
+        val settingsWindow = remember { SettingsWindowState() }
+        var page by remember { mutableStateOf(BigScreenState(romanized = desktopSettings.romanize)) }
+        // The page's romanize button and the Romanize setting are one switch.
+        LaunchedEffect(page.romanized) { if (desktopSettings.romanize != page.romanized) desktopSettings.romanize = page.romanized }
+        LaunchedEffect(desktopSettings.romanize) { if (page.romanized != desktopSettings.romanize) page = page.copy(romanized = desktopSettings.romanize) }
         LaunchedEffect(page.mode) {
             windowState.placement = if (page.mode == ViewMode.Fullscreen) WindowPlacement.Fullscreen else WindowPlacement.Floating
         }
         Window(
             onCloseRequest = { source.close(); exitApplication() },
+            onPreviewKeyEvent = settingsWindow::onKey,
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
@@ -143,14 +149,23 @@ fun main(args: Array<String>) {
                 LocalDisplayRefreshRate provides refreshRate,
                 LocalLyricsImageLoader provides PlaceholderAvatars,
                 LocalTooltipHost provides DesktopTooltips,
+                LocalLyricsActions provides songLyrics,
             ) {
                 val shown by screen.collectAsState()
                 val isPlaying by playing.collectAsState()
                 val coverFile by cover.collectAsState()
-                val actions = remember {
-                    // TODO: open the settings panel once it lands.
-                    BigScreenActions(onState = { page = it }, onOpenSettings = {})
-                }
+                val translated by songLyrics.shown.collectAsState()
+                val actions = remember { BigScreenActions(onState = { page = it }, onOpenSettings = { settingsWindow.open = true }) }
+                // Settings are Compose state: these follow the settings window as it changes them.
+                val track = shown as? Screen.Track
+                val lyricsState = track?.lyrics ?: LyricsState.Idle
+                val display = desktopSettings.desktopLyrics(
+                    lyricsState,
+                    track?.track?.durationMs ?: 0L,
+                    windowState.size.width.value,
+                    windowState.size.height.value,
+                )
+                val backdrop = desktopSettings.desktopBackground()
                 val noticeActions = remember {
                     desktopNoticeActions(
                         track = { session.track },
@@ -162,13 +177,19 @@ fun main(args: Array<String>) {
                     state = page,
                     nowPlaying = nowPlaying,
                     capabilities = capabilities,
-                    lyrics = (shown as? Screen.Track)?.lyrics ?: LyricsState.Idle,
+                    lyrics = lyricsState,
                     actions = actions,
                     noticeActions = noticeActions,
                     background = {
-                        DesktopKawarp(coverFile, isPlaying, speed = {
-                            analysis.value?.let { BackgroundSpeed.at(session.clock.positionAt(monoMs()) / 1000f, it) }
-                        })
+                        DesktopKawarp(
+                            coverFile,
+                            isPlaying,
+                            speed = {
+                                analysis.value?.let { BackgroundSpeed.at(session.clock.positionAt(monoMs()) / 1000f, it) }
+                            }.takeIf { backdrop.beatReactive },
+                            animate = backdrop.animate,
+                            blurPasses = backdrop.blurPasses,
+                        )
                     },
                     lyricsView = { modifier, romanize, activeLineTopPx, renderConfig ->
                         val s = shown as? Screen.Track
@@ -183,14 +204,18 @@ fun main(args: Array<String>) {
                             romanize = romanize,
                             activeLineTopPx = activeLineTopPx,
                             config = renderConfig,
+                            translation = translated?.takeIf { it.lyrics === lyrics }?.translation,
+                            translationMode = desktopSettings.translationMode,
+                            fontSizeScale = display.fontSizeScale,
+                            romanizationMode = display.romanizationMode,
                         )
                     },
-                    // TODO: the settings panel's render config once it lands.
-                    renderConfig = RenderConfig.FULL,
+                    renderConfig = display.config,
                 )
             }
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
         }
+        SettingsWindow(settingsWindow)
     }
 }
 
@@ -205,9 +230,13 @@ private fun Lyrics(
     romanize: Boolean,
     activeLineTopPx: Float?,
     config: RenderConfig,
+    translation: TranslationResult?,
+    translationMode: TranslationMode,
+    fontSizeScale: Float,
+    romanizationMode: RomanizationMode,
 ) {
-    val lines = remember(lyrics.lines, config) {
-        val original = lyrics.lines.map { line ->
+    val original = remember(lyrics.lines) {
+        lyrics.lines.map { line ->
             Line(
                 words = line.words.map { Word(it.text, it.startMs, it.endMs, isPartOfWord = it.attached, romanizedText = it.romanized) },
                 startMs = line.startMs,
@@ -220,11 +249,16 @@ private fun Lyrics(
                 untimed = line.untimed,
             )
         }
+    }
+    val lines = remember(original, config) {
         buildDisplayTimeline(original, minimalMode = config.isMinimal, holdThroughShortGaps = when (lyrics.lyricsType) {
             LyricsType.Syllable -> config.isMinimal
             LyricsType.Line -> config.isSimple
             else -> false
         }).also(CjkFonts::useFor)
+    }
+    val presentation = remember(original, lines, translation, translationMode) {
+        translation?.let { TranslationPresentation.forTimeline(original, lines, it, translationMode) }
     }
     LyricsView(
         lines = lines,
@@ -233,12 +267,15 @@ private fun Lyrics(
         onSeekWord = onSeek,
         modifier = modifier,
         romanize = romanize,
+        romanizationMode = romanizationMode,
+        translation = presentation,
         activeLineTopPx = activeLineTopPx,
         isPlaying = isPlaying,
         focusAnchorFraction = 0.5f,
         restTopFraction = 0.25f,
         lyricsType = lyrics.lyricsType,
         config = config,
+        fontSizeScale = fontSizeScale,
         footer = remember(lyrics) {
             LyricsFooter(
                 songwriters = lyrics.songwriters,

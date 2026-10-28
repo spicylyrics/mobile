@@ -66,7 +66,8 @@ private val OPTIONS = KawarpOptions(
  * The app's Kawarp background on Skia: the same AGSL, compiled as SkSL, drawn at the reference's
  * 300x150 and stretched over the window. Each new [cover] crossfades in over the last; without
  * one, a made-up cover shows. [speed] is read every frame while playing; null (or returning null)
- * is the normal speed.
+ * is the normal speed. Without [animate] it holds still, drawing only while a new cover fades in.
+ * [blurPasses] is how much the cover is blurred (Kawarp's own is 8).
  */
 @Composable
 fun DesktopKawarp(
@@ -74,6 +75,8 @@ fun DesktopKawarp(
     isPlaying: Boolean = true,
     speed: (() -> Float?)? = null,
     modifier: Modifier = Modifier,
+    animate: Boolean = true,
+    blurPasses: Int = OPTIONS.blurPasses,
 ) {
     val playing by rememberUpdatedState(isPlaying)
     val latestSpeed by rememberUpdatedState(speed)
@@ -82,10 +85,10 @@ fun DesktopKawarp(
     val placeholder = remember { blurredTexture(SyntheticCover.pixels(COVER_SIZE), COVER_SIZE) }
     var current by remember { mutableStateOf(placeholder) }
     var next by remember { mutableStateOf(placeholder) }
-    LaunchedEffect(cover) {
+    LaunchedEffect(cover, blurPasses) {
         val file = cover ?: return@LaunchedEffect
         val texture = withContext(Dispatchers.Default) {
-            runCatching { decodeCover(file)?.let { blurredTexture(it, COVER_SIZE) } }.getOrNull()
+            runCatching { decodeCover(file)?.let { blurredTexture(it, COVER_SIZE, blurPasses) } }.getOrNull()
         } ?: return@LaunchedEffect
         current = next
         next = texture
@@ -98,9 +101,10 @@ fun DesktopKawarp(
         }
     }
     var frame by remember { mutableLongStateOf(0L) }
-    LaunchedEffect(Unit) {
+    LaunchedEffect(animate, next) {
         var last = 0L
-        while (true) withFrameNanos { now ->
+        // Held still: frames only while a new cover fades in.
+        while (animate || engine.blendFactor(System.currentTimeMillis()) < 1f) withFrameNanos { now ->
             // Playing: the song's beat-driven speed where there is one, else 1. Paused: a tenth.
             // The engine eases between them.
             engine.targetAnimationSpeed = if (playing) latestSpeed?.invoke() ?: 1f else 0.1f
@@ -108,6 +112,8 @@ fun DesktopKawarp(
             last = now
             frame = now
         }
+        // The crossfade's last, finished frame.
+        frame = System.nanoTime()
     }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val stretchX = constraints.maxWidth / CANVAS_WIDTH.toFloat()
@@ -155,9 +161,9 @@ private fun decodeCover(file: File): FloatArray? {
 }
 
 /** The cover through Kawarp's blur, as a premultiplied half-float texture, like the app's. */
-private fun blurredTexture(cover: FloatArray, size: Int): org.jetbrains.skia.Shader {
+private fun blurredTexture(cover: FloatArray, size: Int, passes: Int = OPTIONS.blurPasses): org.jetbrains.skia.Shader {
     val n = KawarpBlurCore.BLUR_SIZE
-    val out = KawarpBlurCore.process(cover, size, size, OPTIONS.blurPasses, OPTIONS.tintColor, OPTIONS.tintIntensity)
+    val out = KawarpBlurCore.process(cover, size, size, passes, OPTIONS.tintColor, OPTIONS.tintIntensity)
     val bytes = ByteBuffer.allocate(n * n * 8).order(ByteOrder.LITTLE_ENDIAN)
     for (i in 0 until n * n * 4 step 4) {
         val a = out[i + 3].coerceIn(0f, 1f)
