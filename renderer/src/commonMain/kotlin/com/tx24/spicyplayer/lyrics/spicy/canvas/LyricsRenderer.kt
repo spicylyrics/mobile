@@ -119,19 +119,19 @@ internal fun DrawScope.drawWipeText(
  */
 private fun DrawScope.drawGradientText(layoutResult: TextLayoutResult, brush: Brush, topLeft: Offset) {
     if (!layoutResult.layoutInput.text.text.hasEmoji()) {
-        drawText(layoutResult, brush = brush, shadow = Shadow.None, topLeft = topLeft)
+        unsnapped(layoutResult, topLeft) { drawText(layoutResult, brush = brush, shadow = Shadow.None, topLeft = topLeft) }
         return
     }
     val w = layoutResult.size.width.toFloat()
     val h = layoutResult.size.height.toFloat()
     // Glyphs can reach past the layout box; the layer and fill cover that overhang.
     val pad = h / 2f
-    translate(topLeft.x, topLeft.y) {
+    unsnapped(layoutResult, topLeft) { translate(topLeft.x, topLeft.y) {
         drawIntoCanvas { it.saveLayer(Rect(-pad, -pad, w + pad, h + pad), Paint()) }
         drawText(layoutResult, color = Color.White, shadow = Shadow.None)
         drawRect(brush, topLeft = Offset(-pad, -pad), size = Size(w + 2 * pad, h + 2 * pad), blendMode = BlendMode.SrcIn)
         drawIntoCanvas { it.restore() }
-    }
+    } }
 }
 
 /** True if [this] has a pictographic (colour-emoji) character. */
@@ -160,7 +160,7 @@ private inline fun DrawScope.drawGlowThenText(
     shadow: Shadow?,
     drawBody: () -> Unit,
 ) {
-    if (shadow != null) drawText(layoutResult, color = Color.Transparent, shadow = shadow, topLeft = topLeft)
+    if (shadow != null) unsnapped(layoutResult, topLeft) { drawText(layoutResult, color = Color.Transparent, shadow = shadow, topLeft = topLeft) }
     drawBody()
 }
 
@@ -232,18 +232,18 @@ private fun DrawScope.drawInactiveText(
     cssPx: Float,
 ) {
     val shadow = inactiveShadow(plan, suppressBlur, cssPx)
-    // Unblurred, the text itself carries the colour: Skia drops a shadow with no blur and no
-    // offset, which would leave nothing drawn (Compose on Android nudges the radius instead).
-    if (shadow.blurRadius <= 0f) {
-        drawText(layoutResult, color = shadow.color, shadow = Shadow.None, topLeft = Offset(xPos, yPos))
-        return
+    val topLeft = Offset(xPos, yPos)
+    unsnapped(layoutResult, topLeft) {
+        // Unblurred, the text itself carries the colour: Skia drops a shadow with no blur and no
+        // offset, which would leave nothing drawn (Compose on Android nudges the radius instead).
+        if (shadow.blurRadius <= 0f) drawText(layoutResult, color = shadow.color, shadow = Shadow.None, topLeft = topLeft)
+        else drawText(
+            textLayoutResult = layoutResult,
+            color = Color.Transparent,
+            shadow = shadow,
+            topLeft = topLeft,
+        )
     }
-    drawText(
-        textLayoutResult = layoutResult,
-        color = Color.Transparent,
-        shadow = shadow,
-        topLeft = Offset(xPos, yPos),
-    )
 }
 
 internal fun DrawScope.drawInterludeGroup(
@@ -294,13 +294,15 @@ internal fun DrawScope.drawInterludeGroup(
             scale(dotAnim.scale.coerceIn(0f, 1.5f), dotAnim.scale.coerceIn(0f, 1.5f), Offset(dotPivotX, dotPivotY))
             translate(top = dotYShift)
         }) {
-            drawText(
-                textLayoutResult = wLayout.textLayoutResult,
-                color = Color.White,
-                alpha = dotOpacity * lineAnim.opacity,
-                shadow = dotShadow ?: Shadow.None,
-                topLeft = Offset(xPos, baseYPos),
-            )
+            unsnapped(wLayout.textLayoutResult, Offset(xPos, baseYPos)) {
+                drawText(
+                    textLayoutResult = wLayout.textLayoutResult,
+                    color = Color.White,
+                    alpha = dotOpacity * lineAnim.opacity,
+                    shadow = dotShadow ?: Shadow.None,
+                    topLeft = Offset(xPos, baseYPos),
+                )
+            }
         }
     }
 }
@@ -742,13 +744,15 @@ internal fun DrawScope.drawStaticLine(
     layout.words.forEach { wLayout ->
         val xPos = lineStartX + wLayout.relativeOffset.x
         val yPos = dynamicY + wLayout.relativeOffset.y + scrollOffset
-        drawText(
-            textLayoutResult = wLayout.textLayoutResult,
-            color = Color.White,
-            alpha = lineAnim.opacity.coerceIn(0f, 1f),
-            shadow = Shadow.None,
-            topLeft = Offset(xPos, yPos),
-        )
+        unsnapped(wLayout.textLayoutResult, Offset(xPos, yPos)) {
+            drawText(
+                textLayoutResult = wLayout.textLayoutResult,
+                color = Color.White,
+                alpha = lineAnim.opacity.coerceIn(0f, 1f),
+                shadow = Shadow.None,
+                topLeft = Offset(xPos, yPos),
+            )
+        }
     }
 }
 

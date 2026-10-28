@@ -28,11 +28,13 @@ internal fun DrawScope.drawTranslationText(
         val opacity = (alpha * dimmer).coerceIn(0f, 1f)
         val size = with(result.layoutInput.density) { result.layoutInput.style.fontSize.toPx() }
         // Blur is a separate pass, scaled by the actual lyric font size rather than density.
-        if (blur > 0f && config.distanceBlurEnabled) {
-            drawText(result, color = Color.Transparent, topLeft = offset,
-                shadow = Shadow(Color.White.copy(alpha = opacity), blurRadius = blur * size / 56f))
-            drawText(result, color = Color.Transparent, shadow = Shadow.None, topLeft = offset)
-        } else drawText(result, color = Color.White.copy(alpha = opacity), shadow = Shadow.None, topLeft = offset)
+        unsnapped(result, offset) {
+            if (blur > 0f && config.distanceBlurEnabled) {
+                drawText(result, color = Color.Transparent, topLeft = offset,
+                    shadow = Shadow(Color.White.copy(alpha = opacity), blurRadius = blur * size / 56f))
+                drawText(result, color = Color.Transparent, shadow = Shadow.None, topLeft = offset)
+            } else drawText(result, color = Color.White.copy(alpha = opacity), shadow = Shadow.None, topLeft = offset)
+        }
     }
     withTransform({
         scale(animation.scale, animation.scale, Offset(
