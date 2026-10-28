@@ -11,7 +11,7 @@ class DesktopNowPlayingTest {
     @Test
     fun `windows offers play, pause and seek but no skips yet`() {
         assertEquals(
-            PlayerCapabilities(playPause = true, skipNext = false, skipPrevious = false, seek = true, fullscreen = true),
+            PlayerCapabilities(playPause = true, skipNext = false, skipPrevious = false, seek = true, fullscreen = true, pictureInPicture = true),
             capabilitiesOf(setOf(Transport.PLAY, Transport.PAUSE, Transport.SEEK)),
         )
     }
@@ -23,12 +23,12 @@ class DesktopNowPlayingTest {
 
     @Test
     fun `every command maps through`() {
-        assertEquals(PlayerCapabilities(fullscreen = true), capabilitiesOf(Transport.entries.toSet()))
+        assertEquals(PlayerCapabilities(fullscreen = true, pictureInPicture = true), capabilitiesOf(Transport.entries.toSet()))
     }
 
     @Test
     fun `a source with no commands still has fullscreen`() {
-        assertEquals(PlayerCapabilities(false, false, false, false, fullscreen = true), capabilitiesOf(emptySet()))
+        assertEquals(PlayerCapabilities(false, false, false, false, fullscreen = true, pictureInPicture = true), capabilitiesOf(emptySet()))
     }
 
     @Test
@@ -37,6 +37,11 @@ class DesktopNowPlayingTest {
         assertEquals(true, caps.shuffle)
         assertEquals(false, caps.repeat)
         assertEquals(false, capabilitiesOf(Transport.entries.toSet()).shuffle)
+    }
+
+    @Test
+    fun `the page's floating-window button is the mini lyrics window`() {
+        assertEquals(true, capabilitiesOf(emptySet()).pictureInPicture)
     }
 
     @Test

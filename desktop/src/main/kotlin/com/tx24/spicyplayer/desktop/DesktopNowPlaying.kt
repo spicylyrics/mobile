@@ -86,6 +86,8 @@ fun capabilitiesOf(transport: Set<Transport>, canShuffle: Boolean = false, canRe
     skipPrevious = Transport.PREVIOUS in transport,
     seek = Transport.SEEK in transport,
     fullscreen = true,
+    // The page's floating-window button opens the mini lyrics window.
+    pictureInPicture = true,
     shuffle = canShuffle,
     repeat = canRepeat,
 )

@@ -289,7 +289,7 @@ fun main(args: Array<String>) {
                 val coverFile by cover.collectAsState()
                 val translated by songLyrics.shown.collectAsState()
                 val actions = remember {
-                    BigScreenActions(onState = { page = it }, onOpenSettings = { settingsWindow.open = true }, onOpenLyricsManager = { lyricsManager.open = true })
+                    BigScreenActions(onState = { page = it }, onOpenSettings = { settingsWindow.open = true }, onOpenLyricsManager = { lyricsManager.open = true }, onEnterPip = { MiniLyrics.open = true })
                 }
                 // Settings are Compose state: these follow the settings window as it changes them.
                 val track = shown as? Screen.Track
