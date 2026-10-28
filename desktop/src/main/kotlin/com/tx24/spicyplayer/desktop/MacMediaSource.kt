@@ -102,7 +102,8 @@ class MacMediaSource(
         if (file.length() > 0) return file
         file.parentFile?.mkdirs()
         val (exit, _) = run(listOf(osascript) + macMusicArtworkArgs(file.path))
-        return file.takeIf { exit == 0 && it.length() > 0 }
+        // A failed call may have written part of the image: drop it, or the next lookup would reuse it.
+        return file.takeIf { exit == 0 && it.length() > 0 } ?: run { file.delete(); null }
     }
 
     private fun run(command: List<String>): Pair<Int, String> = runCatching {
