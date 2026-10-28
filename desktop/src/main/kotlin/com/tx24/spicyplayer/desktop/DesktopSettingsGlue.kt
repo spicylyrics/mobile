@@ -6,6 +6,7 @@ import com.tx24.spicyplayer.ui.settings.CommonAppSettings
 import com.tx24.spicyplayer.ui.settings.LyricsDisplay
 import com.tx24.spicyplayer.ui.settings.LyricsFont
 import com.tx24.spicyplayer.ui.settings.lyricsDisplay
+import java.io.File
 import kotlin.math.roundToInt
 
 /**
@@ -26,11 +27,18 @@ fun CommonAppSettings.desktopLyrics(lyrics: LyricsState, durationMs: Long): Lyri
 /** The lyrics font for `LyricsLayoutCalculator.setFont`: [family] null is the Spicy Lyrics font, and [key] tells the layouts apart. */
 data class DesktopLyricsFont(val family: FontFamily?, val key: String)
 
-/** Default is the Spicy Lyrics font and System the computer's; a picked file isn't loaded on desktop yet, so Custom stays Default. */
-fun desktopLyricsFont(font: LyricsFont): DesktopLyricsFont = when (font) {
+/**
+ * Default is the Spicy Lyrics font and System the computer's. Custom is the picked file
+ * [customFontFile] in [fontsDir] ([DesktopFontFile]), or the Spicy Lyrics font when it has gone
+ * or isn't a font.
+ */
+fun desktopLyricsFont(font: LyricsFont, customFontFile: String = "", fontsDir: File = DesktopFontFile.defaultDir): DesktopLyricsFont = when (font) {
     LyricsFont.System -> DesktopLyricsFont(FontFamily.Default, "System")
-    LyricsFont.Default, LyricsFont.Custom -> DesktopLyricsFont(null, "")
+    LyricsFont.Custom -> DesktopFontFile.family(customFontFile, fontsDir)?.let { DesktopLyricsFont(it, "Custom:$customFontFile") } ?: DEFAULT_FONT
+    LyricsFont.Default -> DEFAULT_FONT
 }
+
+private val DEFAULT_FONT = DesktopLyricsFont(null, "")
 
 /**
  * The background settings the desktop's Kawarp honours.

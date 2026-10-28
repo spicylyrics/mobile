@@ -126,4 +126,15 @@ class SettingsPanelSectionsTest {
         row.onChange(true)
         assertTrue(settings.lyricsManagerButton)
     }
+
+    @Test
+    fun `the font file button shows only where the platform can pick one`() {
+        assertTrue(rows.none { it.id == "lyricsFontFile" })
+        var picked = 0
+        val withPicker = settingsPanelSections(settings, PanelActions(pickLyricsFont = { picked++ })).flatMap { it.rows }
+        val ids = withPicker.map { it.id }
+        assertEquals(ids.indexOf("lyricsFont") + 1, ids.indexOf("lyricsFontFile"))
+        (withPicker.single { it.id == "lyricsFontFile" } as PanelRow.Button).onClick()
+        assertEquals(1, picked)
+    }
 }

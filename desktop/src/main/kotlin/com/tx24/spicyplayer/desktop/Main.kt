@@ -200,7 +200,9 @@ fun main(args: Array<String>) {
         var page by remember { mutableStateOf(BigScreenState(romanized = desktopSettings.romanize).withSavedView(desktopSettings)) }
         // The now-playing bar and the compact choice come back as they were left.
         LaunchedEffect(page.nowBarWanted, page.nowBarOnRight, page.compactOverride) { desktopSettings.saveView(page) }
-        val lyricsFont = desktopLyricsFont(desktopSettings.lyricsFont)
+        val lyricsFont = remember(desktopSettings.lyricsFont, desktopSettings.customFontFile) {
+            desktopLyricsFont(desktopSettings.lyricsFont, desktopSettings.customFontFile)
+        }
         SideEffect { LyricsLayoutCalculator.setFont(lyricsFont.family, lyricsFont.key) }
         val popupPalette = desktopSettings.popupTheme.palette
         // The page's romanize button and the Romanize setting are one switch.

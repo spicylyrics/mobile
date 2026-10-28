@@ -36,12 +36,14 @@ val BACKGROUND_TYPE_LABELS: Map<BackgroundType, String> = mapOf(
  * @param version the app's version, for About.
  * @param links About's buttons, label to address.
  * @param lyricsManagerButton the page has a Lyrics Manager button to offer, under Interface → Controls.
+ * @param pickLyricsFont asks for a font file and, picked, makes it the Custom lyrics font.
  */
 class PanelActions(
     val clearLyricsCache: (() -> Unit)? = null,
     val version: String? = null,
     val links: List<Pair<String, String>> = emptyList(),
     val lyricsManagerButton: Boolean = false,
+    val pickLyricsFont: (() -> Unit)? = null,
 )
 
 /**
@@ -57,7 +59,7 @@ fun settingsPanelSections(
     backgroundSection(settings),
     playbackSection(settings),
     interfaceSection(settings, actions),
-    appearanceSection(settings),
+    appearanceSection(settings, actions),
     experimentsSection(settings),
     advancedSection(actions),
     PanelSection(PanelSectionId.About, "About", PanelIcons.About, secondary = true),
@@ -343,11 +345,17 @@ private fun interfaceSection(s: CommonAppSettings, actions: PanelActions) = Pane
     ),
 )
 
-private fun appearanceSection(s: CommonAppSettings) = PanelSection(
+private fun appearanceSection(s: CommonAppSettings, actions: PanelActions) = PanelSection(
     PanelSectionId.Appearance, "Appearance", PanelIcons.Appearance,
     groups = listOf(
-        PanelGroup("Text", listOf(
+        PanelGroup("Text", listOfNotNull(
             lyricsFontRow(s),
+            actions.pickLyricsFont?.let { pick ->
+                PanelRow.Button(
+                    "lyricsFontFile", "Font File", "Pick a .ttf or .otf font file for the lyrics.",
+                    keywords = "custom font typeface ttf otf", text = "Choose", onClick = pick,
+                )
+            },
             PanelRow.Slider(
                 "lyricsSizeLandscape", "Lyrics Size", "How big the lyrics are, against the window's default.",
                 keywords = "text scale bigger smaller",

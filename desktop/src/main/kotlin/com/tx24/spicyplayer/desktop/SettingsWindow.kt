@@ -18,11 +18,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.rememberWindowState
+import java.io.File
+import javax.swing.JOptionPane
 import com.tx24.spicyplayer.ui.components.LocalPopupPalette
 import com.tx24.spicyplayer.ui.settings.CommonAppSettings
 import com.tx24.spicyplayer.ui.settings.DesktopPlatformActions
 import com.tx24.spicyplayer.ui.settings.FileSettingsStore
 import com.tx24.spicyplayer.ui.settings.LocalPlatformActions
+import com.tx24.spicyplayer.ui.settings.LyricsFont
+import com.tx24.spicyplayer.ui.settings.PlatformActions
 import com.tx24.spicyplayer.ui.settings.panel.PanelActions
 import com.tx24.spicyplayer.ui.settings.panel.SettingsPanel
 import com.tx24.spicyplayer.ui.settings.panel.settingsPanelSections
@@ -38,6 +42,21 @@ val desktopSettings: CommonAppSettings by lazy {
  * phone's interface animations.
  */
 val DESKTOP_HIDDEN_ROWS = setOf("headerSize", "refinedBackground", "profilesInBrowser", "expandWithoutLyrics", "uiAnimations")
+
+/** Asks for a font file and makes a copy of it the Custom lyrics font, or says it isn't one. */
+private fun pickLyricsFont(settings: CommonAppSettings, platform: PlatformActions) {
+    platform.pickFile(DesktopFontFile.MIME_TYPES) { path ->
+        val source = path?.let(::File) ?: return@pickFile
+        val imported = DesktopFontFile.import(source)
+        if (imported == null) {
+            JOptionPane.showMessageDialog(null, "That file isn't a font the app can read. Pick a .ttf or .otf file.", "Lyrics Font", JOptionPane.WARNING_MESSAGE)
+            return@pickFile
+        }
+        settings.customFontFile = imported.fileName
+        settings.customFontName = imported.displayName
+        settings.lyricsFont = LyricsFont.Custom
+    }
+}
 
 /** Whether the settings window is open; Ctrl+, (Cmd+, on a Mac) opens it. */
 class SettingsWindowState {
@@ -69,6 +88,7 @@ fun ApplicationScope.SettingsWindow(state: SettingsWindowState) {
                 version = System.getProperty("jpackage.app-version"),
                 links = listOf("GitHub" to "https://github.com/spicylyrics/mobile"),
                 lyricsManagerButton = true,
+                pickLyricsFont = { pickLyricsFont(settings, platform) },
             )
         }
         val sections = remember(settings, actions) { settingsPanelSections(settings, actions, DESKTOP_HIDDEN_ROWS) }
