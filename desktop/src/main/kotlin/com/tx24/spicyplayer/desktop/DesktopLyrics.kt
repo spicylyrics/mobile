@@ -34,14 +34,18 @@ import java.io.File
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 
 /** The song lookup the lyrics choices run on: [LyricsLookup], or a fake in tests. */
@@ -62,6 +66,9 @@ fun interface SongTranslator {
  * The playing song's lyrics and the More menu's choices for them: the source (kept per song in
  * [store]), translation (on or off and the language, in [store]) and the display modes (in
  * [settings], the phone's keys).
+ *
+ * Not thread-safe: call it, and run [scope], on one thread (the UI's). Lookups and translations
+ * run on [work] and come back to [scope] with their answer.
  */
 class DesktopLyrics(
     private val lookup: SongLookup,
@@ -69,6 +76,7 @@ class DesktopLyrics(
     private val settings: CommonAppSettings,
     private val store: SettingsStore,
     private val scope: CoroutineScope,
+    private val work: CoroutineContext = Dispatchers.IO,
 ) : LyricsActions {
     /** What the page shows: the song, its lyrics or notice, and their translation once it lands. */
     data class Shown(val track: Track, val lyrics: LyricsState, val translation: TranslationResult? = null)
@@ -190,7 +198,7 @@ class DesktopLyrics(
             var message: String? = null
             var found: LyricsLookup.Found? = null
             optionsState.value.pickedSource?.let { picked ->
-                val fromPicked = lookup.find(track, known, picked)
+                val fromPicked = withContext(work) { lookup.find(track, known, picked) }
                 if ((fromPicked.resolution as? RemoteLyricsResolution.Found)?.selection?.source?.id == picked) {
                     found = fromPicked
                 } else {
@@ -198,7 +206,9 @@ class DesktopLyrics(
                     message = "$name has no lyrics for this song, so the usual pick is shown."
                 }
             }
-            val result = found ?: lookup.find(track, known, null)
+            val result = found ?: withContext(work) { lookup.find(track, known, null) }
+            // A newer lookup cancelled this one, or the song changed while it ran.
+            ensureActive()
             if (this@DesktopLyrics.track?.key != track.key) return@launch
             shownSource = (result.resolution as? RemoteLyricsResolution.Found)?.selection?.source?.id
             shownState.value = Shown(track, result.lyrics)
@@ -220,13 +230,14 @@ class DesktopLyrics(
         optionsState.update { it.copy(message = "Translating…") }
         translationJob = scope.launch {
             val outcome = try {
-                translator.translate(shown.track, lyrics, target)
+                withContext(work) { translator.translate(shown.track, lyrics, target) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 optionsState.update { it.copy(message = "Couldn't translate: ${e.message ?: "no answer"}") }
                 return@launch
             }
+            ensureActive()
             // Only onto the lyrics it was made for, still showing.
             if (shownState.value?.lyrics !== lyrics) return@launch
             when (outcome) {

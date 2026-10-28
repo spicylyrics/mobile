@@ -1,5 +1,6 @@
 package com.tx24.spicyplayer.desktop
 
+import com.tx24.spicyplayer.lyrics.LyricsNotices
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.TimedLine
 import com.tx24.spicyplayer.lyrics.TimedWord
@@ -19,8 +20,14 @@ import com.tx24.spicyplayer.ui.settings.CommonAppSettings
 import com.tx24.spicyplayer.ui.settings.InMemorySettingsStore
 import java.time.Instant
 import java.util.Locale
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -290,5 +297,48 @@ class DesktopLyricsTest {
         s.lyrics.setTranslating(true)
         s.lyrics.settle()
         assertSame(first, s.lyrics.shown.value?.lyrics)
+    }
+
+    /**
+     * Blocks its first lookup until it is cancelled, then, once [release]d, answers with an error, as
+     * a lookup that swallows the cancel would: the stale answer comes after the fresh one.
+     */
+    private inner class CancelSwallowingLookup : SongLookup {
+        private val real = FakeLookup()
+        override val sources = real.sources
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        /** The stale answer has been handed back. */
+        val done = CompletableDeferred<Unit>()
+        private var calls = 0
+
+        override suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?): LyricsLookup.Found {
+            if (calls++ == 0) {
+                started.complete(Unit)
+                try {
+                    awaitCancellation()
+                } catch (e: CancellationException) {
+                    withContext(NonCancellable) { release.await() }
+                    done.complete(Unit)
+                    return LyricsLookup.Found(LyricsNotices.lookupFailed(e), null)
+                }
+            }
+            return real.find(track, known, sourceId)
+        }
+    }
+
+    @Test fun aCancelledLookupNeverReplacesTheNewerOne() = runBlocking {
+        val lookup = CancelSwallowingLookup()
+        val settings = CommonAppSettings(InMemorySettingsStore(), pipButtonByDefault = false, prereleasesByDefault = true)
+        val lyrics = DesktopLyrics(lookup, FakeTranslator { translated(it) }, settings, InMemorySettingsStore(), this)
+        lyrics.load(song)
+        lookup.started.await()
+        lyrics.useSource("b")
+        lyrics.settle()
+        assertEquals("from b", (lyrics.shown.value?.lyrics as LyricsState.Ready).provider)
+        lookup.release.complete(Unit)
+        lookup.done.await()
+        yield()
+        assertEquals("from b", (lyrics.shown.value?.lyrics as LyricsState.Ready).provider)
     }
 }
