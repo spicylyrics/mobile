@@ -193,7 +193,7 @@ import com.tx24.spicyplayer.ui.nowplaying.MotionCoverQuery
 import com.tx24.spicyplayer.ui.nowplaying.ViewModelNowPlaying
 import com.tx24.spicyplayer.ui.nowplaying.rememberViewModelLyricsActions
 import com.tx24.spicyplayer.ui.nowplaying.AndroidBigScreenPage
-import com.tx24.spicyplayer.ui.bigscreen.usesBigScreenLayout
+import com.tx24.spicyplayer.ui.bigscreen.isBigScreenWindow
 import com.tx24.spicyplayer.ui.nowplaying.nowPlayingState
 import com.tx24.spicyplayer.ui.nowplaying.skip
 import androidx.compose.ui.graphics.ImageBitmap
@@ -915,7 +915,7 @@ private fun LyricsApp(
         }
         // A big window (a tablet held sideways, DeX, an unfolded foldable) gets the big-screen
         // page; phones and upright tablets keep the layout below. Follows resizes as they happen.
-        if (usesBigScreenLayout(configuration.screenWidthDp.toFloat(), configuration.screenHeightDp.toFloat())) {
+        if (isBigScreenWindow(configuration.screenWidthDp.toFloat(), configuration.screenHeightDp.toFloat())) {
             AndroidBigScreenPage(
                 nowPlaying = transport,
                 canSeek = state.canSeek,
