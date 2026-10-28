@@ -203,6 +203,10 @@ class DesktopLyricsTest {
         assertEquals(listOf(true, false, false, false, false, false), choices.map { it.shown })
     }
 
+    @Test fun theAppSharesOneStoreForTheChoices() {
+        assertSame(DesktopLyrics.defaultStore(), DesktopLyrics.defaultStore())
+    }
+
     @Test fun theDefaultLanguageIsTheSystemsWhereListed() {
         assertEquals("fr", DesktopLyrics.defaultTarget(Locale.FRANCE))
         assertEquals("en", DesktopLyrics.defaultTarget(Locale.forLanguageTag("tlh")))
