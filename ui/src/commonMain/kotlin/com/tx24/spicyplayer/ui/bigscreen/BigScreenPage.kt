@@ -50,9 +50,12 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
@@ -61,8 +64,11 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
@@ -71,6 +77,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
@@ -80,6 +87,7 @@ import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsLayoutCalculator
 import com.tx24.spicyplayer.ui.components.ExpandGlyph
 import com.tx24.spicyplayer.ui.components.GlassButton
+import com.tx24.spicyplayer.ui.components.GlyphEase
 import com.tx24.spicyplayer.ui.components.LyricsSkeleton
 import com.tx24.spicyplayer.ui.components.MoreGlyph
 import com.tx24.spicyplayer.ui.components.SettingsGlyph
@@ -613,7 +621,11 @@ private fun PlaybackTimeline(env: PageEnv, playing: NowPlayingState, nowPlaying:
     Timeline(now, playing.track.durationMs, env.capabilities.seek && playing.canSeek, env.metrics, geometry, nowPlaying::seekTo, env.input.onDragging, modifier)
 }
 
-/** `.Timeline`: the position, the bar (white for what has played), and the length. */
+/**
+ * `.Timeline`: the position, the bar (white for what has played), and the length. Where it seeks,
+ * the pointer over the bar (or dragging it) shows the time it would go to in a small label above
+ * the bar, kept inside the timeline, and while dragging the position shows the drag's time too.
+ */
 @Composable
 private fun Timeline(
     positionMs: Long,
@@ -627,15 +639,20 @@ private fun Timeline(
 ) {
     val density = LocalDensity.current.density
     val timeStyle = TextStyle(color = SpicyColors.TextSecondary, fontSize = metrics.baseFontSizeSp.sp, fontWeight = FontWeight.Medium,
-        fontFamily = LyricsLayoutCalculator.spicyFontFamily)
+        fontFamily = LyricsLayoutCalculator.spicyFontFamily, fontFeatureSettings = "tnum")
     var barWidth by remember { mutableStateOf(1) }
     // While dragging, the bar follows the pointer rather than the player.
     var dragFraction by remember { mutableStateOf<Float?>(null) }
+    var hoverFraction by remember { mutableStateOf<Float?>(null) }
     val progress = dragFraction ?: progressOf(positionMs, durationMs)
     val barHeight = geometry.barHeightPx.toDp(density).coerceAtLeast(3.dp)
     val timeWidth = (metrics.baseFontSizeSp * 2.5f).dp
+    // Where the bar sits in the timeline, for the label above it.
+    var timeline by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var bar by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    Box(modifier.fillMaxWidth().onGloballyPositioned { timeline = it }) {
     Row(
-        modifier
+        Modifier
             .fillMaxWidth()
             .padding(
                 start = geometry.insetXPx.toDp(density), end = geometry.insetXPx.toDp(density),
@@ -643,15 +660,30 @@ private fun Timeline(
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BasicText(formatClock(positionMs), Modifier.widthIn(min = timeWidth), style = timeStyle.copy(textAlign = TextAlign.End))
+        val shownMs = dragFraction?.let { seekTarget(it, durationMs) } ?: positionMs
+        BasicText(formatClock(shownMs), Modifier.widthIn(min = timeWidth), style = timeStyle.copy(textAlign = TextAlign.End))
         Box(
             Modifier
                 .weight(1f)
                 .padding(horizontal = geometry.barMarginPx.toDp(density))
                 .height(barHeight + BigScreenMetrics.BAR_HIT_SLOP_DP.dp)
                 .onSizeChanged { barWidth = it.width.coerceAtLeast(1) }
+                .onGloballyPositioned { bar = it }
                 .then(
                     if (!seekable) Modifier else Modifier
+                        .pointerInput(Unit) {
+                            awaitPointerEventScope {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    // A finger has no hover; its drag shows the label instead.
+                                    if (event.changes.first().type == PointerType.Touch) continue
+                                    hoverFraction = when (event.type) {
+                                        PointerEventType.Exit -> null
+                                        else -> (event.changes.first().position.x / barWidth).coerceIn(0f, 1f)
+                                    }
+                                }
+                            }
+                        }
                         .pointerInput(durationMs) {
                             detectTapGestures { onSeek(seekTarget(it.x / barWidth, durationMs)) }
                         }
@@ -681,7 +713,68 @@ private fun Timeline(
         }
         BasicText(formatClock(durationMs), Modifier.widthIn(min = timeWidth), style = timeStyle)
     }
+    val preview = (dragFraction ?: hoverFraction).takeIf { seekable && durationMs > 0 }
+    val barHeightPx = barHeight.value * density
+    ScrubPreview(
+        text = formatClock(seekTarget(preview ?: 0f, durationMs)),
+        shown = preview != null,
+        fontSizeSp = metrics.baseFontSizeSp,
+        anchor = {
+            val outer = timeline
+            val inner = bar
+            if (outer == null || inner == null || !outer.isAttached || !inner.isAttached) {
+                null
+            } else {
+                val start = outer.localPositionOf(inner, Offset.Zero)
+                // The bar is drawn centred in its taller hit box.
+                Offset(start.x + (preview ?: 0f) * inner.size.width, start.y + (inner.size.height - barHeightPx) / 2f)
+            }
+        },
+        maxWidthPx = { timeline?.size?.width?.toFloat() ?: 0f },
+    )
+    }
 }
+
+/**
+ * `.ScrubPreview`: the time a click would seek to, in a small dark label centred over [anchor] (the
+ * bar's top edge under the pointer), kept within [maxWidthPx], fading and growing in quickly.
+ */
+@Composable
+private fun ScrubPreview(text: String, shown: Boolean, fontSizeSp: Float, anchor: () -> Offset?, maxWidthPx: () -> Float) {
+    val density = LocalDensity.current.density
+    val visible by animateFloatAsState(if (shown) 1f else 0f, tween(if (shown) 120 else 90, easing = GlyphEase), label = "scrubPreview")
+    if (visible == 0f) return
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val em = fontSizeSp * density
+    BasicText(
+        text,
+        Modifier
+            .offset {
+                val at = anchor() ?: return@offset IntOffset.Zero
+                val x = (at.x - size.width / 2f).coerceIn(0f, (maxWidthPx() - size.width).coerceAtLeast(0f))
+                IntOffset(x.roundToInt(), (at.y - SCRUB_GAP_EM * em - size.height).roundToInt())
+            }
+            .onSizeChanged { size = it }
+            .graphicsLayer {
+                alpha = visible
+                val scale = 0.96f + 0.04f * visible
+                scaleX = scale
+                scaleY = scale
+                transformOrigin = TransformOrigin(0.5f, 1f)
+            }
+            .clip(RoundedCornerShape((0.45f * em).toDp(density)))
+            .background(Color(18, 18, 22).copy(alpha = 0.58f))
+            .padding(horizontal = (0.5f * em).toDp(density), vertical = (0.3f * em).toDp(density)),
+        style = TextStyle(
+            color = Color.White, fontSize = fontSizeSp.sp, fontWeight = FontWeight.Medium, lineHeight = (fontSizeSp * 1.1f).sp,
+            fontFamily = LyricsLayoutCalculator.spicyFontFamily, fontFeatureSettings = "tnum",
+        ),
+        maxLines = 1,
+    )
+}
+
+/** `--ScrubPreviewGap: 0.55em` between the label and the bar. */
+private const val SCRUB_GAP_EM = 0.55f
 
 /**
  * The compact layout: the song as a bar across the top (cover, then name and artists), the view
