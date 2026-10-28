@@ -129,4 +129,14 @@ class BigScreenStateTest {
         assertEquals(page, click(ViewControl.More))
         assertEquals(page, click(ViewControl.Settings))
     }
+
+    @Test
+    fun `the popup lyrics button shows where there is a floating window`() {
+        val pip = PlayerCapabilities(pictureInPicture = true)
+        val controls = viewControls(BigScreenState(), pip)
+        assertTrue(ViewControl.PictureInPicture in controls)
+        assertEquals(controls.indexOf(ViewControl.Settings) - 1, controls.indexOf(ViewControl.PictureInPicture))
+        assertFalse(ViewControl.PictureInPicture in viewControls(BigScreenState(), desktop))
+        assertEquals(BigScreenState(), BigScreenState().click(ViewControl.PictureInPicture, 1400f, tall, pip))
+    }
 }

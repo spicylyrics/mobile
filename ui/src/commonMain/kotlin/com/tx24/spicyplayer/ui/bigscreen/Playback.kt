@@ -7,8 +7,9 @@ import com.tx24.spicyplayer.ui.nowplaying.RepeatState
 /**
  * What the platform can do for the big-screen page: which of [com.tx24.spicyplayer.ui.nowplaying.PlaybackTransport]'s
  * commands reach the player, and whether the window can go fullscreen (a desktop window can; a
- * tablet's app already fills the screen, so cinema is as far as it goes). [shuffle] and [repeat]
- * are off unless the platform can set them.
+ * tablet's app already fills the screen, so cinema is as far as it goes), and whether it has a
+ * floating window to shrink the lyrics into. [shuffle] and [repeat] are off unless the platform
+ * can set them.
  */
 data class PlayerCapabilities(
     val playPause: Boolean = true,
@@ -18,6 +19,7 @@ data class PlayerCapabilities(
     val fullscreen: Boolean = false,
     val shuffle: Boolean = false,
     val repeat: Boolean = false,
+    val pictureInPicture: Boolean = false,
 )
 
 /** A button in the cover's playback row; shuffle and repeat sit at its ends ([playbackToggles]). */
