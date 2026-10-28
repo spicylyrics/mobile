@@ -166,4 +166,14 @@ class MacMediaSourceTest {
         assertNull(macShuffleScript("VLC", true))
         assertNull(macRepeatScript("Spotify\" to quit --", RepeatMode.All))
     }
+
+    @Test
+    fun `spotify can't repeat one track`() {
+        val spotify = parseMacLine(line("Spotify", "playing", "1", "2000", "Song", "Band", "Record", "", "false", "true"), 0)!!
+        assertFalse(spotify.repeatOneSupported)
+        assertFalse(parseMacLine(line("Spotify", "stopped", "false", "false"), 0)!!.repeatOneSupported)
+        assertFalse(parseMacLine(line("Spotify", "playing", "1", "2000", "Song", "Band", "Record", ""), 0)!!.repeatOneSupported)
+        assertTrue(parseMacLine(line("Music", "playing", "1", "2", "T", "S", "A", "", "false", "one"), 0)!!.repeatOneSupported)
+        assertTrue(parseMacLine(line("Music", "stopped"), 0)!!.repeatOneSupported)
+    }
 }

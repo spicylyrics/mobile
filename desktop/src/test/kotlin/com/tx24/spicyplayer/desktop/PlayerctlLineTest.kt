@@ -130,4 +130,9 @@ class PlayerctlLineTest {
         assertEquals(listOf("playerctl", "--player=vlc", "loop", "Track"), playerctlLoopArgs("playerctl", "vlc", RepeatMode.One))
         assertEquals(listOf("playerctl", "--player=vlc", "loop", "Playlist"), playerctlLoopArgs("playerctl", "vlc", RepeatMode.All))
     }
+
+    @Test
+    fun `mpris players can repeat one track`() {
+        assertTrue(snapshot(line("spotify", "Playing", "1", "2", "One", "A", "", "", "true", "Track")).repeatOneSupported)
+    }
 }

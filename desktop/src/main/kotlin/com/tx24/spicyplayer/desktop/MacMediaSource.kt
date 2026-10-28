@@ -112,9 +112,10 @@ enum class MacPlayer(
     val hasArtworkUrl: Boolean,
     val shuffleProperty: String,
     val repeatProperty: String,
+    val repeatsOne: Boolean,
 ) {
-    SPOTIFY("Spotify", durationInMs = true, hasArtworkUrl = true, shuffleProperty = "shuffling", repeatProperty = "repeating"),
-    MUSIC("Music", durationInMs = false, hasArtworkUrl = false, shuffleProperty = "shuffle enabled", repeatProperty = "song repeat"),
+    SPOTIFY("Spotify", durationInMs = true, hasArtworkUrl = true, shuffleProperty = "shuffling", repeatProperty = "repeating", repeatsOne = false),
+    MUSIC("Music", durationInMs = false, hasArtworkUrl = false, shuffleProperty = "shuffle enabled", repeatProperty = "song repeat", repeatsOne = true),
 }
 
 /** Separates the fields of a poll line. */
@@ -190,7 +191,7 @@ fun parseMacLine(raw: String, stampWall: Long): MediaSnapshot? {
         else -> null
     }
     // No track: nothing to follow, whatever the state says.
-    if (fields.size <= 4) return MediaSnapshot(player.appName, false, "", "", "", 0, 0, stampWall, status, null, event = "poll", shuffle = shuffle, repeat = repeat)
+    if (fields.size <= 4) return MediaSnapshot(player.appName, false, "", "", "", 0, 0, stampWall, status, null, event = "poll", shuffle = shuffle, repeat = repeat, repeatOneSupported = player.repeatsOne)
     val position = seconds(fields[2]) ?: return null
     val duration = number(fields[3]) ?: 0.0
     return MediaSnapshot(
@@ -208,6 +209,7 @@ fun parseMacLine(raw: String, stampWall: Long): MediaSnapshot? {
         event = "poll",
         shuffle = shuffle,
         repeat = repeat,
+        repeatOneSupported = player.repeatsOne,
     )
 }
 

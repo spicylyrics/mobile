@@ -122,4 +122,9 @@ class GsmtcLineTest {
         assertEquals(listOf("ctl", "Spotify", "repeat", "one"), gsmtcRepeatArgs("Spotify", RepeatMode.One))
         assertEquals(listOf("ctl", "Spotify", "repeat", "all"), gsmtcRepeatArgs("Spotify", RepeatMode.All))
     }
+
+    @Test
+    fun `gsmtc players can repeat one track`() {
+        assertTrue(snapshot(spotify).repeatOneSupported)
+    }
 }
