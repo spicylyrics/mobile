@@ -39,4 +39,10 @@ class MediaSourceTest {
         assertEquals(Transport.entries.toSet(), MprisMediaSource(path = null).capabilities)
         assertNotNull(MprisMediaSource(path = null).unavailableReason)
     }
+
+    @Test
+    fun `retries back off to 30 seconds`() {
+        assertEquals(listOf(1_000L, 2_000L, 4_000L, 8_000L, 16_000L, 30_000L, 30_000L), (1..7).map(::retryDelayMs))
+        assertEquals(1_000L, retryDelayMs(0))
+    }
 }
