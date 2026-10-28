@@ -41,13 +41,13 @@ class MediaSourceTest {
 
     @Test
     fun `shuffle and repeat where the platform takes them`() {
-        for (source in listOf(GsmtcMediaSource(File("x")), MprisMediaSource(path = null))) {
+        for (source in listOf(GsmtcMediaSource(File("x")), MprisMediaSource(path = null), MacMediaSource())) {
             assertTrue(source.canShuffle)
             assertTrue(source.canRepeat)
         }
-        val mac = mediaSource(File("x"), osName = "Mac OS X")
-        assertFalse(mac.canShuffle)
-        assertFalse(mac.canRepeat)
+        val none = mediaSource(File("x"), osName = "SunOS")
+        assertFalse(none.canShuffle)
+        assertFalse(none.canRepeat)
     }
 
     @Test

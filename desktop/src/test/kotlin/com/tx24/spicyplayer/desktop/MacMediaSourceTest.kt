@@ -103,4 +103,67 @@ class MacMediaSourceTest {
         assertNotNull(source.unavailableReason)
         assertEquals(Transport.entries.toSet(), source.capabilities)
     }
+
+    @Test
+    fun `shuffle and repeat, and the poll lines from before them`() {
+        val spotify = parseMacLine(line("Spotify", "playing", "1", "2000", "Song", "Band", "Record", "", "true", "true"), 0)!!
+        assertEquals(true, spotify.shuffle)
+        assertEquals(RepeatMode.All, spotify.repeat)
+        assertEquals("Song", spotify.title)
+        val off = parseMacLine(line("Spotify", "paused", "1", "2000", "Song", "Band", "Record", "", "false", "false"), 0)!!
+        assertEquals(false, off.shuffle)
+        assertEquals(RepeatMode.Off, off.repeat)
+        val music = parseMacLine(line("Music", "playing", "1", "2", "Track", "Singer", "Album", "", "true", "one"), 0)!!
+        assertEquals(true, music.shuffle)
+        assertEquals(RepeatMode.One, music.repeat)
+        assertEquals(RepeatMode.All, parseMacLine(line("Music", "playing", "1", "2", "T", "S", "A", "", "false", "all"), 0)!!.repeat)
+        assertEquals(RepeatMode.Off, parseMacLine(line("Music", "playing", "1", "2", "T", "S", "A", "", "false", "off"), 0)!!.repeat)
+        // A player with no track still says.
+        val idle = parseMacLine(line("Music", "stopped", "false", "all"), 0)!!
+        assertEquals(false, idle.shuffle)
+        assertEquals(RepeatMode.All, idle.repeat)
+        // Couldn't read them, or something else came back: unknown.
+        val unread = parseMacLine(line("Spotify", "playing", "1", "2000", "Song", "Band", "Record", "", "", "missing value"), 0)!!
+        assertNull(unread.shuffle)
+        assertNull(unread.repeat)
+        assertNull(parseMacLine(line("Music", "playing", "1", "2", "T", "S", "A", "", "yes", "sometimes"), 0)!!.repeat)
+        // The lines from before shuffle and repeat.
+        val old = parseMacLine(line("Spotify", "playing", "1", "2000", "Song", "Band", "Record", ""), 0)!!
+        assertEquals("Song", old.title)
+        assertNull(old.shuffle)
+        assertNull(old.repeat)
+        assertNull(parseMacLine(line("Music", "stopped"), 0)!!.shuffle)
+        // Odd field counts are still rejected.
+        assertNull(parseMacLine(line("Music", "stopped", "true"), 0))
+        assertNull(parseMacLine(line("Spotify", "playing", "1", "2000", "Song", "Band", "Record", "", "true"), 0))
+    }
+
+    @Test
+    fun `the poll reads shuffle and repeat apart from the track`() {
+        val spotify = macPollArgs(listOf(MacPlayer.SPOTIFY)).filterIndexed { i, _ -> i % 2 == 1 }
+        assertTrue("set sh to (shuffling as string)" in spotify)
+        assertTrue("set rp to (repeating as string)" in spotify)
+        val music = macPollArgs(listOf(MacPlayer.MUSIC)).filterIndexed { i, _ -> i % 2 == 1 }
+        assertTrue("set sh to (shuffle enabled as string)" in music)
+        assertTrue("set rp to (song repeat as string)" in music)
+        // Each read is in its own try, ahead of the track's, so a failed one can't hide the track.
+        assertTrue(music.indexOf("set rp to (song repeat as string)") < music.indexOf("set t to current track"))
+        assertEquals("try", music[music.indexOf("set sh to (shuffle enabled as string)") - 1])
+        assertEquals("end try", music[music.indexOf("set rp to (song repeat as string)") + 1])
+    }
+
+    @Test
+    fun `shuffle and repeat scripts`() {
+        assertEquals("tell application \"Spotify\" to set shuffling to true", macShuffleScript("Spotify", true))
+        assertEquals("tell application \"Music\" to set shuffle enabled to false", macShuffleScript("Music", false))
+        assertEquals("tell application \"Spotify\" to set repeating to false", macRepeatScript("Spotify", RepeatMode.Off))
+        // Spotify can't repeat one track: One turns on its only repeat.
+        assertEquals("tell application \"Spotify\" to set repeating to true", macRepeatScript("Spotify", RepeatMode.One))
+        assertEquals("tell application \"Spotify\" to set repeating to true", macRepeatScript("Spotify", RepeatMode.All))
+        assertEquals("tell application \"Music\" to set song repeat to off", macRepeatScript("Music", RepeatMode.Off))
+        assertEquals("tell application \"Music\" to set song repeat to one", macRepeatScript("Music", RepeatMode.One))
+        assertEquals("tell application \"Music\" to set song repeat to all", macRepeatScript("Music", RepeatMode.All))
+        assertNull(macShuffleScript("VLC", true))
+        assertNull(macRepeatScript("Spotify\" to quit --", RepeatMode.All))
+    }
 }
