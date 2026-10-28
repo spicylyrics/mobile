@@ -168,7 +168,8 @@ internal object NowPlayingHolder {
         val app = context.applicationContext
         if (running) {
             readWants(app)
-            refreshSessions()
+            // Started before access was granted: follow the music now that it may be.
+            if (sessionManager == null) connect(app) else refreshSessions()
             show(full = true)
             return
         }
@@ -184,6 +185,11 @@ internal object NowPlayingHolder {
         ContextCompat.registerReceiver(app, screenReceiver, screen, ContextCompat.RECEIVER_NOT_EXPORTED)
         wide = LyricsWidget.screenDp(app).let { (width, height) -> width > height }
         app.registerComponentCallbacks(configCallbacks)
+        connect(app)
+    }
+
+    /** Listens for the players' sessions, or shows that access isn't granted. */
+    private fun connect(app: Context) {
         val manager = app.getSystemService(MediaSessionManager::class.java)
         val listener = ComponentName(app, SessionAccessService::class.java)
         runCatching {
@@ -266,8 +272,28 @@ internal object NowPlayingHolder {
 
     private fun refreshSessions() {
         val app = context ?: return
-        runCatching { sessionManager?.getActiveSessions(ComponentName(app, SessionAccessService::class.java)) }
-            .getOrNull()?.let(::follow)
+        val manager = sessionManager ?: return
+        runCatching { manager.getActiveSessions(ComponentName(app, SessionAccessService::class.java)) }
+            .onSuccess(::follow)
+            .onFailure { lostAccess() }
+    }
+
+    /** Access was taken away: stop following, and connect again when it's back ([start]). */
+    private fun lostAccess() {
+        main.removeCallbacks(tick)
+        main.removeCallbacks(sessionRecheck)
+        runCatching { sessionManager?.removeOnActiveSessionsChangedListener(sessionsListener) }
+        sessionManager = null
+        controller?.unregisterCallback(controllerCallback)
+        controller = null
+        observedSessions.forEach { (token, session) -> observedCallbacks[token]?.let(session::unregisterCallback) }
+        observedSessions.clear()
+        observedCallbacks.clear()
+        stickiness.reset()
+        songKey = null
+        clock.reset(SystemClock.elapsedRealtime())
+        clearSong(NO_ACCESS)
+        show(full = true)
     }
 
     private fun follow(sessions: List<MediaController>) {
@@ -422,12 +448,13 @@ internal object NowPlayingHolder {
             return
         }
         val playing = playback.state == PlaybackState.STATE_PLAYING
+        val speed = LyricClock.playingSpeed(playing, playback.playbackSpeed)
         val relayed = session.playbackInfo?.playbackType == MediaController.PlaybackInfo.PLAYBACK_TYPE_REMOTE
-        val report = LyricClock.Report(playback.state, playing, playback.position, playback.lastPositionUpdateTime, playback.playbackSpeed, relayed)
+        val report = LyricClock.Report(playback.state, playing, playback.position, playback.lastPositionUpdateTime, speed, relayed)
         val fresh = clock.isFresh(report)
         if (newSong && !fresh) {
             // The report is the last song's: the new one starts from 0 until the player reports.
-            clock.startTrack(now, playback.playbackSpeed, playing)
+            clock.startTrack(now, speed, playing)
             awaitingReport = true
             return
         }
@@ -441,7 +468,9 @@ internal object NowPlayingHolder {
         val picture = metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART)
             ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_ART)
             ?: metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON)
-        if (picture === art) return false
+        // Each read of the metadata brings the cover as a new bitmap, so it's compared by its pixels:
+        // redoing the pictures each time would redraw the whole widget on every wake.
+        if (picture === art || (picture != null && art?.let { runCatching { picture.sameAs(it) }.getOrDefault(false) } == true)) return false
         art = picture
         backdrop = null
         cover = null

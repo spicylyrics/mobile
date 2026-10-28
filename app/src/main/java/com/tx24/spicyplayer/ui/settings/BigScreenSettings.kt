@@ -18,6 +18,7 @@ import com.tx24.spicyplayer.BuildConfig
 import com.tx24.spicyplayer.PictureInPicture
 import com.tx24.spicyplayer.haptics.HapticPlayer
 import com.tx24.spicyplayer.haptics.MusicHapticsStyle
+import com.tx24.spicyplayer.ui.nowplaying.StageArt
 import com.tx24.spicyplayer.ui.settings.panel.PanelActions
 import com.tx24.spicyplayer.ui.settings.panel.PanelGroup
 import com.tx24.spicyplayer.ui.settings.panel.PanelRow
@@ -238,8 +239,8 @@ internal fun bigScreenDeviceGroups(
             toggle("canvasBackground", "Show Canvas Where Available",
                 "Where the song has a Spotify Canvas, the background is that Canvas, blurred. Other songs keep your background.",
                 { s.canvasBackground }, { s.canvasBackground = it }),
-            toggle("bigCoverCanvas", "Canvas on the Big Cover", "In portrait, the song's Spotify Canvas fills the screen while the big cover is open.",
-                { s.bigCoverCanvas }, { s.bigCoverCanvas = it }),
+            toggle("bigCoverArts", "Canvas on the Big Cover", "In portrait, the song's Spotify Canvas fills the screen while the big cover is open.",
+                { StageArt.Canvas in s.bigCoverArt }, { s.bigCoverArt = if (it) s.bigCoverArt + StageArt.Canvas else s.bigCoverArt - StageArt.Canvas }),
             toggle("canvasBackdrop", "Blurred Canvas Behind", "While the stage or the big cover shows a Canvas, the background is that Canvas, blurred.",
                 { s.canvasBackdrop }, { s.canvasBackdrop = it }),
         )),

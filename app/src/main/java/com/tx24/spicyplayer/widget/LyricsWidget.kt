@@ -132,13 +132,16 @@ class LyricsWidget : AppWidgetProvider() {
          * floating window that's the window's, small and wide.
          */
         fun screenDp(context: Context): Pair<Int, Int> {
-            val display = context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY)
-                ?: return context.resources.configuration.let { it.screenWidthDp to it.screenHeightDp }
-            val size = Point()
-            @Suppress("DEPRECATION")
-            display.getRealSize(size)
+            val config = context.resources.configuration.let { it.screenWidthDp to it.screenHeightDp }
+            val size = realSize(context) ?: return config
             val density = context.resources.displayMetrics.density
-            return (size.x / density).toInt() to (size.y / density).toInt()
+            return WidgetFit.screenDp((size.x / density).toInt() to (size.y / density).toInt(), config)
+        }
+
+        private fun realSize(context: Context): Point? {
+            val display = context.getSystemService(DisplayManager::class.java)?.getDisplay(Display.DEFAULT_DISPLAY) ?: return null
+            @Suppress("DEPRECATION")
+            return Point().also(display::getRealSize)
         }
 
         /** Each placed widget's size as its launcher reports it and as it's drawn, for the extra logs. */
@@ -146,7 +149,10 @@ class LyricsWidget : AppWidgetProvider() {
             val manager = AppWidgetManager.getInstance(context)
             val (screenWidth, screenHeight) = screenDp(context)
             val stable = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) android.util.DisplayMetrics.DENSITY_DEVICE_STABLE else 0
-            val header = "Screen ${screenWidth}x$screenHeight dp, density ${context.resources.displayMetrics.densityDpi} dpi (device $stable)"
+            val real = realSize(context)?.let { "${it.x}x${it.y} px" } ?: "unknown"
+            val config = context.resources.configuration
+            val header = "Screen ${screenWidth}x$screenHeight dp (display $real, app ${config.screenWidthDp}x${config.screenHeightDp} dp), " +
+                "density ${context.resources.displayMetrics.densityDpi} dpi (device $stable)"
             return listOf(header) + ids(context).map { id ->
                 val options = manager.getAppWidgetOptions(id)
                 fun read(key: String) = options.getInt(key)

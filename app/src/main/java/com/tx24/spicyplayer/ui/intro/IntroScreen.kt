@@ -1,5 +1,9 @@
 package com.tx24.spicyplayer.ui.intro
 
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
@@ -54,6 +58,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -290,6 +295,16 @@ private fun ColumnScope.AccessStep(granted: Boolean, openNotificationAccess: () 
                 SpicyModalButton("Continue", next, style = SpicyButtonStyle.Primary, fill = true)
             } else {
                 SpicyModalButton("Open notification access", openNotificationAccess, style = SpicyButtonStyle.Primary, fill = true)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val context = LocalContext.current
+                    SpicyModalButton("Open app info", {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
+                            )
+                        }
+                    }, style = SpicyButtonStyle.Quiet, fill = true)
+                }
             }
         },
     ) {
@@ -306,6 +321,13 @@ private fun ColumnScope.AccessStep(granted: Boolean, openNotificationAccess: () 
             }
         } else {
             Hint("Find Spicy Lyrics Mobile in the list, turn it on, then come back here.")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Android blocks this switch for apps installed from a downloaded APK.
+                Hint(
+                    "Switch greyed out, or a \"Restricted setting\" message? Open app info, tap ⋮ in the corner, " +
+                        "choose \"Allow restricted settings\", then try again.",
+                )
+            }
         }
     }
 }

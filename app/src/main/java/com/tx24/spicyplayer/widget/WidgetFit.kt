@@ -46,13 +46,25 @@ internal data class WidgetFit(val settings: WidgetSettings, val currentLines: In
          * scaled by [density], or the lyrics would be drawn for that size and shrunk to fit.
          */
         fun reportedDp(widthDp: Int?, heightDp: Int?, screenWidthDp: Int, screenHeightDp: Int, density: Float): Pair<Int?, Int?> {
+            // A screen too small to be one can't tell pixels from dp, so the size is left as reported.
+            if (minOf(screenWidthDp, screenHeightDp) < MIN_SCREEN_DP) return widthDp to heightDp
             val tooBig = (widthDp ?: 0) > screenWidthDp + SCREEN_SLACK_DP || (heightDp ?: 0) > screenHeightDp + SCREEN_SLACK_DP
             if (!tooBig || density <= 1f) return widthDp to heightDp
             return widthDp?.let { (it / density).toInt() } to heightDp?.let { (it / density).toInt() }
         }
 
+        /**
+         * The screen in dp: the display's [realDp], or the app's [configDp] when the display's
+         * answer is too small to be a screen. Taken as the screen, such an answer would make every
+         * widget read as pixels and its lyrics be drawn a few words wide.
+         */
+        fun screenDp(realDp: Pair<Int, Int>, configDp: Pair<Int, Int>): Pair<Int, Int> =
+            if (minOf(realDp.first, realDp.second) >= MIN_SCREEN_DP) realDp else configDp
+
         /** How far past the screen a reported size may reach before it's taken for pixels. */
         private const val SCREEN_SLACK_DP = 16
+        /** The narrowest a screen can be, in dp; Android needs 320 of any phone. */
+        private const val MIN_SCREEN_DP = 240
 
         /** Without a known height, the lyrics area is drawn this tall. */
         private const val DEFAULT_LINES_DP = 180f

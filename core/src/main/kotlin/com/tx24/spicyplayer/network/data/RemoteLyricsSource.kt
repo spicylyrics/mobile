@@ -383,7 +383,7 @@ class RemoteLyricsSource @Inject constructor(
             }
         }
         answer.let { result ->
-            val hit = (result as? ProviderResult.Hit)?.let { it.copy(payload = it.payload.withoutFakeTiming()) }
+            val hit = (result as? ProviderResult.Hit)?.let { it.copy(payload = it.payload.withoutFakeTiming().withWordTimingAsTtml()) }
                 // The Chinese catalogues write lines nobody sings into their lyrics: credits, headers, translations.
                 ?.let { if (furnished) it.copy(payload = LyricsFurniture.clean(it.payload, asked.title, asked.artist)) else it }
                 ?: return@let result

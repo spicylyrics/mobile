@@ -30,7 +30,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -87,8 +87,17 @@ fun QueueList(state: PlayerUiState, viewModel: ExternalPlaybackViewModel, onJump
         }
         return
     }
+    // A player may list one queue id twice (a song queued twice), and the list's keys must differ.
+    val keys = remember(state.queue) {
+        val seen = HashMap<Long, Int>()
+        state.queue.map { entry ->
+            val n = (seen[entry.id] ?: 0) + 1
+            seen[entry.id] = n
+            if (n == 1) entry.id.toString() else "${entry.id}#$n"
+        }
+    }
     LazyColumn(modifier.fillMaxWidth(), state = list, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        items(state.queue, key = { it.id }) { entry ->
+        itemsIndexed(state.queue, key = { i, _ -> keys[i] }) { _, entry ->
             QueueRow(entry, if (animate) Modifier.animateItem() else Modifier) {
                 viewModel.skipToQueueItem(entry.id)
                 onJumped()
