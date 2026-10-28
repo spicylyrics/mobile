@@ -17,3 +17,10 @@ internal expect fun charCount(codePoint: Int): Int
 
 /** [value] rounded to the nearest Int, halves up; NaN gives 0. */
 internal expect fun roundHalfUp(value: Float): Int
+
+/**
+ * Whether the lyrics, resized, put the line being sung back in view even when scrolled away by
+ * hand, as a resized window does. A phone's lyrics change height as its own chrome comes and
+ * goes, which shouldn't pull a hand-scrolled view back.
+ */
+internal expect val resizeSnapsToLine: Boolean

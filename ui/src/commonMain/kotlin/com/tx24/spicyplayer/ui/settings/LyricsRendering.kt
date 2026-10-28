@@ -36,6 +36,7 @@ fun CommonAppSettings.renderConfig(songDurationMs: Long): RenderConfig {
             smooth = smoothScrolling,
             seekFadeCompensation = seekFadeCompensation,
             staticSongMs = if (staticAutoScroll) songDurationMs else 0L,
+            lineHoverBackground = lineHoverBackground,
         ),
     )
 }

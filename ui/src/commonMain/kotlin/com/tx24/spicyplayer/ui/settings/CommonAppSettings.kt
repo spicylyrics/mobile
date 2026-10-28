@@ -96,6 +96,8 @@ open class CommonAppSettings(
     /** Unsynced lyrics scroll through at the song's pace, top to bottom over its length. */
     var staticAutoScroll by boolean("staticAutoScroll", true)
     var seekFadeCompensation by boolean("seekFadeCompensation", true)
+    /** A mouse over a line lays a soft pill behind it; with a mouse only. */
+    var lineHoverBackground by boolean("lineHoverBackground", true)
 
     var distanceBlur by boolean("distanceBlur", true)
     var glow by boolean("glow", true)

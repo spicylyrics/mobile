@@ -70,6 +70,7 @@ import com.tx24.spicyplayer.translation.TranslationResult
 import java.awt.GraphicsEnvironment
 import com.tx24.spicyplayer.ui.settings.FileSettingsStore
 import com.tx24.spicyplayer.ui.settings.InstanceLock
+import com.tx24.spicyplayer.translation.romanizationCredit
 import java.awt.event.ComponentAdapter
 import java.awt.event.ComponentEvent
 import java.io.File
@@ -481,14 +482,21 @@ private fun Lyrics(
         lyricsType = lyrics.lyricsType,
         config = config,
         fontSizeScale = fontSizeScale,
-        viewState = viewState,
-        footer = remember(lyrics) {
-            LyricsFooter(
-                songwriters = lyrics.songwriters,
-                provenance = LyricsProvenance(lyrics.source ?: lyrics.provider),
-                maker = lyrics.maker?.let { LyricsCredit(it.username, it.profileUrl, it.avatarUrl) },
-                uploader = lyrics.uploader?.let { LyricsCredit(it.username, it.profileUrl, it.avatarUrl) },
-            )
+        footer = run {
+            // Who translated and romanized what's on screen, while the Text Credits setting asks.
+            val textCredits = desktopSettings.textCredits
+            // The desktop has no human (Genius) romanization: it is the lyrics' own or on-device.
+            val romanizedFrom = remember(lyrics, romanize, textCredits) { romanizationCredit(lyrics, 0, romanize, textCredits) }
+            remember(lyrics, translation, textCredits, romanizedFrom) {
+                LyricsFooter(
+                    songwriters = lyrics.songwriters,
+                    translationCredit = translation?.credit()?.takeIf { textCredits },
+                    romanizationCredit = romanizedFrom,
+                    provenance = LyricsProvenance(lyrics.source ?: lyrics.provider),
+                    maker = lyrics.maker?.let { LyricsCredit(it.username, it.profileUrl, it.avatarUrl) },
+                    uploader = lyrics.uploader?.let { LyricsCredit(it.username, it.profileUrl, it.avatarUrl) },
+                )
+            }
         },
     )
     if (pinnedFooter != PinnedFooterMode.Off) PinnedLyricsFooter(

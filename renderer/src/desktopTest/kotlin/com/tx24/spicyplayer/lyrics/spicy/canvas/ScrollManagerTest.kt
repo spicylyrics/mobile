@@ -165,4 +165,71 @@ class ScrollManagerTest {
         frames(2f, 1, -400f)
         assertEquals(-400f, scroll.animScrollY, 0.01f)
     }
+
+    @Test fun aWheelNotchEasesTheViewAndHidesTheBlur() {
+        frames(0.1f, 0, -300f)
+        scroll.onWheel(-100f, height)
+        assertTrue(scroll.hideLineBlur)
+        // Eased, not jumped: partway after one frame, there within a few tenths of a second.
+        now += 16
+        scroll.updateScroll(1f / 60f, height, 0, -300f, targetVisiblePx = 100f)
+        assertTrue(scroll.animScrollY < -300f && scroll.animScrollY > -400f)
+        frames(0.3f, 0, -300f)
+        assertEquals(-400f, scroll.animScrollY, 0.01f)
+    }
+
+    @Test fun wheelNotchesAddUpFromWhereTheLastOneWasGoing() {
+        frames(0.1f, 0, -300f)
+        scroll.onWheel(-100f, height)
+        scroll.onWheel(-100f, height)
+        frames(0.4f, 0, -300f)
+        assertEquals(-500f, scroll.animScrollY, 0.01f)
+    }
+
+    @Test fun theWheelStaysInsideTheLyrics() {
+        frames(0.1f, 0, -300f)
+        scroll.onWheel(1_000f, height)
+        frames(0.4f, 0, -300f)
+        assertEquals(0f, scroll.animScrollY, 0.01f)
+        scroll.onWheel(-10_000f, height)
+        frames(0.4f, 0, -300f)
+        assertEquals(-height, scroll.animScrollY, 0.01f)
+    }
+
+    @Test fun autoScrollComesBackAfterTheWheelAsAfterATouch() {
+        frames(0.1f, 0, -300f)
+        scroll.onWheel(-100f, height)
+        frames(0.5f, 1, -600f)
+        assertEquals(-400f, scroll.animScrollY, 0.01f)
+        assertTrue(scroll.hideLineBlur)
+        frames(2f, 1, -600f)
+        assertFalse(scroll.hideLineBlur)
+        assertEquals(-600f, scroll.animScrollY, 1f)
+    }
+
+    @Test fun theScrollbarFollowsItsThumbExactlyAndNeverFlings() {
+        frames(0.1f, 0, -300f)
+        scroll.onDragStart()
+        now += 16
+        scroll.onScrollbarDrag(-250f, height)
+        scroll.onScrollbarRelease() // let go mid-motion: a scrollbar still doesn't fling
+        assertEquals(-550f, scroll.animScrollY, 0.01f)
+        frames(0.3f, 0, -300f, visible = 0f)
+        assertEquals(-550f, scroll.animScrollY, 0.01f)
+        assertTrue(scroll.hideLineBlur)
+        // And it stops at the ends, with no rubber band.
+        scroll.onDragStart()
+        scroll.onScrollbarDrag(10_000f, height)
+        assertEquals(0f, scroll.animScrollY, 0.01f)
+    }
+
+    @Test fun theScrollbarSaysHowFarDownTheViewIs() {
+        frames(0.1f, 0, -1_000f)
+        val span = scroll.scrollbar(height, 1_000f)!!
+        assertEquals(0.2f, span.position, 0.0001f)
+        assertEquals(1_000f / 6_000f, span.visible, 0.0001f)
+        assertEquals(height, span.rangePx, 0.01f)
+        // Lyrics that don't scroll have no scrollbar.
+        assertEquals(null, ScrollManager().scrollbar(0f, 1_000f))
+    }
 }

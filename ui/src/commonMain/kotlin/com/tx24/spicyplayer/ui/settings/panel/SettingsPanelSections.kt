@@ -130,6 +130,12 @@ private fun lyricsSection(s: CommonAppSettings) = PanelSection(
         )),
         PanelGroup("Lines", listOf(
             PanelRow.Toggle(
+                "lineHoverBackground", "Line Hover Background",
+                "Show a soft highlight behind the line under the mouse.",
+                keywords = "hover highlight mouse pill",
+                checked = { s.lineHoverBackground }, onChange = { s.lineHoverBackground = it },
+            ),
+            PanelRow.Toggle(
                 "duetLinePadding", "Duet Line Padding",
                 "Indent each singer's lines toward their side, so duets read as two columns.",
                 keywords = "indent voices",

@@ -26,6 +26,7 @@ The settings screen lives in `ui/settings/`; its controls in `ui/components/Sett
 4. **Search matches rows by their label and description automatically.** When shortening an existing description, retain its old text in `searchDescription` so old searches still find the row. Anything else (a card, a note) needs wrapping in `Searchable(...)`, or search won't find it. A page's first rows go without a section title, because the page header already names them. Later groups on the same page go in `SettingsSection("Title")`.
 5. **Keep the placeholder honest.** If a page gains or loses several rows, update its row count in `PageSkeleton`. If the first page's summary for that group should mention the new setting, update it too.
 6. **Don't repeat what the lyrics screen already has.** For example, romanize is a button there.
+7. **A setting only a mouse can use** (Line Hover Background, `lineHoverBackground`) still lives in `CommonAppSettings` and reaches the renderer through `renderConfig()`, but gets a row only in the big-screen settings panel (`ui/settings/panel/SettingsPanelSections.kt`), not on the phone's pages. Without a hovering pointer it must do nothing, so the phone looks the same either way.
 
 ## Romanization & Translation
 

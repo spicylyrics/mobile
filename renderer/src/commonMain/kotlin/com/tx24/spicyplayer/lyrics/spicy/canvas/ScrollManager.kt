@@ -13,7 +13,7 @@ import kotlin.math.sqrt
 
 /**
  * One scroll position shared by the user and auto-scroll:
- * - Touching the lyrics stops auto-scroll and hides the distance blur.
+ * - Touching the lyrics, a mouse wheel or the scrollbar stops auto-scroll and hides the distance blur.
  * - Auto-scroll resumes, and the blur returns, once nothing has moved the lyrics by hand for
  *   [USER_SCROLL_COOLDOWN_MS] and the current line is at least partly on screen.
  * - After resuming it only moves when the current line changes, so a nudge is left alone.
@@ -62,6 +62,8 @@ internal class ScrollManager(
     /** After resuming, stay put until the line changes (no re-centring). */
     private var holdUntilLineChange = false
     private var snapNext = true
+    /** Where the mouse wheel is taking the view; null once it has arrived. */
+    private var wheelGoal: Float? = null
 
     // Current glide: from glideFrom to glideTo over glideDuration seconds.
     private var glideFrom = 0f
@@ -104,6 +106,7 @@ internal class ScrollManager(
         lastAutoTarget = null
         holdUntilLineChange = false
         snapNext = true
+        wheelGoal = null
     }
 
     /**
@@ -141,8 +144,18 @@ internal class ScrollManager(
             return
         }
 
+        val wheeling = wheelGoal
         when {
             isUserScrolling -> lastUserMoveMs = now
+            wheeling != null -> {
+                // A wheel notch eases the view to where it asked for, like a browser's smooth wheel.
+                y += (wheeling - y) * (dt * WHEEL_EASE_RATE).coerceAtMost(1f)
+                if (abs(wheeling - y) < 0.5f) {
+                    y = wheeling
+                    wheelGoal = null
+                }
+                lastUserMoveMs = now
+            }
             abs(velocity) > MIN_FLING_VELOCITY -> {
                 // Fling: counts as the user still scrolling, so auto-scroll never yanks it.
                 y += velocity * dt
@@ -193,6 +206,7 @@ internal class ScrollManager(
 
     fun onDragStart() {
         isUserScrolling = true
+        wheelGoal = null
         hideLineBlur = true
         velocity = 0f
         lastDragTimeMs = monotonicNowMs()
@@ -220,6 +234,48 @@ internal class ScrollManager(
         isUserScrolling = false
         // A finger resting still before lifting shouldn't fling.
         if (monotonicNowMs() - lastDragTimeMs > 80L) velocity = 0f
+    }
+
+    /**
+     * A mouse wheel (or a touchpad's two-finger scroll) moved the lyrics by [dy] px, positive
+     * down the page as for a drag. Like a touch, it stops auto-scroll and hides the blur, and
+     * auto-scroll comes back after the same cooldown. Unlike one, it stays inside the content and
+     * never flings: the view eases to where the notches add up to.
+     */
+    fun onWheel(dy: Float, totalContentHeight: Float) {
+        if (dy == 0f || isUserScrolling) return
+        hideLineBlur = true
+        velocity = 0f
+        lastUserMoveMs = monotonicNowMs()
+        val from = wheelGoal ?: animScrollY
+        wheelGoal = (from + dy).coerceIn(bottomY(totalContentHeight), topY)
+    }
+
+    /**
+     * The scrollbar's thumb moved the view by [dy] px, between [onDragStart] and
+     * [onScrollbarRelease]: the view follows it exactly, inside the content, with no rubber band.
+     */
+    fun onScrollbarDrag(dy: Float, totalContentHeight: Float) {
+        lastDragTimeMs = monotonicNowMs()
+        lastUserMoveMs = lastDragTimeMs
+        animScrollY = (animScrollY + dy).coerceIn(bottomY(totalContentHeight), topY)
+    }
+
+    /** The scrollbar's thumb let go: a scrollbar never flings. */
+    fun onScrollbarRelease() {
+        isUserScrolling = false
+        velocity = 0f
+    }
+
+    /** How far down the content the view is, 0 at its top to 1 at its end, and how much of it shows. */
+    fun scrollbar(totalContentHeight: Float, viewportPx: Float): ScrollbarSpan? {
+        val range = topY - bottomY(totalContentHeight)
+        if (range <= 0.5f || viewportPx <= 0f) return null
+        return ScrollbarSpan(
+            position = ((topY - animScrollY) / range).coerceIn(0f, 1f),
+            visible = (viewportPx / (viewportPx + range)).coerceIn(0f, 1f),
+            rangePx = range,
+        )
     }
 
     /**
@@ -286,6 +342,7 @@ internal class ScrollManager(
     private fun takeBackControl(targetIndex: Int?, y: Float) {
         settle(y)
         velocity = 0f
+        wheelGoal = null
         hideLineBlur = false
         holdUntilLineChange = false
         lastAutoTarget = targetIndex
@@ -301,6 +358,8 @@ internal class ScrollManager(
         const val MIN_FLING_VELOCITY = 10f
         const val OVERSCROLL_PX = 60f
         const val EDGE_RETURN_RATE = 12f
+        /** How fast a wheel move closes on its goal, per second: most of a notch in about 100ms. */
+        const val WHEEL_EASE_RATE = 20f
         /**
          * Desktop Chromium's kProgrammaticScrollAnimationOverride defaults (cc/base/features.cc):
          * max_animation_duration 1500ms (90 frames of 1/60s) and the curve below. Older builds
@@ -318,3 +377,9 @@ internal class ScrollManager(
         const val MAX_SPRING_STEP_S = 0.05f
     }
 }
+
+/**
+ * Where a scrollbar's thumb goes: [position] down the track (0 top, 1 end), [visible] the share of
+ * the content on screen, and [rangePx] how far the view scrolls end to end.
+ */
+internal data class ScrollbarSpan(val position: Float, val visible: Float, val rangePx: Float)

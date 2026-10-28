@@ -11,7 +11,7 @@ enum class SyllableMerge(val label: String) {
     Held("Held words only"),
 }
 
-/** How the lyrics follow the song and answer a tap. None of it changes how lines are measured. */
+/** How the lyrics follow the song and answer a tap or a pointer. None of it changes how lines are measured. */
 data class ScrollConfig(
     /** Early Scroll: the view picks its line as if the song were this far ahead. 0 is off. */
     val leadMs: Long = 0L,
@@ -25,6 +25,11 @@ data class ScrollConfig(
      * their scrolling to the user.
      */
     val staticSongMs: Long = 0L,
+    /**
+     * Line Hover Background: a mouse over a line lays a soft pill behind it. Only a hovering
+     * pointer (a mouse) shows it, so on a touch screen it does nothing either way.
+     */
+    val lineHoverBackground: Boolean = true,
 ) {
     companion object {
         /** Players fade audio in for about this long after a seek, swallowing a line's first syllable. */
