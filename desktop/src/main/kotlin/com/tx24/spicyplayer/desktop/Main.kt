@@ -89,6 +89,7 @@ fun main(args: Array<String>) {
     val analysis = MutableStateFlow<AudioAnalysis?>(null)
     SyncDelay.attach(session, delays, analysis) { (screen.value as? Screen.Track)?.lyrics }
     val spotify = SharedSpotify.extras(cacheDir)
+    val backgroundImages = DesktopImageCache(File(cacheDir, "backgrounds"))
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var beats: Job? = null
     val nowPlaying = DesktopNowPlaying(source, session)
@@ -183,15 +184,26 @@ fun main(args: Array<String>) {
                     actions = actions,
                     noticeActions = noticeActions,
                     background = {
-                        DesktopKawarp(
-                            coverFile,
-                            isPlaying,
-                            speed = {
-                                analysis.value?.let { BackgroundSpeed.at(session.clock.positionAt(monoMs()) / 1000f, it) }
-                            }.takeIf { backdrop.beatReactive },
+                        val type = desktopSettings.backgroundType
+                        DesktopBackgrounds(
+                            type = type,
+                            blurDp = desktopSettings.backgroundBlurFor(type),
                             animate = backdrop.animate,
-                            blurPasses = backdrop.blurPasses,
-                        )
+                            cover = coverFile,
+                            trackKey = track?.track?.key,
+                            findArtistHeader = { session.track?.let { artistHeaderUrl(spotify, it) } },
+                            images = backgroundImages,
+                        ) {
+                            DesktopKawarp(
+                                coverFile,
+                                isPlaying,
+                                speed = {
+                                    analysis.value?.let { BackgroundSpeed.at(session.clock.positionAt(monoMs()) / 1000f, it) }
+                                }.takeIf { backdrop.beatReactive },
+                                animate = backdrop.animate,
+                                blurPasses = backdrop.blurPasses,
+                            )
+                        }
                     },
                     lyricsView = { modifier, romanize, activeLineTopPx, renderConfig ->
                         val s = shown as? Screen.Track
