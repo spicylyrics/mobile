@@ -61,12 +61,13 @@ fun ScrollToActiveButton(viewState: LyricsViewState, settingOn: Boolean, bottomP
                     scaleY = scale
                 },
         ) {
+            val ink = SpicyColors.TextPrimary
             Canvas(Modifier.size(20.dp).graphicsLayer { rotationZ = if (above) 180f else 0f }) {
                 val w = size.width
                 val h = size.height
                 val stroke = w * 0.12f
-                drawLine(SpicyColors.TextPrimary, Offset(w * 0.2f, h * 0.35f), Offset(w * 0.5f, h * 0.65f), stroke, StrokeCap.Round)
-                drawLine(SpicyColors.TextPrimary, Offset(w * 0.5f, h * 0.65f), Offset(w * 0.8f, h * 0.35f), stroke, StrokeCap.Round)
+                drawLine(ink, Offset(w * 0.2f, h * 0.35f), Offset(w * 0.5f, h * 0.65f), stroke, StrokeCap.Round)
+                drawLine(ink, Offset(w * 0.5f, h * 0.65f), Offset(w * 0.8f, h * 0.35f), stroke, StrokeCap.Round)
             }
         }
     }
