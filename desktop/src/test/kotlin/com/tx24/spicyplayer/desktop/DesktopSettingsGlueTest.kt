@@ -48,7 +48,7 @@ class DesktopSettingsGlueTest {
     @Test
     fun `no lyrics means nothing to romanize`() {
         val s = settings().apply { romanize = true }
-        assertFalse(s.desktopLyrics(LyricsState.Idle, 0L, 1f, 1f).romanize)
+        assertFalse(s.desktopLyrics(LyricsState.Idle, 0L).romanize)
     }
 
     @Test
