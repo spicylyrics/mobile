@@ -14,7 +14,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import com.tx24.spicyplayer.BuildConfig
 import com.tx24.spicyplayer.PictureInPicture
 import com.tx24.spicyplayer.haptics.HapticPlayer
@@ -25,7 +24,7 @@ import com.tx24.spicyplayer.ui.settings.panel.PanelRow
 import com.tx24.spicyplayer.ui.settings.panel.SettingsPanel
 import com.tx24.spicyplayer.ui.settings.panel.SliderSpec
 import com.tx24.spicyplayer.ui.settings.panel.settingsPanelSections
-import com.tx24.spicyplayer.ui.settings.panel.usesBigScreenSettings
+import com.tx24.spicyplayer.ui.bigscreen.isBigScreenWindow
 import com.tx24.spicyplayer.playback.ExternalPlaybackViewModel
 import com.tx24.spicyplayer.playback.PlayerUiState
 import com.tx24.spicyplayer.update.UpdateViewModel
@@ -55,7 +54,7 @@ internal fun AdaptiveSettings(
 ) {
     var allPages by remember { mutableStateOf(false) }
     val window = LocalConfiguration.current
-    if (!allPages && usesBigScreenSettings(window.screenWidthDp.dp, window.screenHeightDp.dp)) {
+    if (!allPages && isBigScreenWindow(window.screenWidthDp.toFloat(), window.screenHeightDp.toFloat())) {
         BigScreenSettings(settings, contentPadding, onClosed, onOpenAllPages = { allPages = true })
     } else {
         SettingsScreen(

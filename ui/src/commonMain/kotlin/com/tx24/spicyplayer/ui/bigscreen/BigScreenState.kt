@@ -144,17 +144,3 @@ fun tooltip(control: ViewControl, state: BigScreenState, widthDp: Float, heightD
 
 /** The keys that move the page: F11, and Escape (or a tablet's back). */
 enum class PageKey { F11, Escape }
-
-/**
- * Whether a window this size gets the big-screen page rather than the phone's: at least 840dp
- * wide (a tablet held sideways, DeX, an unfolded foldable) and 480dp tall, so a phone in either
- * orientation and a tablet held upright keep the phone layout.
- *
- * The same numbers as the big-screen settings panel's threshold; the two become one function
- * once both are in.
- */
-fun usesBigScreenLayout(widthDp: Float, heightDp: Float): Boolean =
-    widthDp >= BIG_SCREEN_MIN_WIDTH_DP && heightDp >= BIG_SCREEN_MIN_HEIGHT_DP
-
-const val BIG_SCREEN_MIN_WIDTH_DP = 840f
-const val BIG_SCREEN_MIN_HEIGHT_DP = 480f

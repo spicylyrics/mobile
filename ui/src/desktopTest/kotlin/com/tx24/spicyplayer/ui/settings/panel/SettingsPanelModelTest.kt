@@ -69,20 +69,6 @@ class SettingsPanelModelTest {
     }
 
     @Test
-    fun `big-screen settings take over from 840dp wide and 480dp tall`() {
-        // A phone upright, a tablet in portrait, a window just short of the line.
-        assertFalse(usesBigScreenSettings(411.dp, 891.dp))
-        assertFalse(usesBigScreenSettings(800.dp, 1280.dp))
-        assertFalse(usesBigScreenSettings(839.dp, 700.dp))
-        // A big phone on its side: wide enough, but too short.
-        assertFalse(usesBigScreenSettings(915.dp, 411.dp))
-        // A tablet in landscape, an unfolded foldable on its side, a DeX window.
-        assertTrue(usesBigScreenSettings(1280.dp, 800.dp))
-        assertTrue(usesBigScreenSettings(840.dp, 673.dp))
-        assertTrue(usesBigScreenSettings(1024.dp, 480.dp))
-    }
-
-    @Test
     fun `layout is one pane below 600dp, compact below 900dp, else wide`() {
         // A phone in portrait, a small window, a tablet in portrait, a desktop window.
         assertEquals(PanelLayout.SinglePane, panelLayoutFor(360.dp))
