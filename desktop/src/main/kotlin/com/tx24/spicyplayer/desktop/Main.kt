@@ -2,6 +2,8 @@ package com.tx24.spicyplayer.desktop
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -352,6 +354,7 @@ fun main(args: Array<String>) {
                 val translation = translated?.takeIf { readyLyrics != null && it.lyrics === readyLyrics }?.translation
                 // The screen picks portrait or landscape from the window's size, as the phone does from its screen's.
                 BoxWithConstraints(Modifier.fillMaxSize()) {
+                    MaterialTheme(colorScheme = darkColorScheme()) {
                     LyricsScreen(
                         state = LyricsScreenState(
                             nowPlaying = nowPlayingState,
@@ -368,6 +371,7 @@ fun main(args: Array<String>) {
                         messages = remember { emptyFlow<String>() },
                         lyricsViewState = mainLyricsView,
                     )
+                    }
                     UpdateBanner(updates.update, Modifier.align(Alignment.BottomCenter))
                     // The lyrics stay composed under a page, so they and the background carry on where they were.
                     when (nav.at) {
