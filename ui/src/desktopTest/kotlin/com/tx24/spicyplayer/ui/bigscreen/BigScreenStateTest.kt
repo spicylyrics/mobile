@@ -1,5 +1,8 @@
 package com.tx24.spicyplayer.ui.bigscreen
 
+import com.tx24.spicyplayer.ui.settings.CommonAppSettings
+import com.tx24.spicyplayer.ui.settings.CompactView
+import com.tx24.spicyplayer.ui.settings.InMemorySettingsStore
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -40,10 +43,13 @@ class BigScreenStateTest {
     }
 
     @Test
-    fun `close goes straight to the page and forgets the compact override`() {
+    fun `close goes straight to the page and keeps the compact choice for next time`() {
         val closed = BigScreenState(mode = ViewMode.Fullscreen, compactOverride = true).close()
         assertEquals(ViewMode.Page, closed.mode)
-        assertEquals(null, closed.compactOverride)
+        assertEquals(true, closed.compactOverride)
+        // The page itself still follows the window; cinema takes the choice back up.
+        assertEquals(BigScreenLayout.Side, closed.layoutFor(1400f, tall))
+        assertEquals(BigScreenLayout.Compact, closed.toggleCinema().layoutFor(1400f, tall))
     }
 
     @Test
@@ -128,5 +134,49 @@ class BigScreenStateTest {
         assertEquals(page.toggleRomanization(), click(ViewControl.Romanization))
         assertEquals(page, click(ViewControl.More))
         assertEquals(page, click(ViewControl.Settings))
+    }
+
+    @Test
+    fun `the lyrics manager button shows only where the platform offers it`() {
+        assertFalse(ViewControl.LyricsManager in viewControls(BigScreenState(), desktop))
+        val controls = viewControls(BigScreenState(), desktop.copy(lyricsManager = true))
+        assertEquals(controls.indexOf(ViewControl.Settings) - 1, controls.indexOf(ViewControl.LyricsManager))
+        assertEquals("Lyrics Manager", tooltip(ViewControl.LyricsManager, BigScreenState(), 1100f, tall))
+        // It opens a window; the page's own state stays as it was.
+        assertEquals(BigScreenState(), BigScreenState().click(ViewControl.LyricsManager, 1100f, tall, desktop))
+    }
+
+    @Test
+    fun `the view is kept in the settings and comes back on the next run`() {
+        val settings = CommonAppSettings(InMemorySettingsStore(), pipButtonByDefault = false, prereleasesByDefault = false)
+        // A first run: the now-playing bar closed and on the left, compact following the window.
+        val first = BigScreenState().withSavedView(settings)
+        assertFalse(first.nowBarWanted)
+        assertFalse(first.nowBarOnRight)
+        assertEquals(null, first.compactOverride)
+
+        settings.saveView(first.toggleNowBar().swapSides().toggleCinema().toggleCompact(1400f, tall))
+        assertTrue(settings.nowBarOpen)
+        assertTrue(settings.nowBarOnRight)
+        assertEquals(CompactView.Compact, settings.compactView)
+
+        val next = BigScreenState().withSavedView(settings)
+        assertTrue(next.nowBarWanted)
+        assertTrue(next.nowBarOnRight)
+        assertEquals(true, next.compactOverride)
+        assertEquals(ViewMode.Page, next.mode)
+    }
+
+    @Test
+    fun `saving an unchanged view writes nothing`() {
+        val store = InMemorySettingsStore()
+        val settings = CommonAppSettings(store, pipButtonByDefault = false, prereleasesByDefault = false)
+        settings.saveView(BigScreenState().withSavedView(settings))
+        assertTrue(store.keys.none { it in setOf("nowBarOpen", "nowBarOnRight", "compactView") })
+    }
+
+    @Test
+    fun `the compact choice round-trips through its stored form`() {
+        listOf(null, true, false).forEach { assertEquals(it, CompactView.of(it).override) }
     }
 }

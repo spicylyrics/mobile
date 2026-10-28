@@ -26,12 +26,16 @@ import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
-/** The Android backend's sources, minus its preferences and caches. */
-class LyricsLookup(clientKey: String = spicyLyricsKey()) : SongLookup {
+/** The Android backend's sources, minus its preferences and caches; a song saved in [local] beats them all. */
+class LyricsLookup(clientKey: String = spicyLyricsKey(), private val local: DesktopLyricsLibrary? = null) : SongLookup {
     private val providers = providers(clientKey)
     private val source = RemoteLyricsSource(providers, ProviderCooldownTracker())
-    private val descriptors = providers.map { it.descriptor }
+    /** Every provider there is, switched on or not. */
+    val descriptors = providers.map { it.descriptor }
 
+    /** The sources' order and switches from settings ([useSources]), before the blends go in. */
+    @Volatile private var base = RemoteLyricsPolicy()
+    @Volatile private var blendIds: Set<String> = emptySet()
     @Volatile private var policy = RemoteLyricsPolicy()
     @Volatile private var ranking = SourceRanking(descriptors, policy)
 
@@ -48,7 +52,20 @@ class LyricsLookup(clientKey: String = spicyLyricsKey()) : SongLookup {
     }
 
     override fun useBlends(ids: Set<String>) {
-        policy = blendPolicy(SourceRanking(descriptors, RemoteLyricsPolicy()), ids)
+        blendIds = ids
+        rebuild()
+    }
+
+    /** Asks the sources in [sources]' order and switches from now on ([DesktopSourceSettings]), with the blends switched on over them. */
+    fun useSources(sources: RemoteLyricsPolicy) {
+        base = sources
+        rebuild()
+    }
+
+    private fun rebuild() {
+        val base = base
+        val blends = blendPolicy(SourceRanking(descriptors, base), blendIds)
+        policy = base.copy(pairs = base.pairs + blends.pairs)
         ranking = SourceRanking(descriptors, policy)
     }
 
@@ -66,6 +83,12 @@ class LyricsLookup(clientKey: String = spicyLyricsKey()) : SongLookup {
         find(track, known, sourceId, romanize = true, spotifyId = spotifyId)
 
     private suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, romanize: Boolean, spotifyId: String? = null): Found {
+        // The Lyrics Manager's lyrics first, unless a source was picked by hand.
+        if (sourceId == null) local?.resolutionFor(track)?.let { saved ->
+            val lyrics = runCatching { RemoteLyricsAdapter.render(saved.selection, track.durationMs, romanize = romanize) }
+                .getOrElse { LyricsNotices.renderFailed(saved.selection.source.displayName, it) }
+            return Found(lyrics, saved)
+        }
         val request = LyricsLookupRequest(track.artist, track.title, track.album, (track.durationMs / 1000).toInt(), spotifyTrackId = spotifyId)
         val policy = sourceId?.let(::only) ?: this.policy
         val result = runCatching { source.resolveLyrics(request, policy, known = known) }.getOrElse { return Found(LyricsNotices.lookupFailed(it), null) }

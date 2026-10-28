@@ -48,6 +48,22 @@ internal object PanelIcons {
 
     val Chevron = icon("Chevron", "M3.5 2l3 3-3 3", size = 10f)
 
+    // The lyrics library's.
+    val Upload = icon("Upload", "M8 10V2M5 4.5l3-3 3 3M2.5 12v1.5h11V12")
+    val Download = icon("Download", "M8 2v8M5 7.5l3 3 3-3M2.5 12v1.5h11V12")
+    val Trash = icon("Trash", "M2.5 4.5h11M6 4.5V3h4v1.5M6.5 7v5M9.5 7v5M3.5 4.5l.75 8.25a.75.75 0 00.75.75h6a.75.75 0 00.75-.75L12.5 4.5")
+    val Reset = icon("Reset", "M3 8a5 5 0 1 1 1.46 3.54", "M3 3.5V8h4.5")
+    val Back = icon("Back", "M10 2.5L4.5 8l5.5 5.5")
+    val Database = icon(
+        "Database",
+        "M2.75 3.75a5.25 2.25 0 1 0 10.5 0a5.25 2.25 0 1 0 -10.5 0Z",
+        "M2.75 3.75v8.5c0 1.24 2.35 2.25 5.25 2.25s5.25-1.01 5.25-2.25v-8.5",
+        "M2.75 8c0 1.24 2.35 2.25 5.25 2.25S13.25 9.24 13.25 8",
+    )
+    val Clock = icon("Clock", circle(8f, 8f, 6.25f), "M8 4.5V8l2.25 1.75")
+    val Spinner = icon("Spinner", "M14.25 8A6.25 6.25 0 008 1.75")
+    val Notice = icon("Notice", "M20 8v14M20 27.5v1", circle(20f, 20f, 16.5f), size = 40f, stroke = 2f)
+
     val ExternalArrow = icon("ExternalArrow", "M2.5 7.5L7.5 2.5M7.5 2.5H3.5M7.5 2.5V6.5", size = 10f, stroke = 1.4f)
 
     /** A stroked icon [size] across from SVG path data. */

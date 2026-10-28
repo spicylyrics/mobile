@@ -96,6 +96,9 @@ class CommonAppSettingsTest {
         s.musicHapticsStyle = s.musicHapticsStyle
         s.quickSettingsButton = s.quickSettingsButton
         s.lyricsManagerButton = s.lyricsManagerButton
+        s.nowBarOpen = s.nowBarOpen
+        s.nowBarOnRight = s.nowBarOnRight
+        s.compactView = s.compactView
         s.queueButton = s.queueButton
         s.sourceButton = s.sourceButton
         s.playerButtons = s.playerButtons
@@ -192,6 +195,9 @@ class CommonAppSettingsTest {
             "musicHapticsStyle" to "Drums",
             "quickSettingsButton" to true,
             "lyricsManagerButton" to false,
+            "nowBarOpen" to false,
+            "nowBarOnRight" to false,
+            "compactView" to "Auto",
             "queueButton" to false,
             "sourceButton" to false,
             "playerButtons" to false,

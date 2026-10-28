@@ -6,7 +6,7 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 /** The settings panel's tabs, in sidebar order. */
-enum class PanelSectionId { Lyrics, Background, Playback, Interface, Appearance, Experiments, Advanced, About }
+enum class PanelSectionId { Lyrics, Sources, Background, Playback, Interface, Appearance, Experiments, Advanced, About }
 
 /**
  * One tab of the panel. [secondary] tabs sit under the sidebar's divider. [intro] is a short line

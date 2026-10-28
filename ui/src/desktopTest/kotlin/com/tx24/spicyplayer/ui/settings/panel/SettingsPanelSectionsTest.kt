@@ -17,7 +17,8 @@ class SettingsPanelSectionsTest {
 
     @Test
     fun `tabs are in sidebar order with About and Advanced below the divider`() {
-        assertEquals(PanelSectionId.entries.toList(), sections.map { it.id })
+        // Sources is the platform's own tab: none here.
+        assertEquals(PanelSectionId.entries - PanelSectionId.Sources, sections.map { it.id })
         assertEquals(listOf(PanelSectionId.Advanced, PanelSectionId.About), sections.filter { it.secondary }.map { it.id })
     }
 
@@ -105,5 +106,36 @@ class SettingsPanelSectionsTest {
     fun `advanced has no rows without platform actions`() {
         val bare = settingsPanelSections(settings).single { it.id == PanelSectionId.Advanced }
         assertTrue(bare.rows.isEmpty())
+    }
+
+    @Test
+    fun `hidden rows leave the panel, and a group left empty goes with them`() {
+        assertEquals(rows.map { it.id }, settingsPanelSections(settings, PanelActions(clearLyricsCache = {}), emptySet()).flatMap { it.rows }.map { it.id })
+        val hidden = setOf("headerSize", "profilesInBrowser")
+        val shown = settingsPanelSections(settings, PanelActions(clearLyricsCache = {}), hidden)
+        assertEquals(rows.map { it.id }.filter { it !in hidden }, shown.flatMap { it.rows }.map { it.id })
+        val advanced = settingsPanelSections(settings, PanelActions(clearLyricsCache = {}), setOf("clearStoredLyricsCache"))
+            .single { it.id == PanelSectionId.Advanced }
+        assertTrue(advanced.groups.isEmpty())
+    }
+
+    @Test
+    fun `the lyrics manager button row shows only where the platform has the button`() {
+        assertTrue(rows.none { it.id == "lyricsManagerButton" })
+        val withButton = settingsPanelSections(settings, PanelActions(lyricsManagerButton = true)).flatMap { it.rows }
+        val row = withButton.single { it.id == "lyricsManagerButton" } as PanelRow.Toggle
+        row.onChange(true)
+        assertTrue(settings.lyricsManagerButton)
+    }
+
+    @Test
+    fun `the font file button shows only where the platform can pick one`() {
+        assertTrue(rows.none { it.id == "lyricsFontFile" })
+        var picked = 0
+        val withPicker = settingsPanelSections(settings, PanelActions(pickLyricsFont = { picked++ })).flatMap { it.rows }
+        val ids = withPicker.map { it.id }
+        assertEquals(ids.indexOf("lyricsFont") + 1, ids.indexOf("lyricsFontFile"))
+        (withPicker.single { it.id == "lyricsFontFile" } as PanelRow.Button).onClick()
+        assertEquals(1, picked)
     }
 }

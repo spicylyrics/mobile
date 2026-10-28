@@ -4,6 +4,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -25,11 +27,15 @@ import com.tx24.spicyplayer.ui.bigscreen.LocalLyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.LocalTooltipHost
 import com.tx24.spicyplayer.ui.bigscreen.ViewMode
 import com.tx24.spicyplayer.ui.bigscreen.pageKeyOf
+import com.tx24.spicyplayer.ui.bigscreen.saveView
+import com.tx24.spicyplayer.ui.bigscreen.withSavedView
+import com.tx24.spicyplayer.ui.components.LocalPopupPalette
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalDisplayRefreshRate
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LocalLyricsImageLoader
 import com.tx24.spicyplayer.lyrics.spicy.canvas.CjkFonts
+import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsLayoutCalculator
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsView
 import com.tx24.spicyplayer.lyrics.spicy.models.Line
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsCredit
@@ -58,6 +64,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
 import org.jetbrains.skia.Image
 import kotlinx.coroutines.launch
 
@@ -86,7 +93,11 @@ fun main(args: Array<String>) {
 
     val delays = SyncDelays(SyncDelays.defaultStore(), opts["--offset"]?.toLongOrNull())
     val session = MediaSession(opts["--app"], delays::offsetFor)
-    val lookup = LyricsLookup()
+    val lyricsLibrary = DesktopLyricsLibrary(coverOf = { session.cover })
+    val lookup = LyricsLookup(local = lyricsLibrary)
+    // Settings → Sources: read before the lyrics start, and followed as the settings window changes it.
+    val sourceSettings = DesktopSourceSettings(DesktopLyrics.defaultStore(), lookup.descriptors, onChange = lookup::useSources)
+    lookup.useSources(sourceSettings.policy())
     val screen = MutableStateFlow<Screen>(Screen.Waiting())
     val playing = MutableStateFlow(false)
     val cover = MutableStateFlow<File?>(null)
@@ -97,6 +108,22 @@ fun main(args: Array<String>) {
     val backgroundImages = DesktopImageCache(File(cacheDir, "backgrounds"))
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var beats: Job? = null
+
+    /** The background follows [track]'s beats: its audio analysis, where Spotify has one. */
+    fun fetchBeats(track: Track) {
+        beats?.cancel()
+        beats = scope.launch {
+            val local = LocalTrackMetadata(track.title, track.artist, track.album, track.durationMs)
+            val found = spotify.trackIds(local, null).firstOrNull()?.let { spotify.audioAnalysis(it) }
+            if (session.track?.key == track.key) analysis.value = found
+        }
+    }
+    // Move with the Music turned on mid-song: the song playing gets its beats now, not the next one.
+    scope.launch {
+        snapshotFlow { desktopSettings.desktopBackground().beatReactive }.drop(1).collect { on ->
+            if (on && analysis.value == null) session.track?.let(::fetchBeats)
+        }
+    }
     val nowPlaying = DesktopNowPlaying(source, session)
     val songLyrics = DesktopLyrics(lookup, GoogleSongTranslator(File(cacheDir, "translations")), desktopSettings, DesktopLyrics.defaultStore(), scope)
         .also { it.followSettings() }
@@ -124,12 +151,7 @@ fun main(args: Array<String>) {
             lookUp(track)
             analysis.value = null
             beats?.cancel()
-            // The background follows the song's beats where the settings ask for it.
-            if (desktopSettings.desktopBackground().beatReactive) beats = scope.launch {
-                val local = LocalTrackMetadata(track.title, track.artist, track.album, track.durationMs)
-                val found = spotify.trackIds(local, null).firstOrNull()?.let { spotify.audioAnalysis(it) }
-                if (session.track?.key == track.key) analysis.value = found
-            }
+            if (desktopSettings.desktopBackground().beatReactive) fetchBeats(track)
         }
     }
 
@@ -178,16 +200,24 @@ fun main(args: Array<String>) {
         var refreshRate by remember { mutableStateOf(60f) }
         val windowState = rememberWindowState(size = DpSize(1100.dp, 760.dp))
         val settingsWindow = remember { SettingsWindowState() }
-        var page by remember { mutableStateOf(BigScreenState(romanized = desktopSettings.romanize)) }
+        var page by remember { mutableStateOf(BigScreenState(romanized = desktopSettings.romanize).withSavedView(desktopSettings)) }
+        // The now-playing bar and the compact choice come back as they were left.
+        LaunchedEffect(page.nowBarWanted, page.nowBarOnRight, page.compactOverride) { desktopSettings.saveView(page) }
+        val lyricsFont = remember(desktopSettings.lyricsFont, desktopSettings.customFontFile) {
+            desktopLyricsFont(desktopSettings.lyricsFont, desktopSettings.customFontFile)
+        }
+        SideEffect { LyricsLayoutCalculator.setFont(lyricsFont.family, lyricsFont.key) }
+        val popupPalette = desktopSettings.popupTheme.palette
         // The page's romanize button and the Romanize setting are one switch.
         LaunchedEffect(page.romanized) { if (desktopSettings.romanize != page.romanized) desktopSettings.romanize = page.romanized }
         LaunchedEffect(desktopSettings.romanize) { if (page.romanized != desktopSettings.romanize) page = page.copy(romanized = desktopSettings.romanize) }
         LaunchedEffect(page.mode) {
             windowState.placement = if (page.mode == ViewMode.Fullscreen) WindowPlacement.Fullscreen else WindowPlacement.Floating
         }
+        val lyricsManager = remember { LyricsManagerWindowState() }
         Window(
             onCloseRequest = { stop(); exitApplication() },
-            onPreviewKeyEvent = settingsWindow::onKey,
+            onPreviewKeyEvent = { settingsWindow.onKey(it) || lyricsManager.onKey(it) },
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
@@ -206,21 +236,19 @@ fun main(args: Array<String>) {
                 LocalLyricsImageLoader provides PlaceholderAvatars,
                 LocalTooltipHost provides DesktopTooltips,
                 LocalLyricsActions provides songLyrics,
+                LocalPopupPalette provides popupPalette,
             ) {
                 val shown by screen.collectAsState()
                 val isPlaying by playing.collectAsState()
                 val coverFile by cover.collectAsState()
                 val translated by songLyrics.shown.collectAsState()
-                val actions = remember { BigScreenActions(onState = { page = it }, onOpenSettings = { settingsWindow.open = true }) }
+                val actions = remember {
+                    BigScreenActions(onState = { page = it }, onOpenSettings = { settingsWindow.open = true }, onOpenLyricsManager = { lyricsManager.open = true })
+                }
                 // Settings are Compose state: these follow the settings window as it changes them.
                 val track = shown as? Screen.Track
                 val lyricsState = track?.lyrics ?: LyricsState.Idle
-                val display = desktopSettings.desktopLyrics(
-                    lyricsState,
-                    track?.track?.durationMs ?: 0L,
-                    windowState.size.width.value,
-                    windowState.size.height.value,
-                )
+                val display = desktopSettings.desktopLyrics(lyricsState, track?.track?.durationMs ?: 0L)
                 val backdrop = desktopSettings.desktopBackground()
                 val noticeActions = remember {
                     desktopNoticeActions(
@@ -232,7 +260,7 @@ fun main(args: Array<String>) {
                 BigScreenPage(
                     state = page,
                     nowPlaying = nowPlaying,
-                    capabilities = capabilities,
+                    capabilities = capabilities.copy(lyricsManager = desktopSettings.lyricsManagerButton),
                     lyrics = lyricsState,
                     actions = actions,
                     noticeActions = noticeActions,
@@ -283,16 +311,19 @@ fun main(args: Array<String>) {
             }
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
         }
-        SettingsWindow(settingsWindow)
+        SettingsWindow(settingsWindow, sourceSettings)
+        LyricsManagerWindow(lyricsManager, lyricsLibrary, songLyrics)
+
         // Ctrl+M: the lyrics in a small window that stays on top.
         val miniShown by screen.collectAsState()
         val miniTranslated by songLyrics.shown.collectAsState()
         val miniPlaying by playing.collectAsState()
         val miniTrack = miniShown as? Screen.Track
+        CompositionLocalProvider(LocalPopupPalette provides popupPalette) {
         MiniLyricsWindow(nowPlaying, miniTrack?.lyrics ?: LyricsState.Idle) { modifier, fontSizeScale ->
             val ready = miniTrack?.lyrics as? LyricsState.Ready
             if (miniTrack != null && ready != null) {
-                val display = desktopSettings.desktopLyrics(ready, miniTrack.track.durationMs, 1f, 1f)
+                val display = desktopSettings.desktopLyrics(ready, miniTrack.track.durationMs)
                 // A window of its own: it doesn't see the main window's locals.
                 CompositionLocalProvider(LocalDisplayRefreshRate provides refreshRate, LocalLyricsImageLoader provides PlaceholderAvatars) {
                 Lyrics(
@@ -312,6 +343,7 @@ fun main(args: Array<String>) {
                 )
                 }
             }
+        }
         }
     }
 }

@@ -28,6 +28,18 @@ fun CloseGlyph(modifier: Modifier) = Canvas(modifier) {
     }
 }
 
+/** The Lyrics Manager: a stack of saved lyrics, drawn as a database. */
+@Composable
+fun LyricsManagerGlyph(modifier: Modifier) = Canvas(modifier) {
+    grid { u, s ->
+        drawOval(Ink, Offset(5 * u, 3.5f * u), Size(14 * u, 5 * u), style = s)
+        drawLine(Ink, Offset(5 * u, 6 * u), Offset(5 * u, 18 * u), s.width, StrokeCap.Round)
+        drawLine(Ink, Offset(19 * u, 6 * u), Offset(19 * u, 18 * u), s.width, StrokeCap.Round)
+        drawArc(Ink, 0f, 180f, useCenter = false, topLeft = Offset(5 * u, 9.5f * u), size = Size(14 * u, 5 * u), style = s)
+        drawArc(Ink, 0f, 180f, useCenter = false, topLeft = Offset(5 * u, 15.5f * u), size = Size(14 * u, 5 * u), style = s)
+    }
+}
+
 /** The now-playing bar: a screen with the cover on the [onRight] or left side and lyric lines beside it. */
 @Composable
 fun NowBarGlyph(onRight: Boolean, modifier: Modifier) = Canvas(modifier) {

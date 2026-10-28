@@ -2,9 +2,11 @@ package com.tx24.spicyplayer.desktop
 
 import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.text.font.FontFamily
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.ui.settings.CommonAppSettings
 import com.tx24.spicyplayer.ui.settings.InMemorySettingsStore
+import com.tx24.spicyplayer.ui.settings.LyricsFont
 import com.tx24.spicyplayer.ui.settings.renderConfig
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.drop
@@ -23,29 +25,36 @@ class DesktopSettingsGlueTest {
     @Test
     fun `the lyrics follow the settings' render config`() {
         val s = settings().apply { simpleLyricsMode = true; glow = false }
-        val display = s.desktopLyrics(LyricsState.Idle, 200_000L, 1100f, 760f)
+        val display = s.desktopLyrics(LyricsState.Idle, 200_000L)
         assertEquals(s.renderConfig(200_000L), display.config)
         assertTrue(display.config.simpleLyricsMode)
         assertFalse(display.config.glowEnabled)
     }
 
     @Test
-    fun `a wide window takes the landscape lyrics size, a tall one the portrait size`() {
+    fun `the lyrics size is the one the settings show, whatever the window's shape`() {
         val s = settings().apply { lyricsSizeLandscape = 150; lyricsSizePortrait = 80 }
-        assertEquals(1.5f, s.desktopLyrics(LyricsState.Idle, 0L, 1100f, 760f).fontSizeScale, 0.0001f)
-        assertEquals(0.8f, s.desktopLyrics(LyricsState.Idle, 0L, 500f, 900f).fontSizeScale, 0.0001f)
+        assertEquals(1.5f, s.desktopLyrics(LyricsState.Idle, 0L).fontSizeScale, 0.0001f)
+    }
+
+    @Test
+    fun `the lyrics font is ours by default and the computer's for System`() {
+        assertEquals(DesktopLyricsFont(null, ""), desktopLyricsFont(LyricsFont.Default))
+        assertEquals(DesktopLyricsFont(FontFamily.Default, "System"), desktopLyricsFont(LyricsFont.System))
+        // No file loading on desktop yet: a font picked on the phone falls back to ours.
+        assertEquals(DesktopLyricsFont(null, ""), desktopLyricsFont(LyricsFont.Custom))
     }
 
     @Test
     fun `no lyrics means nothing to romanize`() {
         val s = settings().apply { romanize = true }
-        assertFalse(s.desktopLyrics(LyricsState.Idle, 0L, 1f, 1f).romanize)
+        assertFalse(s.desktopLyrics(LyricsState.Idle, 0L).romanize)
     }
 
     @Test
     fun `a change in the settings window reaches the lyrics window`() = runBlocking {
         val s = settings()
-        val next = async { withTimeout(5_000L) { snapshotFlow { s.desktopLyrics(LyricsState.Idle, 0L, 1100f, 760f) }.drop(1).first() } }
+        val next = async { withTimeout(5_000L) { snapshotFlow { s.desktopLyrics(LyricsState.Idle, 0L) }.drop(1).first() } }
         repeat(5) { yield() }
         // As the settings window does: a write to the shared settings, then the snapshot is applied.
         s.distanceBlur = false
