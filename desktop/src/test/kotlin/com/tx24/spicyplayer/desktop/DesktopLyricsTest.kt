@@ -248,7 +248,7 @@ class DesktopLyricsTest {
         s.lyrics.settle()
         assertEquals("DeepL", s.lyrics.options.value.translator)
         assertEquals("DeepL", s.store.getString(DesktopLyrics.KEY_TRANSLATOR))
-        assertEquals("translation_deepl", s.store.getString(DesktopLyrics.KEY_DISCLOSED))
+        assertEquals(setOf("translation_deepl"), s.store.getStringSet(DesktopLyrics.KEY_DISCLOSED))
         assertEquals(asked, s.translator.providers.size)
         assertEquals("Add a DeepL API key to translate with DeepL.", s.lyrics.options.value.message)
 

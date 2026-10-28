@@ -174,7 +174,7 @@ class DesktopLyrics(
         awaitingConsent = null
         optionsState.update { it.copy(consent = null) }
         if (!allow) return
-        store.putString(KEY_DISCLOSED, (disclosed() + TranslationConsent.id(provider, human = false)).sorted().joinToString(","))
+        store.putStringSet(KEY_DISCLOSED, disclosed() + TranslationConsent.id(provider, human = false))
         useTranslator(provider)
     }
 
@@ -191,8 +191,7 @@ class DesktopLyrics(
         if (optionsState.value.translating) translateShown()
     }
 
-    private fun disclosed(): Set<String> =
-        store.getString(KEY_DISCLOSED)?.split(',')?.filter(String::isNotBlank)?.toSet().orEmpty()
+    private fun disclosed(): Set<String> = store.getStringSet(KEY_DISCLOSED).orEmpty()
 
     override fun setBlend(id: String, on: Boolean) {
         if (lookup.blends.none { it.id == id }) return
@@ -341,7 +340,7 @@ class DesktopLyrics(
         const val KEY_TARGET = "targetLanguage"
         const val KEY_TRANSLATOR = "translator"
         const val KEY_DEEPL_KEY = "deeplKey"
-        /** The services the user agreed to send lyrics to ([TranslationConsent.id]), comma-separated. */
+        /** The services the user agreed to send lyrics to ([TranslationConsent.id]), a string set as the phone keeps it. */
         const val KEY_DISCLOSED = "disclosed"
         /** The blends switched on, comma-separated. */
         const val KEY_BLENDS = "blends"
