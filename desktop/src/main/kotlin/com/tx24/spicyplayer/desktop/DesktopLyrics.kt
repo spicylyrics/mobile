@@ -8,6 +8,7 @@ import com.tx24.spicyplayer.network.data.ProviderResult
 import com.tx24.spicyplayer.network.data.RemoteLyricsQuality
 import com.tx24.spicyplayer.network.data.RemoteLyricsResolution
 import com.tx24.spicyplayer.network.data.measuredQuality
+import com.tx24.spicyplayer.network.data.spotify.SpotifyLinks
 import com.tx24.spicyplayer.translation.DiskTranslationCache
 import com.tx24.spicyplayer.translation.GoogleTranslator
 import com.tx24.spicyplayer.translation.SongLanguageDetector
@@ -46,8 +47,11 @@ interface SongLookup {
     /** The sources asked, in rank order. */
     val sources: List<LyricsSourceDescriptor>
 
-    /** [track]'s lyrics, each source's answer kept in [known]; with [sourceId], from that source alone. */
-    suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?): LyricsLookup.Found
+    /**
+     * [track]'s lyrics, each source's answer kept in [known]; with [sourceId], from that source
+     * alone; with [spotifyId], matched to that Spotify track.
+     */
+    suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, spotifyId: String? = null): LyricsLookup.Found
 }
 
 /** Translates a song's lyrics into a language. */
@@ -56,8 +60,8 @@ fun interface SongTranslator {
 }
 
 /**
- * The playing song's lyrics and the More menu's choices for them: the source (kept per song in
- * [store]), translation (on or off and the language, in [store]) and the display modes (in
+ * The playing song's lyrics and the More menu's choices for them: the source and the Spotify
+ * track it is matched to (each kept per song in [store]), translation (on or off and the language, in [store]) and the display modes (in
  * [settings], the phone's keys).
  */
 class DesktopLyrics(
@@ -96,7 +100,9 @@ class DesktopLyrics(
         this.track = track
         known = ConcurrentHashMap()
         shownSource = null
-        optionsState.update { it.copy(pickedSource = store.getString(sourceKey(track)), message = null) }
+        optionsState.update {
+            it.copy(pickedSource = store.getString(sourceKey(track)), spotifyTrackId = store.getString(spotifyKey(track)), message = null)
+        }
         lookUp(track)
     }
 
@@ -107,7 +113,33 @@ class DesktopLyrics(
         track = null
         shownSource = null
         shownState.value = null
-        optionsState.update { it.copy(sources = emptyList(), pickedSource = null, message = null) }
+        optionsState.update { it.copy(sources = emptyList(), pickedSource = null, spotifyTrackId = null, message = null) }
+    }
+
+    override fun setSpotifyLink(input: String): Boolean {
+        val track = track ?: return false
+        val id = SpotifyLinks.trackId(input)
+        if (id == null) {
+            optionsState.update { it.copy(message = "Enter a valid Spotify track ID or URL") }
+            return false
+        }
+        store.putString(spotifyKey(track), id)
+        rematch(track, id)
+        return true
+    }
+
+    override fun clearSpotifyLink() {
+        val track = track ?: return
+        store.remove(spotifyKey(track))
+        rematch(track, null)
+    }
+
+    /** The answers so far were for the old match, so every source is asked again. */
+    private fun rematch(track: Track, spotifyId: String?) {
+        known = ConcurrentHashMap()
+        shownSource = null
+        optionsState.update { it.copy(spotifyTrackId = spotifyId, message = null) }
+        lookUp(track)
     }
 
     override fun useSource(id: String?) {
@@ -165,13 +197,14 @@ class DesktopLyrics(
         lookupJob?.cancel()
         translationJob?.cancel()
         val known = known
+        val spotifyId = optionsState.value.spotifyTrackId
         shownState.value = Shown(track, LyricsState.Loading)
         refreshSources()
         lookupJob = scope.launch {
             var message: String? = null
             var found: LyricsLookup.Found? = null
             optionsState.value.pickedSource?.let { picked ->
-                val fromPicked = lookup.find(track, known, picked)
+                val fromPicked = lookup.find(track, known, picked, spotifyId)
                 if ((fromPicked.resolution as? RemoteLyricsResolution.Found)?.selection?.source?.id == picked) {
                     found = fromPicked
                 } else {
@@ -179,7 +212,7 @@ class DesktopLyrics(
                     message = "$name has no lyrics for this song, so the usual pick is shown."
                 }
             }
-            val result = found ?: lookup.find(track, known, null)
+            val result = found ?: lookup.find(track, known, null, spotifyId)
             if (this@DesktopLyrics.track?.key != track.key) return@launch
             shownSource = (result.resolution as? RemoteLyricsResolution.Found)?.selection?.source?.id
             shownState.value = Shown(track, result.lyrics)
@@ -228,9 +261,13 @@ class DesktopLyrics(
         const val KEY_TRANSLATE = "translate"
         const val KEY_TARGET = "targetLanguage"
         private const val SOURCE_PREFIX = "source:"
+        private const val SPOTIFY_PREFIX = "spotify:"
 
         /** Where the source picked for [track] is kept. */
         fun sourceKey(track: Track): String = SOURCE_PREFIX + track.key
+
+        /** Where the Spotify track [track] is matched to by hand is kept. */
+        fun spotifyKey(track: Track): String = SPOTIFY_PREFIX + track.key
 
         /** Every language Google can translate into, by name. */
         val LANGUAGES: List<LanguageChoice> = TranslationLanguages.common

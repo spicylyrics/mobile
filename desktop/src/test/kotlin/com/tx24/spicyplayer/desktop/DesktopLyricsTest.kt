@@ -43,9 +43,14 @@ class DesktopLyricsTest {
     private inner class FakeLookup : SongLookup {
         override val sources = listOf(descriptor("a"), descriptor("b"), descriptor("c"))
         val asked = mutableListOf<String?>()
+        val spotifyIds = mutableListOf<String?>()
+        /** What [known] held when each lookup started. */
+        val knownAtStart = mutableListOf<Set<String>>()
 
-        override suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?): LyricsLookup.Found {
+        override suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, spotifyId: String?): LyricsLookup.Found {
             asked += sourceId
+            spotifyIds += spotifyId
+            knownAtStart += known.keys.toSet()
             val hits = mapOf("a" to "from a", "b" to "from b".takeIf { track == song })
             for (id in listOfNotNull(sourceId) .ifEmpty { listOf("a", "b") }) {
                 known[id] = hits[id]?.let { ProviderResult.Hit(RemoteLyricsPayload(plainLyrics = it)) } ?: ProviderResult.Miss
@@ -69,7 +74,7 @@ class DesktopLyricsTest {
         TranslationResult(TranslationKey("hash", target, TranslationProvider.Google, null, false, ""), listOf("[$target]"), detectedLanguage = "ja"),
     )
 
-    private class Setup(val lyrics: DesktopLyrics, val lookup: SongLookup, val store: InMemorySettingsStore, val settings: CommonAppSettings, val translator: FakeTranslator)
+    private class Setup(val lyrics: DesktopLyrics, val lookup: FakeLookup, val store: InMemorySettingsStore, val settings: CommonAppSettings, val translator: FakeTranslator)
 
     private fun CoroutineScope.setup(store: InMemorySettingsStore = InMemorySettingsStore()): Setup {
         val settings = CommonAppSettings(InMemorySettingsStore(), pipButtonByDefault = false, prereleasesByDefault = true)
@@ -111,6 +116,64 @@ class DesktopLyricsTest {
         again.lyrics.settle()
         assertNull(again.store.getString(DesktopLyrics.sourceKey(song)))
         assertEquals("from a", (again.lyrics.shown.value?.lyrics as LyricsState.Ready).provider)
+    }
+
+    @Test fun aSpotifyLinkRematchesTheSongAndIsKeptForIt() = runBlocking {
+        val s = setup()
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        assertNull(s.lookup.spotifyIds.last())
+
+        val id = "4uLU6hMCjMI75M1A2tKUQC"
+        assertTrue(s.lyrics.setSpotifyLink("https://open.spotify.com/track/$id?si=x"))
+        s.lyrics.settle()
+        assertEquals(id, s.lookup.spotifyIds.last())
+        assertEquals(id, s.store.getString(DesktopLyrics.spotifyKey(song)))
+        assertEquals(id, s.lyrics.options.value.spotifyTrackId)
+        // The answers for the old match are dropped: the sources are asked afresh.
+        assertEquals(emptySet<String>(), s.lookup.knownAtStart.last())
+
+        // Another session of the app, the same song: the match comes back.
+        val again = setup(s.store)
+        again.lyrics.load(song)
+        again.lyrics.settle()
+        assertEquals(id, again.lyrics.options.value.spotifyTrackId)
+        assertEquals(id, again.lookup.spotifyIds.last())
+
+        // Another song isn't matched by it.
+        again.lyrics.load(other)
+        again.lyrics.settle()
+        assertNull(again.lookup.spotifyIds.last())
+        assertNull(again.lyrics.options.value.spotifyTrackId)
+    }
+
+    @Test fun clearingTheSpotifyLinkGoesBackToTheAutomaticMatch() = runBlocking {
+        val id = "4uLU6hMCjMI75M1A2tKUQC"
+        val s = setup(InMemorySettingsStore(mapOf(DesktopLyrics.spotifyKey(song) to id)))
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        assertEquals(id, s.lookup.spotifyIds.last())
+
+        s.lyrics.clearSpotifyLink()
+        s.lyrics.settle()
+        assertNull(s.store.getString(DesktopLyrics.spotifyKey(song)))
+        assertNull(s.lyrics.options.value.spotifyTrackId)
+        assertNull(s.lookup.spotifyIds.last())
+        assertEquals(emptySet<String>(), s.lookup.knownAtStart.last())
+    }
+
+    @Test fun aBadSpotifyLinkChangesNothing() = runBlocking {
+        val s = setup()
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        val lookups = s.lookup.asked.size
+
+        assertFalse(s.lyrics.setSpotifyLink("https://open.spotify.com/album/4uLU6hMCjMI75M1A2tKUQC"))
+        s.lyrics.settle()
+        assertEquals(lookups, s.lookup.asked.size)
+        assertNull(s.store.getString(DesktopLyrics.spotifyKey(song)))
+        assertNull(s.lyrics.options.value.spotifyTrackId)
+        assertEquals("Enter a valid Spotify track ID or URL", s.lyrics.options.value.message)
     }
 
     @Test fun aPickedSourceWithNothingFallsBackAndSaysSo() = runBlocking {

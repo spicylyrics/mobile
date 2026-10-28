@@ -32,6 +32,8 @@ data class LyricsOptions(
     val languages: List<LanguageChoice> = emptyList(),
     val translationMode: TranslationMode = TranslationMode.UnderLine,
     val romanizationMode: RomanizationMode = RomanizationMode.Replace,
+    /** The Spotify track this song is matched to by hand, or null for the automatic match. */
+    val spotifyTrackId: String? = null,
     /** How the last choice went, when it needs saying ("Translating…", a source with nothing). */
     val message: String? = null,
 )
@@ -51,6 +53,15 @@ interface LyricsActions {
     fun setTargetLanguage(code: String)
     fun setTranslationMode(mode: TranslationMode)
     fun setRomanizationMode(mode: RomanizationMode)
+
+    /**
+     * Matches this song to the Spotify track [input] names (a link, URI or ID) from now on, and
+     * looks its lyrics up again. False, changing nothing, when [input] names no track.
+     */
+    fun setSpotifyLink(input: String): Boolean = false
+
+    /** Back to the automatic Spotify match for this song. */
+    fun clearSpotifyLink() = Unit
 }
 
 /** The page's lyrics choices; none leaves the More menu's entries unavailable. */
@@ -93,3 +104,5 @@ fun translationSummary(options: LyricsOptions): String {
 }
 
 fun romanizationSummary(options: LyricsOptions): String = options.romanizationMode.label
+
+fun spotifySummary(options: LyricsOptions): String = options.spotifyTrackId?.let { "Set by hand · $it" } ?: "Automatic"

@@ -114,7 +114,7 @@ fun desktopNoticeActions(track: () -> Track?, onRetry: () -> Unit, report: () ->
     onRetry = onRetry,
     report = report,
     onSearchSpotify = {
-        // TODO: the mobile app's in-app Spotify picker; the web search stands in for now.
+        // Finds the track's link to paste into the More menu's Spotify match.
         val query = track()?.let { "${it.title} ${it.artist}" }.orEmpty()
         browse("https://open.spotify.com/search/" + URLEncoder.encode(query, Charsets.UTF_8).replace("+", "%20"))
     },

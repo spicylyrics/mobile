@@ -2,6 +2,7 @@ package com.tx24.spicyplayer.ui.bigscreen
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -20,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -31,16 +34,16 @@ import com.tx24.spicyplayer.translation.TranslationMode
 import com.tx24.spicyplayer.ui.theme.SpicyColors
 
 /** Which of the More menu's entries is open. */
-internal enum class MoreEntry { Source, Translation, Romanization }
+internal enum class MoreEntry { Source, Spotify, Translation, Romanization }
 
 /**
- * The More menu's entries: the lyrics source, translation, and romanization style, each opening
+ * The More menu's entries: the lyrics source, the Spotify match, translation, and romanization style, each opening
  * in place onto its choices. Without [actions] they show as unavailable.
  */
 @Composable
 internal fun MoreMenuEntries(actions: LyricsActions?) {
     if (actions == null) {
-        for (entry in listOf("Lyrics source", "Translate lyrics", "Romanization style")) {
+        for (entry in listOf("Lyrics source", "Spotify match", "Translate lyrics", "Romanization style")) {
             EntryHeader(entry, "Not available here", open = false, enabled = false) {}
         }
         return
@@ -57,6 +60,9 @@ internal fun MoreMenuEntries(actions: LyricsActions?) {
             }
         }
     }
+
+    EntryHeader("Spotify match", spotifySummary(options), open == MoreEntry.Spotify) { toggle(MoreEntry.Spotify) }
+    if (open == MoreEntry.Spotify) SpotifyLinkField(options, actions)
 
     EntryHeader("Translate lyrics", translationSummary(options), open == MoreEntry.Translation) { toggle(MoreEntry.Translation) }
     if (open == MoreEntry.Translation) {
@@ -87,6 +93,38 @@ internal fun MoreMenuEntries(actions: LyricsActions?) {
             Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
             style = TextStyle(color = SpicyColors.TextSecondary, fontSize = 12.sp),
         )
+    }
+}
+
+/** Paste the song's Spotify track link when the automatic match is wrong or missing. */
+@Composable
+private fun SpotifyLinkField(options: LyricsOptions, actions: LyricsActions) {
+    var link by remember { mutableStateOf("") }
+    SectionLabel("Spotify track link or ID")
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .padding(start = 24.dp, end = 14.dp, top = 2.dp, bottom = 4.dp)
+            .background(Color.White.copy(alpha = 0.08f))
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        if (link.isEmpty()) {
+            BasicText("open.spotify.com/track/…", style = TextStyle(color = SpicyColors.TextTertiary, fontSize = 13.sp))
+        }
+        BasicTextField(
+            value = link,
+            onValueChange = { link = it },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            textStyle = TextStyle(color = SpicyColors.TextPrimary, fontSize = 13.sp),
+            cursorBrush = SolidColor(SpicyColors.TextPrimary),
+        )
+    }
+    Choice("Use this track", "Looks the lyrics up again with it", selected = false, enabled = link.isNotBlank()) {
+        if (actions.setSpotifyLink(link)) link = ""
+    }
+    if (options.spotifyTrackId != null) {
+        Choice("Match automatically", "Forget the track set by hand", selected = false) { actions.clearSpotifyLink() }
     }
 }
 

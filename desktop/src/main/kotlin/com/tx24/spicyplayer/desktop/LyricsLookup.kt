@@ -41,13 +41,14 @@ class LyricsLookup(clientKey: String = spicyLyricsKey()) : SongLookup {
 
     /**
      * Like [find], keeping each source's answer in [known] (so a later call for the same song asks
-     * no source twice), and with [sourceId] asking only that source.
+     * no source twice), with [sourceId] asking only that source, and with [spotifyId] matched to
+     * that Spotify track instead of searching for one.
      */
-    override suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?): Found =
-        find(track, known, sourceId, romanize = true)
+    override suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, spotifyId: String?): Found =
+        find(track, known, sourceId, romanize = true, spotifyId = spotifyId)
 
-    private suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, romanize: Boolean): Found {
-        val request = LyricsLookupRequest(track.artist, track.title, track.album, (track.durationMs / 1000).toInt())
+    private suspend fun find(track: Track, known: MutableMap<String, ProviderResult>, sourceId: String?, romanize: Boolean, spotifyId: String? = null): Found {
+        val request = LyricsLookupRequest(track.artist, track.title, track.album, (track.durationMs / 1000).toInt(), spotifyTrackId = spotifyId)
         val policy = sourceId?.let(::only) ?: RemoteLyricsPolicy()
         val result = runCatching { source.resolveLyrics(request, policy, known = known) }.getOrElse { return Found(LyricsNotices.lookupFailed(it), null) }
         if (result !is RemoteLyricsResolution.Found) {

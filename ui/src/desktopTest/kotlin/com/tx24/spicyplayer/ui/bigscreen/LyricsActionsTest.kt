@@ -45,5 +45,8 @@ class LyricsActionsTest {
         assertEquals("xx · Under each line", translationSummary(LyricsOptions(translating = true, targetLanguage = "xx")))
 
         assertEquals("Under each line", romanizationSummary(LyricsOptions(romanizationMode = RomanizationMode.UnderLine)))
+
+        assertEquals("Automatic", spotifySummary(LyricsOptions()))
+        assertEquals("Set by hand · 4uLU6hMCjMI75M1A2tKUQC", spotifySummary(LyricsOptions(spotifyTrackId = "4uLU6hMCjMI75M1A2tKUQC")))
     }
 }
