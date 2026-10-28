@@ -146,6 +146,17 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
         }
     }
 
+    /** The followed player is gone (it quit, or the source stopped): no track, and the clock stopped at 0. */
+    fun clear() {
+        track = null
+        cover = null
+        lastStampMs = 0L
+        lastStatus = null
+        stampOutlived = false
+        lastRaw = null
+        clock.reset(monoMs())
+    }
+
     /**
      * Asks the player to jump to [positionMs], and moves the clock there now rather than on its next
      * report. Does nothing when [source] can't seek.

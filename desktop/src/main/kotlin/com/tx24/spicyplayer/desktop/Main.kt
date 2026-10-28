@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,14 +56,19 @@ import com.tx24.spicyplayer.translation.TranslationResult
 import java.awt.GraphicsEnvironment
 import com.tx24.spicyplayer.ui.settings.FileSettingsStore
 import com.tx24.spicyplayer.ui.settings.InstanceLock
+import java.awt.event.ComponentAdapter
+import java.awt.event.ComponentEvent
 import java.io.File
 import javax.swing.JOptionPane
 import kotlin.concurrent.thread
 import kotlin.system.exitProcess
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.jetbrains.skia.Image
 import kotlinx.coroutines.launch
@@ -90,7 +96,8 @@ private fun holdInstanceLock() {
 
 /** What the window shows: nothing playing, a track being looked up, or its lyrics or notice. */
 private sealed interface Screen {
-    data object Waiting : Screen
+    /** Nothing to show; [problem] says why, when the player can't be followed. */
+    data class Waiting(val problem: String? = null) : Screen
     data class Track(val track: com.tx24.spicyplayer.desktop.Track, val lyrics: LyricsState) : Screen
 }
 
@@ -106,14 +113,13 @@ fun main(args: Array<String>) {
     holdInstanceLock()
     val opts = args.toList().zipWithNext().filter { it.first.startsWith("--") }.toMap()
     val source = mediaSource(opts["--helper"]?.let(::File))
-    source.unavailableReason?.let { error(it) }
     CoreLog.sink = { level, tag, message -> if (level >= CoreLog.Level.WARN) System.err.println("[$tag] $message") }
 
     val delays = SyncDelays(SyncDelays.defaultStore(), opts["--offset"]?.toLongOrNull())
     val session = MediaSession(opts["--app"], delays::offsetFor)
     val lyricsLibrary = DesktopLyricsLibrary(coverOf = { session.cover })
     val lookup = LyricsLookup(local = lyricsLibrary)
-    val screen = MutableStateFlow<Screen>(Screen.Waiting)
+    val screen = MutableStateFlow<Screen>(Screen.Waiting())
     val playing = MutableStateFlow(false)
     val cover = MutableStateFlow<File?>(null)
     // The playing song's audio analysis, which the background's speed follows.
@@ -138,32 +144,73 @@ fun main(args: Array<String>) {
     val updates = UpdateCheck.forThisApp()
     scope.launch { updates.run() }
 
-    Runtime.getRuntime().addShutdownHook(Thread { source.close() })
-    scope.launch {
-        source.updates().collect { received ->
-            val update = received.update as? MediaUpdate.Snapshot ?: return@collect
-            val event = session.feed(update.snapshot, received.receivedMono, received.receivedWall)
-            playing.value = session.clock.isPlaying
-            cover.value = session.cover
-            nowPlaying.refresh()
-            if (event is SessionEvent.NewTrack) {
-                val track = event.track
-                lookUp(track)
-                analysis.value = null
-                beats?.cancel()
-                // The background follows the song's beats where the settings ask for it.
-                if (desktopSettings.desktopBackground().beatReactive) beats = scope.launch {
-                    val local = LocalTrackMetadata(track.title, track.artist, track.album, track.durationMs)
-                    val found = spotify.trackIds(local, null).firstOrNull()?.let { spotify.audioAnalysis(it) }
-                    if (session.track?.key == track.key) analysis.value = found
-                }
+    // Cancel first, so the collector doesn't start the source again once it's closed.
+    fun stop() {
+        scope.cancel()
+        source.close()
+    }
+    Runtime.getRuntime().addShutdownHook(Thread(::stop))
+
+    suspend fun onSnapshot(update: MediaUpdate.Snapshot, received: Received) {
+        val event = session.feed(update.snapshot, received.receivedMono, received.receivedWall)
+        playing.value = session.clock.isPlaying
+        cover.value = session.cover
+        nowPlaying.refresh()
+        if (event is SessionEvent.NewTrack) {
+            val track = event.track
+            lookUp(track)
+            analysis.value = null
+            beats?.cancel()
+            // The background follows the song's beats where the settings ask for it.
+            if (desktopSettings.desktopBackground().beatReactive) beats = scope.launch {
+                val local = LocalTrackMetadata(track.title, track.artist, track.album, track.durationMs)
+                val found = spotify.trackIds(local, null).firstOrNull()?.let { spotify.audioAnalysis(it) }
+                if (session.track?.key == track.key) analysis.value = found
             }
         }
+    }
+
+    /** The player is gone: back to waiting, with [problem] when it's the source that failed. */
+    suspend fun forgetTrack(problem: String? = null) {
+        session.clear()
+        beats?.cancel()
+        analysis.value = null
+        playing.value = false
+        cover.value = null
         withContext(Dispatchers.Main) { songLyrics.clear() }
-        screen.value = Screen.Waiting
+        screen.value = Screen.Waiting(problem)
         nowPlaying.clear()
     }
 
+    scope.launch {
+        // A source that can't start or stops (the helper crashed, playerctl went away) is started
+        // again, sooner after a run that worked.
+        var failures = 0
+        while (true) {
+            val problem = source.unavailableReason ?: try {
+                source.updates().collect { received ->
+                    // Working again: the failure no longer applies.
+                    if (failures > 0 && screen.value is Screen.Waiting) screen.value = Screen.Waiting()
+                    failures = 0
+                    when (val update = received.update) {
+                        is MediaUpdate.Removed -> if (update.app == session.track?.app) forgetTrack()
+                        is MediaUpdate.Snapshot -> onSnapshot(update, received)
+                    }
+                }
+                "The ${source.name} media source stopped"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                "The ${source.name} media source failed: ${e.message ?: e.javaClass.simpleName}"
+            }
+            System.err.println(problem)
+            failures++
+            forgetTrack(problem)
+            delay(retryDelayMs(failures))
+        }
+    }
+
+    // The mini window's rate: the primary screen's.
     val refreshRate = GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice.displayMode.refreshRate
         .takeIf { it > 0 }?.toFloat() ?: 60f
     application {
@@ -178,15 +225,24 @@ fun main(args: Array<String>) {
         }
         val lyricsManager = remember { LyricsManagerWindowState() }
         Window(
-            onCloseRequest = { source.close(); exitApplication() },
+            onCloseRequest = { stop(); exitApplication() },
             onPreviewKeyEvent = { settingsWindow.onKey(it) || lyricsManager.onKey(it) },
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
             onKeyEvent = { event -> MiniLyrics.onKey(event) || SyncDelay.onKey(event) || pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: false },
         ) {
+            // The screen the window is on, again whenever it moves: the primary one may run at another rate.
+            var windowRefreshRate by remember { mutableStateOf(refreshRateOf(window)) }
+            DisposableEffect(window) {
+                val listener = object : ComponentAdapter() {
+                    override fun componentMoved(e: ComponentEvent?) { windowRefreshRate = refreshRateOf(window) }
+                }
+                window.addComponentListener(listener)
+                onDispose { window.removeComponentListener(listener) }
+            }
             CompositionLocalProvider(
-                LocalDisplayRefreshRate provides refreshRate,
+                LocalDisplayRefreshRate provides windowRefreshRate,
                 LocalLyricsImageLoader provides PlaceholderAvatars,
                 LocalTooltipHost provides DesktopTooltips,
                 LocalLyricsActions provides songLyrics,
@@ -219,6 +275,7 @@ fun main(args: Array<String>) {
                         nowPlaying = nowPlaying,
                         capabilities = capabilities,
                         lyrics = lyricsState,
+                        waitingBody = (shown as? Screen.Waiting)?.problem,
                         actions = actions,
                         noticeActions = noticeActions,
                         background = {
@@ -304,6 +361,10 @@ fun main(args: Array<String>) {
         }
     }
 }
+
+/** The refresh rate of the screen [window] is on, or 60 Hz when it doesn't say. */
+private fun refreshRateOf(window: java.awt.Window): Float =
+    window.graphicsConfiguration?.device?.displayMode?.refreshRate?.takeIf { it > 0 }?.toFloat() ?: 60f
 
 @Composable
 private fun Lyrics(

@@ -153,11 +153,13 @@ fun BigScreenPage(
     controlsShown: Boolean? = null,
     /** The glass buttons blur what's behind them; off (Low Performance), they keep their translucent fill. */
     blurGlass: Boolean = true,
+    /** The waiting notice's text while nothing plays, where the platform knows why (its media source failed). */
+    waitingBody: String? = null,
 ) {
     // What the glass blurs: the background, the lyrics and the covers, each marked as a source.
     val backdrop = remember(blurGlass) { if (blurGlass) HazeState() else null }
     CompositionLocalProvider(LocalBackdrop provides backdrop) {
-        BigScreenContent(state, nowPlaying, capabilities, lyrics, actions, noticeActions, background, lyricsView, renderConfig, controlsShown)
+        BigScreenContent(state, nowPlaying, capabilities, lyrics, actions, noticeActions, background, lyricsView, renderConfig, controlsShown, waitingBody)
     }
 }
 
@@ -178,6 +180,7 @@ private fun BigScreenContent(
     lyricsView: @Composable (modifier: Modifier, romanize: Boolean, activeLineTopPx: Float?, renderConfig: RenderConfig) -> Unit,
     renderConfig: RenderConfig,
     controlsShown: Boolean?,
+    waitingBody: String?,
 ) {
     val lyricsSlot: @Composable (Modifier, Boolean, Float?) -> Unit = { modifier, romanize, top -> lyricsView(modifier, romanize, top, renderConfig) }
     val playing by nowPlaying.state.collectAsState()
@@ -218,7 +221,7 @@ private fun BigScreenContent(
             LyricsNotice(
                 title = "Waiting for a song",
                 modifier = Modifier.fillMaxSize(),
-                body = "Play something in Spotify or another player that shows in the system's media controls.",
+                body = waitingBody ?: "Play something in Spotify or another player that shows in the system's media controls.",
             )
             PageControls(env, showControls, Modifier.fillMaxWidth())
             return@BoxWithConstraints
