@@ -918,6 +918,7 @@ private fun LyricsApp(
         if (isBigScreenWindow(configuration.screenWidthDp.toFloat(), configuration.screenHeightDp.toFloat())) {
             AndroidBigScreenPage(
                 nowPlaying = transport,
+                sessionToken = remember(state.sourcePackage) { viewModel.followedSessionToken() },
                 canSeek = state.canSeek,
                 pictureInPicture = onEnterPip != null,
                 lyrics = state.lyrics,
