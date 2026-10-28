@@ -360,6 +360,13 @@ class DesktopLyricsTest {
         assertEquals(listOf(true, false, false, false, false, false), choices.map { it.shown })
     }
 
+    @Test fun aBlendIsNeverListedAsUnasked() {
+        val blend = LyricsBlends.ALL.first().descriptor
+        val choices = sourceChoices(listOf(blend), emptyMap(), shownId = blend.id)
+        assertEquals("Built from its sources' answers", choices.single().status)
+        assertTrue(choices.single().available)
+    }
+
     @Test fun theAppSharesOneStoreForTheChoices() {
         assertSame(DesktopLyrics.defaultStore(), DesktopLyrics.defaultStore())
     }

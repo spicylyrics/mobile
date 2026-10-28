@@ -9,6 +9,7 @@ import com.tx24.spicyplayer.network.data.ProviderResult
 import com.tx24.spicyplayer.network.data.SourceDisclosures
 import com.tx24.spicyplayer.network.data.RemoteLyricsQuality
 import com.tx24.spicyplayer.network.data.RemoteLyricsResolution
+import com.tx24.spicyplayer.network.data.RemoteLyricsSource.Companion.BLEND_FAMILY
 import com.tx24.spicyplayer.network.data.measuredQuality
 import com.tx24.spicyplayer.network.data.spotify.SpotifyLinks
 import com.tx24.spicyplayer.translation.DeepLTranslator
@@ -404,7 +405,8 @@ fun sourceChoices(sources: List<LyricsSourceDescriptor>, known: Map<String, Prov
                 }
                 ProviderResult.Miss -> "No lyrics for this song"
                 ProviderResult.NeedsMatch -> "Needs a Spotify link"
-                null -> "Not asked yet"
+                // A blend's answer is built in the lookup, never kept with the sources'.
+                null -> if (source.upstreamFamily == BLEND_FAMILY) "Built from its sources' answers" else "Not asked yet"
                 else -> "Unavailable right now"
             },
             available = result == null || (result is ProviderResult.Hit && quality != RemoteLyricsQuality.NONE),

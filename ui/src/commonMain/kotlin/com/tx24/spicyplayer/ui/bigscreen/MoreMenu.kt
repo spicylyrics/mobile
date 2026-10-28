@@ -26,6 +26,8 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -88,7 +90,7 @@ internal fun MoreMenuEntries(actions: LyricsActions?) {
             if (options.translators.firstOrNull { it.id == options.translator }?.needsKey == true) {
                 var key by remember { mutableStateOf("") }
                 SectionLabel(if (options.translatorKeySet) "API key (set; paste to replace)" else "API key")
-                TextEntry(key, "Paste your API key") { key = it }
+                TextEntry(key, "Paste your API key", secret = true) { key = it }
                 Choice("Save key", null, selected = false, enabled = key.isNotBlank()) {
                     actions.setTranslatorKey(key)
                     key = ""
@@ -145,9 +147,9 @@ private fun SpotifyLinkField(options: LyricsOptions, actions: LyricsActions) {
     }
 }
 
-/** A one-line text box, [placeholder] showing while it's empty. */
+/** A one-line text box, [placeholder] showing while it's empty; a [secret] shows as dots. */
 @Composable
-private fun TextEntry(value: String, placeholder: String, onChange: (String) -> Unit) {
+private fun TextEntry(value: String, placeholder: String, secret: Boolean = false, onChange: (String) -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -163,6 +165,7 @@ private fun TextEntry(value: String, placeholder: String, onChange: (String) -> 
             onValueChange = onChange,
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
+            visualTransformation = if (secret) PasswordVisualTransformation() else VisualTransformation.None,
             textStyle = TextStyle(color = SpicyColors.TextPrimary, fontSize = 13.sp),
             cursorBrush = SolidColor(SpicyColors.TextPrimary),
         )
