@@ -1,6 +1,9 @@
 package com.tx24.spicyplayer.desktop
 
 import com.tx24.spicyplayer.ui.bigscreen.PlayerCapabilities
+import com.tx24.spicyplayer.ui.nowplaying.RepeatState
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -26,5 +29,51 @@ class DesktopNowPlayingTest {
     @Test
     fun `a source with no commands still has fullscreen`() {
         assertEquals(PlayerCapabilities(false, false, false, false, fullscreen = true), capabilitiesOf(emptySet()))
+    }
+
+    @Test
+    fun `shuffle and repeat follow what the source can set`() {
+        val caps = capabilitiesOf(Transport.entries.toSet(), canShuffle = true, canRepeat = false)
+        assertEquals(true, caps.shuffle)
+        assertEquals(false, caps.repeat)
+        assertEquals(false, capabilitiesOf(Transport.entries.toSet()).shuffle)
+    }
+
+    @Test
+    fun `repeat modes map both ways`() {
+        assertEquals(null, repeatStateOf(null))
+        for (mode in RepeatMode.entries) assertEquals(mode, repeatModeOf(repeatStateOf(mode)!!))
+        assertEquals(RepeatState.One, repeatStateOf(RepeatMode.One))
+        assertEquals(RepeatState.All, repeatStateOf(RepeatMode.All))
+        assertEquals(RepeatState.Off, repeatStateOf(RepeatMode.Off))
+    }
+
+    @Test
+    fun `the page sees the player's shuffle and repeat, and its presses reach the source`() {
+        val calls = mutableListOf<String>()
+        val source = object : MediaSource {
+            override val name = "fake"
+            override val unavailableReason: String? = null
+            override val capabilities = emptySet<Transport>()
+            override val canShuffle = true
+            override val canRepeat = true
+            override fun updates(): Flow<Received> = emptyFlow()
+            override fun control(app: String, action: Transport, positionMs: Long) {}
+            override fun setShuffle(app: String, on: Boolean) { calls += "shuffle $on" }
+            override fun setRepeat(app: String, mode: RepeatMode) { calls += "repeat $mode" }
+        }
+        val session = MediaSession()
+        val nowPlaying = DesktopNowPlaying(source, session)
+        val wall = 1_761_600_000_000L
+        session.feed(
+            MediaSnapshot("Spotify.exe", true, "One", "Artist", "Album", 200_000, 0, wall, PlaybackStatus.Playing, 1f, shuffle = true, repeat = RepeatMode.All),
+            50_000L, wall,
+        )
+        nowPlaying.refresh()
+        assertEquals(true, nowPlaying.state.value.shuffle)
+        assertEquals(RepeatState.All, nowPlaying.state.value.repeat)
+        nowPlaying.setShuffle(false)
+        nowPlaying.setRepeat(RepeatState.One)
+        assertEquals(listOf("shuffle false", "repeat One"), calls)
     }
 }

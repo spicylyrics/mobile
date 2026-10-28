@@ -22,6 +22,8 @@ data class NowPlayingTrack(
  * @param artwork the cover the player sent as a picture; [artworkUri] when it sent an address.
  * @param direction which way the player last moved through its queue, for the cover change.
  * @param customActions the player's own buttons (shuffle, repeat, like, ...).
+ * @param shuffle whether the player shuffles; null where the platform doesn't say.
+ * @param repeat what the player repeats; null where the platform doesn't say.
  */
 data class NowPlayingState(
     val track: NowPlayingTrack,
@@ -32,6 +34,8 @@ data class NowPlayingState(
     val canSeek: Boolean = false,
     val direction: TrackDirection = TrackDirection.Forward,
     val customActions: List<SessionCustomAction> = emptyList(),
+    val shuffle: Boolean? = null,
+    val repeat: RepeatState? = null,
 ) {
     val hasSession: Boolean get() = player != null
 
@@ -39,6 +43,9 @@ data class NowPlayingState(
     val info: NowPlayingInfo
         get() = NowPlayingInfo(track.title, track.artists, track.album, artwork, artworkUri, direction, hasSession)
 }
+
+/** What the player repeats: nothing, the whole queue, or the one song. */
+enum class RepeatState { Off, All, One }
 
 /** What the controls can ask of the player. */
 interface PlaybackTransport {
@@ -53,6 +60,10 @@ interface PlaybackTransport {
     fun seekTo(positionMs: Long)
     /** Presses one of [NowPlayingState.customActions], by its [SessionCustomAction.action]. */
     fun sendCustomAction(action: String)
+    /** Turns the player's shuffle on or off; a platform that can't leaves it alone. */
+    fun setShuffle(on: Boolean) {}
+    /** Sets what the player repeats; a platform that can't leaves it alone. */
+    fun setRepeat(mode: RepeatState) {}
 }
 
 /** The player being followed: its state and its transport. Android and the desktop each adapt their own. */

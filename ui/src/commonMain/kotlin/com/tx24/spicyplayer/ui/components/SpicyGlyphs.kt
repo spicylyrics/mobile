@@ -97,6 +97,17 @@ private object Paths {
             "M9.54 21.18A9.5 9.5 0 0 1 2.82 14.46M4.46 15.61 2.82 14.46 1.97 16.27",
     )
 
+    // Two paths crossing, each ending in an arrowhead on the right.
+    val Shuffle = nodes(
+        "M3 7h2.75c2.25 0 3.5 1 4.75 2.9l3 4.6c1.25 1.9 2.5 2.5 4.75 2.5H20.5M3 17h2.75c2.25 0 3.5-1 4.75-2.9l3-4.6C14.75 7.6 16 7 18.25 7H20.5" +
+            "M18 4.5 20.5 7 18 9.5M18 14.5l2.5 2.5-2.5 2.5",
+    )
+
+    // A loop: the top run arrowed right, the bottom one left.
+    val Repeat = nodes("M3.5 12V9.5A2.5 2.5 0 0 1 6 7h14.5M18 4.5 20.5 7 18 9.5M20.5 12v2.5a2.5 2.5 0 0 1-2.5 2.5H3.5M6 14.5 3.5 17 6 19.5")
+    // The one-song badge, a small 1 inside the loop.
+    val RepeatOneBadge = nodes("M11 10.75 12.25 9.75v4.5")
+
     val MoreDots = listOf(
         nodes("M7 12a1 1 0 1 1-2 0a1 1 0 1 1 2 0Z") to -1f,
         nodes("M13 12a1 1 0 1 1-2 0a1 1 0 1 1 2 0Z") to 0f,
@@ -148,6 +159,9 @@ object SpicyGlyphs {
     val Source = glyph(Paths.SourceOthers, Paths.SourceChosen)
     val DisableRomanization = dimmable(DIM to nodes(LATIN_A), 1f to nodes(KANA_A))
     val EnableRomanization = dimmable(1f to nodes(LATIN_A), DIM to nodes(KANA_A))
+    val Shuffle = glyph(Paths.Shuffle)
+    val Repeat = glyph(Paths.Repeat)
+    val RepeatOne = glyph(Paths.Repeat, Paths.RepeatOneBadge)
 
     private fun glyph(vararg paths: List<PathNode>): ImageVector = dimmable(*paths.map { 1f to it }.toTypedArray())
 

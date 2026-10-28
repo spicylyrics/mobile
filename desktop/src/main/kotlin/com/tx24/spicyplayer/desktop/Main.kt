@@ -103,7 +103,7 @@ fun main(args: Array<String>) {
     scope.launch {
         songLyrics.shown.collect { shown -> if (shown != null) screen.value = Screen.Track(shown.track, shown.lyrics) }
     }
-    val capabilities = capabilitiesOf(source.capabilities)
+    val capabilities = capabilitiesOf(source.capabilities, source.canShuffle, source.canRepeat)
 
     fun lookUp(track: Track) = songLyrics.load(track)
 
