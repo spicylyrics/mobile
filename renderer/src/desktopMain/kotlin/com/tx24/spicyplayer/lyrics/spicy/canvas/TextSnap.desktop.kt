@@ -17,6 +17,7 @@ import androidx.compose.ui.text.drawText
 import kotlin.math.ceil
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.Matrix33
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.Surface
@@ -67,15 +68,17 @@ private inline fun DrawScope.drawMask(layout: TextLayoutResult, topLeft: Offset,
     paint.color = Color.White
     paint.alpha = 1f
     setUp(paint)
+    // The image sits at the canvas origin and the text a pad in from it; the brush is in text coordinates.
+    val pad = mask.pad.toFloat()
+    paint.shader = paint.shader?.makeWithLocalMatrix(Matrix33.makeTranslate(pad, pad))
     drawIntoCanvas { canvas ->
         val skia = canvas.skiaCanvas
         val skiaPaint = paint.skiaPaint
         val w = mask.image.width.toFloat()
         val h = mask.image.height.toFloat()
-        val pad = mask.pad.toFloat()
         skia.save()
-        skia.translate(topLeft.x, topLeft.y)
-        skia.drawImageRect(mask.image, Rect.makeWH(w, h), Rect.makeXYWH(-pad, -pad, w, h), SamplingMode.LINEAR, skiaPaint, true)
+        skia.translate(topLeft.x - pad, topLeft.y - pad)
+        skia.drawImageRect(mask.image, Rect.makeWH(w, h), Rect.makeWH(w, h), SamplingMode.LINEAR, skiaPaint, true)
         skia.restore()
     }
 }
