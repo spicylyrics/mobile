@@ -24,6 +24,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -71,8 +72,10 @@ class DesktopLyricsTest {
 
     private class FakeTranslator(var outcome: (String) -> TranslationOutcome) : SongTranslator {
         val targets = mutableListOf<String>()
-        override suspend fun translate(track: Track, lyrics: LyricsState.Ready, target: String): TranslationOutcome {
+        val providers = mutableListOf<Pair<TranslationProvider, String?>>()
+        override suspend fun translate(track: Track, lyrics: LyricsState.Ready, target: String, provider: TranslationProvider, key: String?): TranslationOutcome {
             targets += target
+            providers += provider to key
             return outcome(target)
         }
     }
@@ -215,6 +218,56 @@ class DesktopLyricsTest {
         assertEquals(second, again.store.getString(DesktopLyrics.KEY_BLENDS))
         again.lyrics.setBlend(second, false)
         assertNull(again.store.getString(DesktopLyrics.KEY_BLENDS))
+    }
+
+    @Test fun deepLIsUsedOnlyAfterItsConsentAndWithAKey() = runBlocking {
+        val s = setup()
+        assertEquals(listOf("Google", "DeepL"), s.lyrics.options.value.translators.map { it.id })
+        assertEquals("Google", s.lyrics.options.value.translator)
+        s.lyrics.load(song)
+        s.lyrics.settle()
+        s.lyrics.setTranslating(true)
+        s.lyrics.settle()
+        assertEquals(TranslationProvider.Google to null, s.translator.providers.last())
+
+        // First the user's OK to what DeepL is sent; declining changes nothing.
+        s.lyrics.setTranslator("DeepL")
+        val consent = s.lyrics.options.value.consent!!
+        assertEquals("translation_deepl", consent.id)
+        assertTrue(consent.description.contains("DeepL"))
+        assertEquals("Google", s.lyrics.options.value.translator)
+        s.lyrics.answerConsent(false)
+        assertNull(s.lyrics.options.value.consent)
+        assertEquals("Google", s.lyrics.options.value.translator)
+        assertNull(s.store.getString(DesktopLyrics.KEY_TRANSLATOR))
+
+        // Agreed to, but with no key yet: it says so instead of asking DeepL.
+        val asked = s.translator.providers.size
+        s.lyrics.setTranslator("DeepL")
+        s.lyrics.answerConsent(true)
+        s.lyrics.settle()
+        assertEquals("DeepL", s.lyrics.options.value.translator)
+        assertEquals("DeepL", s.store.getString(DesktopLyrics.KEY_TRANSLATOR))
+        assertEquals("translation_deepl", s.store.getString(DesktopLyrics.KEY_DISCLOSED))
+        assertEquals(asked, s.translator.providers.size)
+        assertEquals("Add a DeepL API key to translate with DeepL.", s.lyrics.options.value.message)
+
+        s.lyrics.setTranslatorKey("  key:fx ")
+        s.lyrics.settle()
+        assertTrue(s.lyrics.options.value.translatorKeySet)
+        assertEquals(TranslationProvider.DeepL to "key:fx", s.translator.providers.last())
+
+        // Agreed once: switching back and forth asks no more.
+        s.lyrics.setTranslator("Google")
+        assertNotNull(s.lyrics.options.value.consent)
+        s.lyrics.answerConsent(true)
+        s.lyrics.setTranslator("DeepL")
+        assertNull(s.lyrics.options.value.consent)
+        assertEquals("DeepL", s.lyrics.options.value.translator)
+
+        s.lyrics.setTranslatorKey("")
+        assertFalse(s.lyrics.options.value.translatorKeySet)
+        assertNull(s.store.getString(DesktopLyrics.KEY_DEEPL_KEY))
     }
 
     @Test fun aPickedSourceWithNothingFallsBackAndSaysSo() = runBlocking {

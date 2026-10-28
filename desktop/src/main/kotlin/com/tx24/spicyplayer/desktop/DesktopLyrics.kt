@@ -6,14 +6,17 @@ import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
 import com.tx24.spicyplayer.network.data.LyricsBlendDefinition
 import com.tx24.spicyplayer.network.data.LyricsSourceDescriptor
 import com.tx24.spicyplayer.network.data.ProviderResult
+import com.tx24.spicyplayer.network.data.SourceDisclosures
 import com.tx24.spicyplayer.network.data.RemoteLyricsQuality
 import com.tx24.spicyplayer.network.data.RemoteLyricsResolution
 import com.tx24.spicyplayer.network.data.measuredQuality
 import com.tx24.spicyplayer.network.data.spotify.SpotifyLinks
+import com.tx24.spicyplayer.translation.DeepLTranslator
 import com.tx24.spicyplayer.translation.DiskTranslationCache
 import com.tx24.spicyplayer.translation.GoogleTranslator
 import com.tx24.spicyplayer.translation.SongLanguageDetector
 import com.tx24.spicyplayer.translation.TranslationDocument
+import com.tx24.spicyplayer.translation.TranslationConsent
 import com.tx24.spicyplayer.translation.TranslationEngine
 import com.tx24.spicyplayer.translation.TranslationLanguages
 import com.tx24.spicyplayer.translation.TranslationMode
@@ -23,10 +26,12 @@ import com.tx24.spicyplayer.translation.TranslationProvider
 import com.tx24.spicyplayer.translation.TranslationResult
 import com.tx24.spicyplayer.translation.languageCode
 import com.tx24.spicyplayer.ui.bigscreen.BlendChoice
+import com.tx24.spicyplayer.ui.bigscreen.ConsentRequest
 import com.tx24.spicyplayer.ui.bigscreen.LanguageChoice
 import com.tx24.spicyplayer.ui.bigscreen.LyricsActions
 import com.tx24.spicyplayer.ui.bigscreen.LyricsOptions
 import com.tx24.spicyplayer.ui.bigscreen.LyricsSourceChoice
+import com.tx24.spicyplayer.ui.bigscreen.TranslatorChoice
 import com.tx24.spicyplayer.ui.settings.CommonAppSettings
 import com.tx24.spicyplayer.ui.settings.FileSettingsStore
 import com.tx24.spicyplayer.ui.settings.SettingsStore
@@ -62,15 +67,16 @@ interface SongLookup {
     fun useBlends(ids: Set<String>) = Unit
 }
 
-/** Translates a song's lyrics into a language. */
+/** Translates a song's lyrics into a language, with [provider] (its API [key] where it needs one). */
 fun interface SongTranslator {
-    suspend fun translate(track: Track, lyrics: LyricsState.Ready, target: String): TranslationOutcome
+    suspend fun translate(track: Track, lyrics: LyricsState.Ready, target: String, provider: TranslationProvider, key: String?): TranslationOutcome
 }
 
 /**
  * The playing song's lyrics and the More menu's choices for them: the source and the Spotify
- * track it is matched to (each kept per song in [store]), translation (on or off and the language, in [store]) and the display modes (in
- * [settings], the phone's keys).
+ * track it is matched to (each kept per song in [store]), blends (switched for every song),
+ * translation (on or off, the language and the service, in [store], each service after the
+ * user's OK to what it is sent) and the display modes (in [settings], the phone's keys).
  */
 class DesktopLyrics(
     private val lookup: SongLookup,
@@ -89,7 +95,10 @@ class DesktopLyrics(
         LyricsOptions(
             translating = store.getBoolean(KEY_TRANSLATE) ?: false,
             targetLanguage = store.getString(KEY_TARGET)?.let(::languageCode) ?: defaultTarget(),
-            languages = LANGUAGES,
+            languages = languagesFor(storedTranslator(store)),
+            translator = storedTranslator(store).name,
+            translators = TRANSLATORS.map { TranslatorChoice(it.name, it.label, needsKey = it == TranslationProvider.DeepL) },
+            translatorKeySet = store.getString(KEY_DEEPL_KEY) != null,
             translationMode = settings.translationMode,
             romanizationMode = settings.romanizationMode,
         ),
@@ -147,6 +156,42 @@ class DesktopLyrics(
         store.remove(spotifyKey(track))
         rematch(track, null)
     }
+
+    /** The service waiting on [LyricsOptions.consent]. */
+    private var awaitingConsent: TranslationProvider? = null
+
+    override fun setTranslator(id: String) {
+        val provider = TRANSLATORS.firstOrNull { it.name == id } ?: return
+        if (TranslationConsent.covered(disclosed(), provider, human = false)) return useTranslator(provider)
+        awaitingConsent = provider
+        val disclosure = SourceDisclosures.translation(provider, human = false)
+        optionsState.update { it.copy(consent = ConsentRequest(disclosure.id, "Translate with ${provider.label}?", disclosure.description)) }
+    }
+
+    override fun answerConsent(allow: Boolean) {
+        val provider = awaitingConsent ?: return
+        awaitingConsent = null
+        optionsState.update { it.copy(consent = null) }
+        if (!allow) return
+        store.putString(KEY_DISCLOSED, (disclosed() + TranslationConsent.id(provider, human = false)).sorted().joinToString(","))
+        useTranslator(provider)
+    }
+
+    override fun setTranslatorKey(key: String) {
+        val trimmed = key.trim()
+        if (trimmed.isEmpty()) store.remove(KEY_DEEPL_KEY) else store.putString(KEY_DEEPL_KEY, trimmed)
+        optionsState.update { it.copy(translatorKeySet = trimmed.isNotEmpty(), message = null) }
+        if (optionsState.value.translating && storedTranslator(store) == TranslationProvider.DeepL) translateShown()
+    }
+
+    private fun useTranslator(provider: TranslationProvider) {
+        store.putString(KEY_TRANSLATOR, provider.name)
+        optionsState.update { it.copy(translator = provider.name, languages = languagesFor(provider), message = null) }
+        if (optionsState.value.translating) translateShown()
+    }
+
+    private fun disclosed(): Set<String> =
+        store.getString(KEY_DISCLOSED)?.split(',')?.filter(String::isNotBlank)?.toSet().orEmpty()
 
     override fun setBlend(id: String, on: Boolean) {
         if (lookup.blends.none { it.id == id }) return
@@ -257,11 +302,17 @@ class DesktopLyrics(
         val shown = shownState.value ?: return
         val lyrics = shown.lyrics as? LyricsState.Ready ?: return
         val target = optionsState.value.targetLanguage
+        val provider = storedTranslator(store)
+        val key = store.getString(KEY_DEEPL_KEY).takeIf { provider == TranslationProvider.DeepL }
         translationJob?.cancel()
+        if (provider == TranslationProvider.DeepL && key == null) {
+            optionsState.update { it.copy(message = "Add a DeepL API key to translate with DeepL.") }
+            return
+        }
         optionsState.update { it.copy(message = "Translating…") }
         translationJob = scope.launch {
             val outcome = try {
-                translator.translate(shown.track, lyrics, target)
+                translator.translate(shown.track, lyrics, target, provider, key)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -287,6 +338,10 @@ class DesktopLyrics(
     companion object {
         const val KEY_TRANSLATE = "translate"
         const val KEY_TARGET = "targetLanguage"
+        const val KEY_TRANSLATOR = "translator"
+        const val KEY_DEEPL_KEY = "deeplKey"
+        /** The services the user agreed to send lyrics to ([TranslationConsent.id]), comma-separated. */
+        const val KEY_DISCLOSED = "disclosed"
         /** The blends switched on, comma-separated. */
         const val KEY_BLENDS = "blends"
         private const val SOURCE_PREFIX = "source:"
@@ -298,10 +353,20 @@ class DesktopLyrics(
         /** Where the Spotify track [track] is matched to by hand is kept. */
         fun spotifyKey(track: Track): String = SPOTIFY_PREFIX + track.key
 
-        /** Every language Google can translate into, by name. */
-        val LANGUAGES: List<LanguageChoice> = TranslationLanguages.common
-            .filterKeys { TranslationLanguages.supports(TranslationProvider.Google, it) }
+        /** The services the desktop can translate with: the AI ones need the phone's engines. */
+        val TRANSLATORS = listOf(TranslationProvider.Google, TranslationProvider.DeepL)
+
+        /** Every language [provider] can translate into, by name. */
+        fun languagesFor(provider: TranslationProvider): List<LanguageChoice> = TranslationLanguages.common
+            .filterKeys { TranslationLanguages.supports(provider, it) }
             .map { (code, name) -> LanguageChoice(code, name) }
+
+        /** Every language Google can translate into, by name. */
+        val LANGUAGES: List<LanguageChoice> = languagesFor(TranslationProvider.Google)
+
+        /** The translator chosen in [store], Google until one is. */
+        fun storedTranslator(store: SettingsStore): TranslationProvider =
+            TranslationProvider.stored(store.getString(KEY_TRANSLATOR)).takeIf { it in TRANSLATORS } ?: TranslationProvider.Google
 
         /** The system's language where it is listed, else English. */
         fun defaultTarget(locale: Locale = Locale.getDefault()): String =
@@ -347,15 +412,20 @@ fun sourceChoices(sources: List<LyricsSourceDescriptor>, known: Map<String, Prov
         )
     }
 
-/** Google Translate through the shared engine, its results kept on disk in [cacheDir]. */
+/**
+ * Google Translate, or DeepL with the user's key, through the shared engine; results kept on disk
+ * in [cacheDir].
+ */
 class GoogleSongTranslator(cacheDir: File) : SongTranslator {
     private val engine = TranslationEngine(SongLanguageDetector { null }, DiskTranslationCache(cacheDir))
-    private val google = GoogleTranslator(OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build())
+    private val client = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(30, TimeUnit.SECONDS).build()
+    private val google = GoogleTranslator(client)
 
-    override suspend fun translate(track: Track, lyrics: LyricsState.Ready, target: String): TranslationOutcome {
+    override suspend fun translate(track: Track, lyrics: LyricsState.Ready, target: String, provider: TranslationProvider, key: String?): TranslationOutcome {
         val document = TranslationDocument.from("${track.artist} - ${track.title}", "${lyrics.provider}:${lyrics.source.orEmpty()}", lyrics.lines)
-        val preferences = TranslationPreferences(targetLanguage = target, provider = TranslationProvider.Google, humanTranslations = false)
+        val preferences = TranslationPreferences(targetLanguage = target, provider = provider, humanTranslations = false)
         engine.ownResult(document, preferences, null)?.let { return TranslationOutcome.Translated(it) }
-        return engine.translate(document, preferences, null, google)
+        val translator = if (provider == TranslationProvider.DeepL) DeepLTranslator(client, key.orEmpty()) else google
+        return engine.translate(document, preferences, null, translator)
     }
 }

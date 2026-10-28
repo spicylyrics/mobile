@@ -43,6 +43,9 @@ class LyricsActionsTest {
         val french = LyricsOptions(translating = true, targetLanguage = "fr", languages = listOf(LanguageChoice("fr", "French")), translationMode = TranslationMode.Replace)
         assertEquals("French · Replace", translationSummary(french))
         assertEquals("xx · Under each line", translationSummary(LyricsOptions(translating = true, targetLanguage = "xx")))
+        val translators = listOf(TranslatorChoice("Google", "Google Translate"), TranslatorChoice("DeepL", "DeepL", needsKey = true))
+        assertEquals("xx · Under each line", translationSummary(LyricsOptions(translating = true, targetLanguage = "xx", translators = translators)))
+        assertEquals("xx · Under each line · DeepL", translationSummary(LyricsOptions(translating = true, targetLanguage = "xx", translator = "DeepL", translators = translators)))
 
         assertEquals("Under each line", romanizationSummary(LyricsOptions(romanizationMode = RomanizationMode.UnderLine)))
 

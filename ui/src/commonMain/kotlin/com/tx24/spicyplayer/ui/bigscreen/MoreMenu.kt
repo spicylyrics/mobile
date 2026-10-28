@@ -80,6 +80,22 @@ internal fun MoreMenuEntries(actions: LyricsActions?) {
         for (mode in TranslationMode.entries) {
             Choice(mode.label, null, selected = options.translationMode == mode) { actions.setTranslationMode(mode) }
         }
+        if (options.translators.size > 1) {
+            SectionLabel("With")
+            for (translator in options.translators) {
+                Choice(translator.name, null, selected = options.translator == translator.id) { actions.setTranslator(translator.id) }
+            }
+            if (options.translators.firstOrNull { it.id == options.translator }?.needsKey == true) {
+                var key by remember { mutableStateOf("") }
+                SectionLabel(if (options.translatorKeySet) "API key (set; paste to replace)" else "API key")
+                TextEntry(key, "Paste your API key") { key = it }
+                Choice("Save key", null, selected = false, enabled = key.isNotBlank()) {
+                    actions.setTranslatorKey(key)
+                    key = ""
+                }
+                if (options.translatorKeySet) Choice("Forget key", null, selected = false) { actions.setTranslatorKey("") }
+            }
+        }
         SectionLabel("Into")
         Choices {
             for (language in options.languages) {
@@ -93,6 +109,17 @@ internal fun MoreMenuEntries(actions: LyricsActions?) {
         for (mode in RomanizationMode.entries) {
             Choice(mode.label, null, selected = options.romanizationMode == mode) { actions.setRomanizationMode(mode) }
         }
+    }
+
+    options.consent?.let { consent ->
+        SectionLabel(consent.title)
+        BasicText(
+            consent.description,
+            Modifier.fillMaxWidth().padding(start = 24.dp, end = 14.dp, bottom = 4.dp),
+            style = TextStyle(color = SpicyColors.TextSecondary, fontSize = 12.sp),
+        )
+        Choice("Allow", null, selected = false) { actions.answerConsent(true) }
+        Choice("Not now", null, selected = false) { actions.answerConsent(false) }
     }
 
     options.message?.let { message ->
@@ -109,6 +136,18 @@ internal fun MoreMenuEntries(actions: LyricsActions?) {
 private fun SpotifyLinkField(options: LyricsOptions, actions: LyricsActions) {
     var link by remember { mutableStateOf("") }
     SectionLabel("Spotify track link or ID")
+    TextEntry(link, "open.spotify.com/track/…") { link = it }
+    Choice("Use this track", "Looks the lyrics up again with it", selected = false, enabled = link.isNotBlank()) {
+        if (actions.setSpotifyLink(link)) link = ""
+    }
+    if (options.spotifyTrackId != null) {
+        Choice("Match automatically", "Forget the track set by hand", selected = false) { actions.clearSpotifyLink() }
+    }
+}
+
+/** A one-line text box, [placeholder] showing while it's empty. */
+@Composable
+private fun TextEntry(value: String, placeholder: String, onChange: (String) -> Unit) {
     Box(
         Modifier
             .fillMaxWidth()
@@ -116,23 +155,17 @@ private fun SpotifyLinkField(options: LyricsOptions, actions: LyricsActions) {
             .background(Color.White.copy(alpha = 0.08f))
             .padding(horizontal = 8.dp, vertical = 6.dp),
     ) {
-        if (link.isEmpty()) {
-            BasicText("open.spotify.com/track/…", style = TextStyle(color = SpicyColors.TextTertiary, fontSize = 13.sp))
+        if (value.isEmpty()) {
+            BasicText(placeholder, style = TextStyle(color = SpicyColors.TextTertiary, fontSize = 13.sp))
         }
         BasicTextField(
-            value = link,
-            onValueChange = { link = it },
+            value = value,
+            onValueChange = onChange,
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             textStyle = TextStyle(color = SpicyColors.TextPrimary, fontSize = 13.sp),
             cursorBrush = SolidColor(SpicyColors.TextPrimary),
         )
-    }
-    Choice("Use this track", "Looks the lyrics up again with it", selected = false, enabled = link.isNotBlank()) {
-        if (actions.setSpotifyLink(link)) link = ""
-    }
-    if (options.spotifyTrackId != null) {
-        Choice("Match automatically", "Forget the track set by hand", selected = false) { actions.clearSpotifyLink() }
     }
 }
 
