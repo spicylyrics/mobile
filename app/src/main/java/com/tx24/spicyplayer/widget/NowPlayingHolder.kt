@@ -351,6 +351,8 @@ internal object NowPlayingHolder {
         val reportedDuration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION)
         val durationChanged = reportedDuration > 0L && reportedDuration != durationMs
         if (durationChanged) durationMs = reportedDuration
+        // A manual Spotify ID holds while the song's length agrees, so the length coming late can bring or drop one.
+        if (durationChanged && !newSong) recheckSpotifyId(metadata)
         val coverChanged = refreshCover(metadata)
         val wasPlaying = clock.isPlaying
         report(session, newSong)
@@ -381,6 +383,15 @@ internal object NowPlayingHolder {
         }
         // While the lyrics screen is up it offers its own lyrics, kept even from before a widget
         // was placed ([offer]), so looking up here would only ask the sources twice.
+        if (!appShowing) lookUpSong()
+    }
+
+    private fun recheckSpotifyId(metadata: MediaMetadata) {
+        val app = context ?: return
+        val manual = metadata.savedSpotifyId(app.getSharedPreferences("spotify_id_overrides", 0))
+        if (manual == manualSpotifyId) return
+        manualSpotifyId = manual
+        request = metadata.lookupRequest(manual ?: metadata.sessionSpotifyId())
         if (!appShowing) lookUpSong()
     }
 
