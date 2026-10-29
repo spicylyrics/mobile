@@ -221,6 +221,9 @@ fun LyricsView(
         scrollManager.pxPerReferencePx = creditBaseSp * density.density / REFERENCE_LYRIC_SIZE_PX
         // The rows the screen pins are drawn there instead.
         val refinedCredits = config.refinedCredits
+        // The frame loop outlives a settings change, so it reads the latest values.
+        val refinedCreditsUpdated by rememberUpdatedState(refinedCredits)
+        val backgroundPopUpdated by rememberUpdatedState(config.backgroundPop)
         val footerLines = remember(footer, pinnedFooter, refinedCredits) {
             footer.lines().let { if (refinedCredits) refinedFooterLines(it) else it }.filterNot { pinnedFooter.pins(it.kind) }
         }
@@ -359,7 +362,7 @@ fun LyricsView(
                                 }
                             })
 
-                        val dimTarget = if (refinedCredits && lyricsType != LyricsType.Static &&
+                        val dimTarget = if (refinedCreditsUpdated && lyricsType != LyricsType.Static &&
                             currentTime < (currentLines.maxOfOrNull { it.endMs } ?: 0L)) 0.55f else 1f
                         if (footerDim != dimTarget) {
                             footerDim += (dimTarget - footerDim) * (deltaTime * 6f).coerceAtMost(1f)
@@ -414,7 +417,7 @@ fun LyricsView(
                                 // Folded background vocals (Apple Music style) give up their room.
                                 // As far as they've got, not where they're headed: the scroll then
                                 // follows the fold as it happens instead of jumping ahead of it.
-                                if (layout.isBackground) settledY -= slotOf(i) * (1f - ((if (config.backgroundPop) state?.presenceGoal else state?.presence) ?: 1f))
+                                if (layout.isBackground) settledY -= slotOf(i) * (1f - ((if (backgroundPopUpdated) state?.presenceGoal else state?.presence) ?: 1f))
                             }
 
                             if (layout.isInterlude) {
