@@ -89,6 +89,8 @@ The app looks for a new version on GitHub each time you open it, at most every 6
 2. It checks the download against the checksum published with the release, and that it's really an update for this app. A damaged or wrong download is never installed.
 3. Android asks you to confirm the install. Tap **Update** or **Install** in Android's prompt.
 
+On Android 13 and newer, tapping **Update** first asks whether the app may send notifications. If you leave the app while the download runs, Android won't show its install prompt. The app then shows a notification instead: tap it to install, or come back and tap **Install**. Without notifications allowed, coming back is the only way.
+
 The first time, Android may ask you to let Spicy Lyrics Mobile install unknown apps. Allow it, then go back and try again.
 
 Other options:

@@ -873,6 +873,7 @@ private fun versionLine(status: UpdateStatus, enabled: Boolean): AnnotatedString
     val (text, color) = when (status) {
         UpdateStatus.UpToDate -> "Latest" to SpicyColors.StatusSuccess
         is UpdateStatus.Available -> "Update available" to SpicyColors.StatusWarning
+        is UpdateStatus.ReadyToInstall -> "Update ready" to SpicyColors.StatusWarning
         is UpdateStatus.Failed -> "Couldn't check" to SpicyColors.TextTertiary
         else -> return@buildAnnotatedString
     }
@@ -888,6 +889,7 @@ private fun UpdateButton(status: UpdateStatus, onUpdate: () -> Unit, onCheck: ()
         UpdateStatus.Checking -> SpicyButton("Checking…", {}, enabled = false)
         is UpdateStatus.Downloading -> SpicyButton("${(status.progress * 100).toInt()}%", {}, enabled = false)
         is UpdateStatus.Installing -> SpicyButton("Installing", {}, enabled = false)
+        is UpdateStatus.ReadyToInstall -> SpicyButton("Install", onUpdate, brand = SpicyColors.StatusWarning)
         UpdateStatus.Idle, UpdateStatus.UpToDate, is UpdateStatus.Failed -> SpicyButton("Check for updates", onCheck)
     }
 }

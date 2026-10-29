@@ -31,6 +31,8 @@ sealed interface UpdateStatus {
     data class Downloading(val release: AppRelease, val progress: Float) : UpdateStatus
     /** Handed to Android's installer, which asks the user to confirm. */
     data class Installing(val release: AppRelease) : UpdateStatus
+    /** Downloaded while the app was out of view: Android held its prompt back until the user taps "Install". */
+    data class ReadyToInstall(val release: AppRelease) : UpdateStatus
     data class Failed(val message: String, val release: AppRelease? = null) : UpdateStatus
 }
 
@@ -57,13 +59,27 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
     init {
         viewModelScope.launch {
             UpdateInstallReceiver.results.collect { failure ->
-                val release = (mutableState.value.status as? UpdateStatus.Installing)?.release
+                val release = installingRelease()
                 mutableState.value = mutableState.value.copy(
                     status = if (failure == null) UpdateStatus.Available(release ?: return@collect)
                     else UpdateStatus.Failed(failure, release),
                 )
             }
         }
+        viewModelScope.launch {
+            UpdateInstallReceiver.pending.collect { confirm ->
+                val status = mutableState.value.status
+                if (confirm != null && status is UpdateStatus.Installing) {
+                    mutableState.value = mutableState.value.copy(status = UpdateStatus.ReadyToInstall(status.release))
+                }
+            }
+        }
+    }
+
+    private fun installingRelease(): AppRelease? = when (val status = mutableState.value.status) {
+        is UpdateStatus.Installing -> status.release
+        is UpdateStatus.ReadyToInstall -> status.release
+        else -> null
     }
 
     /** On opening the app: at most every few hours, and quiet unless there is something new. */
@@ -105,7 +121,8 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
 
     /** Brings the pop-up back for an update already found. */
     fun show() {
-        if (mutableState.value.status is UpdateStatus.Available) mutableState.value = mutableState.value.copy(prompt = true)
+        val status = mutableState.value.status
+        if (status is UpdateStatus.Available || status is UpdateStatus.ReadyToInstall) mutableState.value = mutableState.value.copy(prompt = true)
     }
 
     fun later() {
@@ -115,6 +132,22 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
     fun skip() {
         (mutableState.value.status as? UpdateStatus.Available)?.let { prefs.edit().putString(KEY_SKIPPED, it.release.tag).apply() }
         later()
+    }
+
+    /** Opens the installer's prompt that Android held back while the app was out of view. */
+    fun confirmInstall(context: Context) {
+        val status = mutableState.value.status as? UpdateStatus.ReadyToInstall ?: return
+        val confirm = UpdateInstallReceiver.takePending(context)
+        if (confirm == null) {
+            // The installer's prompt is no longer held: start the update over.
+            mutableState.value = UpdateUiState(UpdateStatus.Available(status.release), prompt = true)
+            return
+        }
+        mutableState.value = UpdateUiState(UpdateStatus.Installing(status.release), prompt = true)
+        runCatching { context.startActivity(confirm) }.onFailure { error ->
+            Log.w(TAG, "Couldn't open the installer", error)
+            mutableState.value = UpdateUiState(UpdateStatus.Failed("Android's installer didn't open. Try again.", status.release), prompt = true)
+        }
     }
 
     fun install() {

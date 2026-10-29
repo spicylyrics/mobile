@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Updates: the downloaded APK goes to Android's installer, which asks the user first. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Only for an update downloaded out of view: Android holds its install prompt back until a tap. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Runs on TVs too (Google TV's launcher, driven by a remote or a gamepad); a touchscreen isn't needed. -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
@@ -20,6 +22,7 @@
         </intent>
     </queries>
     <application
+        android:name="com.tx24.spicyplayer.SpicyLyricsApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"

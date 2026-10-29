@@ -58,7 +58,8 @@ import kotlinx.coroutines.launch
  * It follows the same session as the lyrics screen ([bestSession]) on a [LyricClock] of its own,
  * and wakes only when the shown line changes, never with the screen off or the music paused.
  * While the lyrics screen is up, the screen's own pick is used ([offer]); otherwise
- * [BackgroundLyrics] looks the song up. Main thread only.
+ * [BackgroundLyrics] looks the song up, and with the screen off only once it's on again
+ * ([ScreenOffLookup]). Main thread only.
  */
 internal object NowPlayingHolder {
     private const val WAITING = "Play something to see its lyrics here"
@@ -124,6 +125,8 @@ internal object NowPlayingHolder {
     /** Lyrics the screen offered for a song this holder hasn't seen yet. */
     private var pendingOffer: Pair<String, LyricsState>? = null
     private var screenOn = true
+    /** No lookups for songs that change with the screen off: the current one is looked up once it's on. */
+    private val screenOffLookup = ScreenOffLookup()
     private var shown: WidgetLines? = null
 
     private val sessionsListener = MediaSessionManager.OnActiveSessionsChangedListener { follow(it.orEmpty()) }
@@ -137,7 +140,13 @@ internal object NowPlayingHolder {
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             screenOn = intent.action == Intent.ACTION_SCREEN_ON
-            if (screenOn) refreshSessions() else main.removeCallbacks(tick)
+            if (!screenOn) {
+                main.removeCallbacks(tick)
+                return
+            }
+            refreshSessions()
+            // Only when that didn't find a new song, which is looked up on its own.
+            if (screenOffLookup.screenOn() && !appShowing && leads.isEmpty() && lookupJob?.isActive != true) lookUpSong()
         }
     }
 
@@ -399,6 +408,7 @@ internal object NowPlayingHolder {
         val request = request?.takeIf { it.title.isNotBlank() && it.artist.isNotBlank() } ?: return
         val key = songKey ?: return
         val lookup = lookup ?: return
+        if (!screenOffLookup.request(screenOn)) return
         val romanize = wantsRomanization
         val manual = manualSpotifyId
         lookupJob?.cancel()
@@ -424,6 +434,7 @@ internal object NowPlayingHolder {
         when (lyrics) {
             is LyricsState.Ready -> {
                 lookupJob?.cancel()
+                screenOffLookup.clear()
                 leads = WidgetLines.leads(lyrics.lines)
                 synced = lyrics.lyricsType != LyricsType.Static
                 credit = LyricsFooter(
@@ -442,6 +453,7 @@ internal object NowPlayingHolder {
 
     private fun clearSong(notice: String) {
         lookupJob?.cancel()
+        screenOffLookup.clear()
         request = null
         title = ""
         artist = ""
