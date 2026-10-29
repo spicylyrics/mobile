@@ -306,7 +306,6 @@ class LyricsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        com.tx24.spicyplayer.playback.CrashLog.install(applicationContext)
         UsageStats.init(this)
         countImageDownloads()
         enableEdgeToEdge()

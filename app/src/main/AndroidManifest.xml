@@ -20,6 +20,7 @@
         </intent>
     </queries>
     <application
+        android:name="com.tx24.spicyplayer.SpicyLyricsApplication"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"
