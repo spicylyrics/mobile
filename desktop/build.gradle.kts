@@ -95,6 +95,16 @@ compose.desktop {
     application {
         mainClass = "com.tx24.spicyplayer.desktop.MainKt"
         args += desktopArgs
+        // Live data after a GC is under 100 MB, but without a cap the heap may grow to a quarter
+        // of RAM and G1 keeps what it took. Capped, with free heap handed back after a periodic GC
+        // when the app is quiet. Those GCs also free Skia's native objects, which are released only
+        // when the JVM collects their wrappers.
+        jvmArgs += listOf(
+            "-Xmx384m",
+            "-XX:G1PeriodicGCInterval=15000",
+            "-XX:MinHeapFreeRatio=10",
+            "-XX:MaxHeapFreeRatio=20",
+        )
 
         nativeDistributions {
             // MSI over EXE: jpackage's EXE is the same MSI behind a bootstrapper, and the MSI on

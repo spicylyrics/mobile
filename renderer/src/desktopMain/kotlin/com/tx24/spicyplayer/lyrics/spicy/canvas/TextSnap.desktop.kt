@@ -13,6 +13,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.skiaCanvas
 import androidx.compose.ui.graphics.skiaPaint
+import androidx.compose.ui.graphics.skiaShader
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.drawText
 import kotlin.math.ceil
@@ -33,7 +34,7 @@ internal actual fun DrawScope.drawLyricText(layout: TextLayoutResult, brush: Bru
     // native memory now instead of whenever a GC gets round to the brush's.
     val shader = (brush as? ShaderBrush)?.createShader(size)
     val drawn = drawMask(layout, topLeft) { if (shader != null) it.shader = shader else brush.applyTo(size, it, 1f) }
-    shader?.close()
+    shader?.skiaShader?.close()
     if (!drawn) {
         drawText(layout, brush = brush, topLeft = topLeft, shadow = Shadow.None)
     }
