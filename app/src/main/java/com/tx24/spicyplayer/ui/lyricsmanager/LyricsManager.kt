@@ -155,7 +155,7 @@ private suspend fun applyUpload(context: android.content.Context, viewModel: Ext
         viewModel.showMessage("Only .ttml and .lrc files are supported.")
         null
     } else withContext(Dispatchers.IO) {
-        val text = runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString().removePrefix("﻿") } }.getOrNull()
+        val text = runCatching { context.contentResolver.openInputStream(uri)?.use { it.readBytes().decodeToString().removePrefix("\uFEFF") } }.getOrNull()
         when {
             text == null -> null.also { viewModel.showMessage("Error reading the file.") }
             extension == "lrc" || LrcConverter.isLrc(text) ->
