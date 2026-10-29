@@ -2,7 +2,6 @@ package com.tx24.spicyplayer.ui.components
 
 import androidx.compose.ui.composed
 import androidx.compose.runtime.ReadOnlyComposable
-import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
@@ -51,7 +50,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.Column
@@ -515,7 +513,7 @@ private fun SelectMenu(
     // without this it would open again at once.
     var closedAt by remember { mutableStateOf(0L) }
     val close = {
-        if (menu.targetState) closedAt = SystemClock.uptimeMillis()
+        if (menu.targetState) closedAt = controlsClock.elapsedNow().inWholeMilliseconds
         menu.targetState = false
     }
     val open = menu.targetState
@@ -541,7 +539,7 @@ private fun SelectMenu(
                 .border(1.dp, if (pressed || open) SpicyColors.HairlineStrong else SpicyColors.Hairline, shape)
                 .focusRing(shape)
                 .clickable(interaction, indication = null, enabled = enabled, role = Role.DropdownList) {
-                    if (open || SystemClock.uptimeMillis() - closedAt < REOPEN_GUARD_MS) return@clickable
+                    if (open || controlsClock.elapsedNow().inWholeMilliseconds - closedAt < REOPEN_GUARD_MS) return@clickable
                     haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                     menu.targetState = true
                 }
@@ -567,7 +565,7 @@ private fun SelectMenu(
             // The menu gets a slot as tall as it could ever be on the roomier side of the pill,
             // and sits at the slot's end nearest the pill. Narrowed by a search, it shrinks toward
             // the pill instead of leaving it behind.
-            val bottom = LocalView.current.rootView.height - keyboard
+            val bottom = rootHeightPx() - keyboard
             val gap = margin / 2
             val tallest = with(density) { MENU_MAX_HEIGHT.roundToPx() }
             val roomBelow = bottom - margin - (pillBottom + gap)
@@ -1072,3 +1070,6 @@ fun Modifier.outlinedCard(tinted: Boolean = false): Modifier = composed {
 
 /** A disabled row: label and control at 45%. */
 const val DISABLED_ALPHA = 0.45f
+
+/** A monotonic clock for the menus' reopen guard. */
+private val controlsClock = kotlin.time.TimeSource.Monotonic.markNow()

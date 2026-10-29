@@ -1,5 +1,7 @@
 package com.tx24.spicyplayer.ui.settings
 
+import com.tx24.spicyplayer.ui.components.PlatformBackHandler
+import com.tx24.spicyplayer.ui.components.PlatformPredictiveBackHandler
 import kotlin.math.roundToInt
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
@@ -9,7 +11,6 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.layout.offset
-import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.tx24.spicyplayer.ui.components.drawBrandMark
 import com.tx24.spicyplayer.ui.components.focusLayer
@@ -28,15 +29,8 @@ import androidx.compose.animation.core.snap
 
 import androidx.compose.animation.core.AnimationSpec
 
-import com.tx24.spicyplayer.analytics.UsageCounter
-import com.tx24.spicyplayer.analytics.UsageStats
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Album
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import androidx.activity.BackEventCompat
-import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -81,7 +75,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import android.os.SystemClock
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -123,16 +116,12 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.tx24.spicyplayer.BuildConfig
 import com.tx24.spicyplayer.haptics.withHaptic
-import com.tx24.spicyplayer.playback.ExternalPlaybackViewModel
-import com.tx24.spicyplayer.playback.PlayerUiState
 import com.tx24.spicyplayer.ui.components.GlassButton
 import com.tx24.spicyplayer.ui.components.LocalSettingsQuery
 import com.tx24.spicyplayer.ui.components.Searchable
@@ -146,8 +135,6 @@ import com.tx24.spicyplayer.ui.nowplaying.StageArt
 import com.tx24.spicyplayer.ui.theme.SpicyMotion
 import com.tx24.spicyplayer.ui.theme.SpicySpacing
 import com.tx24.spicyplayer.ui.theme.SpicyType
-import com.tx24.spicyplayer.update.UpdateStatus
-import com.tx24.spicyplayer.update.UpdateViewModel
 import dev.chrisbanes.haze.HazeInputScale
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeStyle
@@ -157,7 +144,7 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
 /** A page of settings; one with a [parent] opens from a group card on that page instead of the first page. */
-internal enum class SettingsPage(val title: String, val parent: SettingsPage? = null) {
+enum class SettingsPage(val title: String, val parent: SettingsPage? = null) {
     ThisSong("This song"),
     Lyrics("Lyrics"),
     Translation("Romanization & Translation"),
@@ -177,7 +164,7 @@ internal enum class SettingsPage(val title: String, val parent: SettingsPage? = 
 }
 
 /** Opens a page over the one showing; what [SubPageRow]s call. */
-internal val LocalOpenSettingsPage = staticCompositionLocalOf<(SettingsPage) -> Unit> { {} }
+val LocalOpenSettingsPage = staticCompositionLocalOf<(SettingsPage) -> Unit> { {} }
 
 /**
  * The settings, over the song's own background, blurred and dimmed, opening like the pop-ups
@@ -190,11 +177,10 @@ internal val LocalOpenSettingsPage = staticCompositionLocalOf<(SettingsPage) -> 
  * Stays composed until its closing animation ends, then calls [onClosed].
  */
 @Composable
-internal fun SettingsScreen(
-    state: PlayerUiState,
-    viewModel: ExternalPlaybackViewModel,
-    updater: UpdateViewModel,
-    settings: AppSettings,
+fun SettingsScreen(
+    state: SettingsState,
+    host: SettingsHost,
+    settings: CommonAppSettings,
     backdrop: HazeState?,
     contentPadding: PaddingValues,
     onClosed: () -> Unit,
@@ -268,7 +254,7 @@ internal fun SettingsScreen(
     fun show(target: SettingsPage) {
         // A second tap while the page is still sliding in, or a page already open.
         if (stack.any { it.page == target }) return
-        UsageStats.count(UsageCounter.page(target.name))
+        host.countPage(target)
         val opened = OpenPage(target)
         stack += opened
         scope.launch {
@@ -285,14 +271,14 @@ internal fun SettingsScreen(
         }
     }
 
-    PredictiveBackHandler(enabled = !closing) { progress ->
+    PlatformPredictiveBackHandler(enabled = !closing) { progress ->
         val top = stack.lastOrNull()
         try {
             progress.collect { event ->
                 if (top != null) {
                     top.shift.snapTo(1f - event.progress * PAGE_PEEK)
                 } else {
-                    swipeFromLeft = event.swipeEdge == BackEventCompat.EDGE_LEFT
+                    swipeFromLeft = event.fromLeft
                     backSwipe.snapTo(event.progress)
                 }
             }
@@ -308,7 +294,7 @@ internal fun SettingsScreen(
         }
     }
     // Declared after, so it's asked first: back while peeking brings the settings back.
-    BackHandler(enabled = peek.active) { peek.end() }
+    PlatformBackHandler(enabled = peek.active) { peek.end() }
 
     Box(
         Modifier
@@ -416,9 +402,9 @@ internal fun SettingsScreen(
                     header = { SpicySearchBar(query, { query = it }, Modifier.fillMaxWidth().padding(top = SpicySpacing.S4)) },
                 ) {
                     if (query.isBlank()) {
-                        HomeGroups(state, settings, updater, onOpen = ::show)
+                        HomeGroups(state, host, settings, onOpen = ::show)
                     } else {
-                        SearchResults(query, state, viewModel, updater, settings, onOpenLyricsManager, onOpenSpotifySearch)
+                        SearchResults(query, state, host, settings, onOpenLyricsManager, onOpenSpotifySearch)
                     }
                 }
             }
@@ -443,7 +429,7 @@ internal fun SettingsScreen(
                             .focusLayer(current = index == stack.lastIndex, ready = opened.ready),
                         header = { Spacer(Modifier.height(SpicySpacing.S2)) },
                     ) {
-                        PageContent(opened.page, state, viewModel, updater, settings, onOpenLyricsManager, onOpenSpotifySearch)
+                        PageContent(opened.page, state, host, settings, onOpenLyricsManager, onOpenSpotifySearch)
                     }
                 }
             }
@@ -495,14 +481,14 @@ private fun PeekButton() {
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                    downAt = SystemClock.uptimeMillis()
+                    downAt = screenUptimeMs()
                     haptics.performHapticFeedback(HapticFeedbackType.VirtualKey)
                     peek.start(bounds, plate = false)
                     while (true) {
                         val change = awaitPointerEvent(PointerEventPass.Initial).changes.firstOrNull { it.id == down.id } ?: break
                         if (!change.pressed) break
                     }
-                    if (SystemClock.uptimeMillis() - downAt < PEEK_TAP_MS) {
+                    if (screenUptimeMs() - downAt < PEEK_TAP_MS) {
                         peek.latched = true
                     } else {
                         haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
@@ -523,28 +509,28 @@ private inline fun DrawScope.faded(alpha: Float, block: () -> Unit) {
 }
 
 @Composable
-private fun PageContent(
+fun PageContent(
     page: SettingsPage,
-    state: PlayerUiState,
-    viewModel: ExternalPlaybackViewModel,
-    updater: UpdateViewModel,
-    settings: AppSettings,
+    state: SettingsState,
+    host: SettingsHost,
+    settings: CommonAppSettings,
     onOpenLyricsManager: () -> Unit,
     onOpenSpotifySearch: () -> Unit,
 ) {
+    if (!host.hasPage(page)) return
     when (page) {
-        SettingsPage.ThisSong -> ThisSongContent(state, viewModel, onOpenLyricsManager, onOpenSpotifySearch)
-        SettingsPage.Lyrics -> LyricsContent(state, viewModel, settings)
-        SettingsPage.Translation -> RomanizationTranslationContent(state, viewModel, settings)
-        SettingsPage.ScrollSync -> ScrollSyncContent(state, viewModel, settings)
-        SettingsPage.Background -> BackgroundContent(settings, viewModel)
-        SettingsPage.NowPlaying -> NowPlayingContent(settings, viewModel)
-        SettingsPage.Controls -> ControlsContent(settings)
-        SettingsPage.Theme -> ThemeContent(settings)
-        SettingsPage.Sources -> SourcesContent(state, viewModel)
-        SettingsPage.Device -> DeviceContent(settings)
-        SettingsPage.FloatingLyrics -> FloatingLyricsContent(settings)
-        SettingsPage.Advanced -> AdvancedContent(state, viewModel, updater, settings)
+        SettingsPage.ThisSong -> host.ThisSongPage(onOpenLyricsManager, onOpenSpotifySearch)
+        SettingsPage.Lyrics -> LyricsContent(host, settings)
+        SettingsPage.Translation -> host.TranslationPage()
+        SettingsPage.ScrollSync -> ScrollSyncContent(state, host, settings)
+        SettingsPage.Background -> BackgroundContent(settings, host)
+        SettingsPage.NowPlaying -> NowPlayingContent(settings, host)
+        SettingsPage.Controls -> ControlsContent(settings, host)
+        SettingsPage.Theme -> ThemeContent(settings, host)
+        SettingsPage.Sources -> host.SourcesPage()
+        SettingsPage.Device -> DeviceContent(settings, host)
+        SettingsPage.FloatingLyrics -> FloatingLyricsContent(settings, host)
+        SettingsPage.Advanced -> host.AdvancedPage()
     }
 }
 
@@ -606,7 +592,7 @@ private fun Page(
 }
 
 /** The open page's scroll, for content that scrolls it itself (a dragged source card at the edges). */
-internal val LocalPageScroll = staticCompositionLocalOf<ScrollState?> { null }
+val LocalPageScroll = staticCompositionLocalOf<ScrollState?> { null }
 
 @Composable
 private fun HomeSkeleton() {
@@ -638,14 +624,16 @@ private fun PageSkeleton(page: SettingsPage) {
 }
 
 @Composable
-private fun HomeGroups(state: PlayerUiState, settings: AppSettings, updater: UpdateViewModel, onOpen: (SettingsPage) -> Unit) {
+private fun HomeGroups(state: SettingsState, host: SettingsHost, settings: CommonAppSettings, onOpen: (SettingsPage) -> Unit) {
     Spacer(Modifier.height(SpicySpacing.S4))
-    Column(Modifier.fillMaxWidth().outlinedCard()) {
-        GroupRow(Icons.Rounded.MusicNote, SettingsPage.ThisSong.title, "${state.title} · ${songSummary(state)}") {
-            onOpen(SettingsPage.ThisSong)
+    if (host.hasPage(SettingsPage.ThisSong)) {
+        Column(Modifier.fillMaxWidth().outlinedCard()) {
+            GroupRow(Icons.Rounded.MusicNote, SettingsPage.ThisSong.title, "${state.songTitle} · ${state.songSummary}") {
+                onOpen(SettingsPage.ThisSong)
+            }
         }
+        Spacer(Modifier.height(SpicySpacing.S3))
     }
-    Spacer(Modifier.height(SpicySpacing.S3))
     Column(Modifier.fillMaxWidth().outlinedCard()) {
         GroupRow(
             Icons.Rounded.TextFields,
@@ -670,12 +658,12 @@ private fun HomeGroups(state: PlayerUiState, settings: AppSettings, updater: Upd
                 "no glow".takeIf { !settings.glow || settings.lowPerformance },
             ).joinToString().replaceFirstChar(Char::uppercase),
         ) { onOpen(SettingsPage.Lyrics) }
-        GroupDivider()
-        GroupRow(Icons.Rounded.Translate, SettingsPage.Translation.title,
-            "Romanization: ${settings.romanizationMode.label} · " +
-                "${TranslationLanguages.name(state.translationPreferences.targetLanguage)} · " +
-                if (state.translationPreferences.automatic) "Automatic" else "On demand",
-        ) { onOpen(SettingsPage.Translation) }
+        if (host.hasPage(SettingsPage.Translation)) {
+            GroupDivider()
+            GroupRow(Icons.Rounded.Translate, SettingsPage.Translation.title,
+                "Romanization: ${settings.romanizationMode.label} · ${state.translationSummary}",
+            ) { onOpen(SettingsPage.Translation) }
+        }
         GroupDivider()
         GroupRow(
             Icons.Rounded.Timer,
@@ -729,43 +717,48 @@ private fun HomeGroups(state: PlayerUiState, settings: AppSettings, updater: Upd
         GroupRow(
             Icons.Rounded.ColorLens,
             SettingsPage.Theme.title,
-            listOf(
+            listOfNotNull(
                 "${settings.settingsTheme.label} settings",
                 "${settings.popupTheme.label.lowercase()} pop-ups",
-                "${settings.appIcon.label.lowercase()} icon",
+                host.appIconLabel?.let { "${it.lowercase()} icon" },
             ).joinToString(),
         ) { onOpen(SettingsPage.Theme) }
     }
     Spacer(Modifier.height(SpicySpacing.S3))
     Column(Modifier.fillMaxWidth().outlinedCard()) {
-        GroupRow(
-            Icons.Rounded.Layers,
-            SettingsPage.Sources.title,
-            state.sourceRanking.let { ranking ->
-                "${ranking.origins.count { com.tx24.spicyplayer.network.data.LyricsSourceSettings.isOn(ranking, it.id) }} of ${ranking.origins.size} on"
-            },
-        ) { onOpen(SettingsPage.Sources) }
-        GroupDivider()
+        if (host.hasPage(SettingsPage.Sources)) {
+            GroupRow(
+                Icons.Rounded.Layers,
+                SettingsPage.Sources.title,
+                state.sourcesSummary,
+            ) { onOpen(SettingsPage.Sources) }
+            GroupDivider()
+        }
         GroupRow(
             Icons.Rounded.Smartphone,
             SettingsPage.Device.title,
-            listOfNotNull(
+            if (host.phoneDevice) listOfNotNull(
                 if (settings.keepScreenOn) "Stays on while playing" else "Turns off as usual",
                 if (settings.highRefreshRate) "full refresh rate" else "60 Hz",
                 "low performance".takeIf { settings.lowPerformance },
                 "haptics to the music".takeIf { settings.musicHaptics },
+            ).joinToString() else listOfNotNull(
+                if (settings.ambientMode) "Ambient mode" else "No ambient mode",
+                "low performance".takeIf { settings.lowPerformance },
             ).joinToString(),
         ) { onOpen(SettingsPage.Device) }
-        GroupDivider()
-        GroupRow(Icons.Rounded.Tune, SettingsPage.Advanced.title, "Updates, cache and diagnostics") { onOpen(SettingsPage.Advanced) }
+        if (host.hasPage(SettingsPage.Advanced)) {
+            GroupDivider()
+            GroupRow(Icons.Rounded.Tune, SettingsPage.Advanced.title, "Updates, cache and diagnostics") { onOpen(SettingsPage.Advanced) }
+        }
     }
     Spacer(Modifier.height(SpicySpacing.S6))
-    AboutCard(state, updater, settings)
+    host.AboutCard()
 }
 
 /** A row of a grouped card that opens a page: glyph, name, a one-line summary and a chevron. */
 @Composable
-internal fun GroupRow(
+fun GroupRow(
     icon: ImageVector,
     label: String,
     summary: String,
@@ -799,7 +792,7 @@ internal fun GroupRow(
 }
 
 @Composable
-internal fun GroupDivider() {
+fun GroupDivider() {
     Box(Modifier.fillMaxWidth().height(1.dp).background(SpicyColors.Hairline))
 }
 
@@ -808,114 +801,29 @@ internal fun GroupDivider() {
  * Search lists those pages' rows on their own, so the card steps aside while searching.
  */
 @Composable
-internal fun SubPageCard(content: @Composable ColumnScope.() -> Unit) {
+fun SubPageCard(content: @Composable ColumnScope.() -> Unit) {
     if (LocalSettingsQuery.current.isNotBlank()) return
     Column(Modifier.fillMaxWidth().padding(vertical = SpicySpacing.S2).outlinedCard(), content = content)
 }
 
 /** A [GroupRow] that opens [page] over the one showing. */
 @Composable
-internal fun SubPageRow(page: SettingsPage, icon: ImageVector, summary: String) {
+fun SubPageRow(page: SettingsPage, icon: ImageVector, summary: String) {
     val open = LocalOpenSettingsPage.current
     GroupRow(icon, page.title, summary) { open(page) }
 }
 
-/**
- * The footer card, kept short: the name, version, channel and update status with a manual check,
- * then the links out two by two. The status checks quietly on its own and claims nothing until it knows.
- */
-@Composable
-private fun AboutCard(state: PlayerUiState, updater: UpdateViewModel, settings: AppSettings) {
-    val context = LocalContext.current
-    val update by updater.state.collectAsState()
-    LaunchedEffect(Unit) { updater.checkQuietly(settings.includePrereleases) }
-    // Found or hidden as one card; inside it, everything shows.
-    Searchable("About", "Version", "GitHub", "Star", "Spicy Lyrics Mobile", "Spicy Player", "Updates", "Check for updates", "Feedback", "Bug", "Report", "Feature", "Suggest", "Discord") {
-        CompositionLocalProvider(LocalSettingsQuery provides "") {
-            Column(
-                Modifier.fillMaxWidth().outlinedCard().padding(SpicySpacing.S4),
-                verticalArrangement = Arrangement.spacedBy(SpicySpacing.S3),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Spicy Lyrics Mobile", style = SpicyType.Headline)
-                        Text(versionLine(update.status, updater.enabled), style = SpicyType.Footnote.copy(color = SpicyColors.TextSecondary))
-                    }
-                    if (updater.enabled) UpdateButton(update.status, onUpdate = updater::show) { updater.check(settings.includePrereleases) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(SpicySpacing.S2)) {
-                    FooterLink("Star on GitHub", Modifier.weight(1f)) { openUrl(context, PROJECT_URL) }
-                    FooterLink("Discord", Modifier.weight(1f), DISCORD_BLURPLE) { openUrl(context, DISCORD_URL) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(SpicySpacing.S2)) {
-                    // Fills in the form's version and debug info; the reporter sees both before sending.
-                    FooterLink("Report a bug", Modifier.weight(1f), BUG_PINK) {
-                        val debug = Uri.encode(debugReport(context, state).take(MAX_PREFILLED_DEBUG))
-                        openUrl(context, "$PROJECT_URL/issues/new?template=bug_report.yml&version=${Uri.encode(BuildConfig.VERSION_NAME)}&debug=$debug")
-                    }
-                    FooterLink("Suggest a feature", Modifier.weight(1f)) { openUrl(context, "$PROJECT_URL/issues/new?template=feature_request.yml") }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun FooterLink(label: String, modifier: Modifier, brand: Color? = null, onClick: () -> Unit) {
-    SpicyButton(label, onClick, modifier, horizontalPadding = 8.dp, brand = brand, external = true)
-}
-
-/** "v0.6.0 · pre-release · Latest": the status only once a check has said something. */
-@Composable
-private fun versionLine(status: UpdateStatus, enabled: Boolean): AnnotatedString = buildAnnotatedString {
-    append("v${BuildConfig.VERSION_NAME} · ${buildChannel()}")
-    if (!enabled) return@buildAnnotatedString
-    val (text, color) = when (status) {
-        UpdateStatus.UpToDate -> "Latest" to SpicyColors.StatusSuccess
-        is UpdateStatus.Available -> "Update available" to SpicyColors.StatusWarning
-        is UpdateStatus.Failed -> "Couldn't check" to SpicyColors.TextTertiary
-        else -> return@buildAnnotatedString
-    }
-    append(" · ")
-    withStyle(SpanStyle(color = color, fontWeight = FontWeight.SemiBold)) { append(text) }
-}
-
-/** Checks on demand; once an update is found, opens it instead. */
-@Composable
-private fun UpdateButton(status: UpdateStatus, onUpdate: () -> Unit, onCheck: () -> Unit) {
-    when (status) {
-        is UpdateStatus.Available -> SpicyButton("Update", onUpdate, brand = SpicyColors.StatusWarning)
-        UpdateStatus.Checking -> SpicyButton("Checking…", {}, enabled = false)
-        is UpdateStatus.Downloading -> SpicyButton("${(status.progress * 100).toInt()}%", {}, enabled = false)
-        is UpdateStatus.Installing -> SpicyButton("Installing", {}, enabled = false)
-        UpdateStatus.Idle, UpdateStatus.UpToDate, is UpdateStatus.Failed -> SpicyButton("Check for updates", onCheck)
-    }
-}
-
-/**
- * Which channel this build is from: every 0.x release, and any version with a suffix ("1.0.0-beta"),
- * is published as a pre-release, the same rule the update check uses to offer pre-releases.
- */
-private fun buildChannel(): String = when {
-    BuildConfig.DEBUG -> "debug"
-    BuildConfig.VERSION_NAME.startsWith("0.") || '-' in BuildConfig.VERSION_NAME -> "pre-release"
-    else -> "stable"
-}
-
-private val DISCORD_BLURPLE = Color(88, 101, 242)
-private val BUG_PINK = Color(255, 94, 138)
-
 /** Every page's rows at once, each hiding unless it matches the search. */
 @Composable
-private fun SearchResults(query: String, state: PlayerUiState, viewModel: ExternalPlaybackViewModel, updater: UpdateViewModel, settings: AppSettings, onOpenLyricsManager: () -> Unit, onOpenSpotifySearch: () -> Unit) {
+private fun SearchResults(query: String, state: SettingsState, host: SettingsHost, settings: CommonAppSettings, onOpenLyricsManager: () -> Unit, onOpenSpotifySearch: () -> Unit) {
     CompositionLocalProvider(LocalSettingsQuery provides query) {
         EmptyOr(
             content = {
                 Column(Modifier.fillMaxWidth()) {
-                    SettingsPage.entries.forEach { page ->
-                        SettingsSection(page.path) { PageContent(page, state, viewModel, updater, settings, onOpenLyricsManager, onOpenSpotifySearch) }
+                    SettingsPage.entries.filter(host::hasPage).forEach { page ->
+                        SettingsSection(page.path) { PageContent(page, state, host, settings, onOpenLyricsManager, onOpenSpotifySearch) }
                     }
-                    AboutCardSpacer(state, updater, settings)
+                    AboutCardSpacer(host)
                 }
             },
             empty = {
@@ -930,9 +838,9 @@ private fun SearchResults(query: String, state: PlayerUiState, viewModel: Extern
 }
 
 @Composable
-private fun AboutCardSpacer(state: PlayerUiState, updater: UpdateViewModel, settings: AppSettings) {
+private fun AboutCardSpacer(host: SettingsHost) {
     Searchable("About", "Version", "GitHub", "Star", "Spicy Lyrics Mobile", "Spicy Player", "Updates", "Check for updates", "Feedback", "Bug", "Report", "Feature", "Suggest", "Discord") { Spacer(Modifier.height(SpicySpacing.S4)) }
-    AboutCard(state, updater, settings)
+    host.AboutCard()
 }
 
 /** [content], or [empty] in its place when [content] lays out with no height. */
@@ -949,14 +857,14 @@ private fun EmptyOr(content: @Composable () -> Unit, empty: @Composable () -> Un
     }
 }
 
-internal fun Int.signed(): String = if (this > 0) "+$this" else toString()
-internal fun Long.signed(): String = if (this > 0) "+$this" else toString()
+fun Int.signed(): String = if (this > 0) "+$this" else toString()
+fun Long.signed(): String = if (this > 0) "+$this" else toString()
 
 /** Behind settings, the page dims to 45% black over a strong blur of the lyrics. */
 /** What the settings pages are over: the lyrics, blurred as [SettingsBackdrop]. Null without blur. */
-internal val LocalSettingsBackdrop = staticCompositionLocalOf<HazeState?> { null }
+val LocalSettingsBackdrop = staticCompositionLocalOf<HazeState?> { null }
 
-internal val SettingsBackdrop = HazeStyle(
+val SettingsBackdrop = HazeStyle(
     backgroundColor = Color.Black,
     tints = listOf(HazeTint(Color.Black.copy(alpha = 0.45f))),
     blurRadius = 32.dp,
@@ -964,7 +872,7 @@ internal val SettingsBackdrop = HazeStyle(
     fallbackTint = HazeTint(Color.Black.copy(alpha = 0.8f)),
 )
 
-internal const val BACKDROP_INPUT_SCALE = 1f / 3f
+const val BACKDROP_INPUT_SCALE = 1f / 3f
 
 /** The scale a pop-up opens from and closes to. */
 private const val MODAL_CLOSED_SCALE = 0.96f
@@ -997,13 +905,6 @@ private const val PAGES_AWAY_PX = 100_000
 /** The plate a dragged slider's row sits on while the rest of the settings are cleared away. */
 private val PEEK_PLATE = Color(0xE0141414)
 
-private const val PROJECT_URL = "https://github.com/spicylyrics/mobile"
-// Keeps the prefilled form link well under the length GitHub accepts.
-private const val MAX_PREFILLED_DEBUG = 3000
-
-// The server invite, not the thread link: a thread link only opens for people already in the server.
-internal const val DISCORD_URL = "https://discord.com/invite/uqgXU5wh8j"
-
-internal fun openUrl(context: Context, url: String) {
-    runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-}
+/** A monotonic clock for the peek button's tap-or-hold. */
+private val screenClock = kotlin.time.TimeSource.Monotonic.markNow()
+private fun screenUptimeMs(): Long = screenClock.elapsedNow().inWholeMilliseconds

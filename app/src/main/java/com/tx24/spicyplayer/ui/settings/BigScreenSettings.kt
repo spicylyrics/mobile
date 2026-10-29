@@ -59,9 +59,8 @@ internal fun AdaptiveSettings(
         BigScreenSettings(settings, contentPadding, onClosed, onOpenAllPages = { allPages = true })
     } else {
         SettingsScreen(
-            state = state,
-            viewModel = viewModel,
-            updater = updater,
+            state = settingsState(state),
+            host = rememberAndroidSettingsHost(state, viewModel, updater, settings),
             settings = settings,
             backdrop = backdrop,
             contentPadding = contentPadding,

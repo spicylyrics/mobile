@@ -34,10 +34,3 @@ fun ProvideTouchHaptics(enabled: Boolean, content: @Composable () -> Unit) {
 private object NoHaptics : HapticFeedback {
     override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) = Unit
 }
-
-/** [onClick], after [type]'s feedback. */
-@Composable
-fun withHaptic(type: HapticFeedbackType, onClick: () -> Unit): () -> Unit {
-    val haptics = LocalHapticFeedback.current
-    return { haptics.performHapticFeedback(type); onClick() }
-}

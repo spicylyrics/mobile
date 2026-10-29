@@ -166,6 +166,8 @@ import com.tx24.spicyplayer.ui.controls.PanelTimeline
 import com.tx24.spicyplayer.ui.controls.StageControls
 import com.tx24.spicyplayer.ui.settings.QuickScreen
 import com.tx24.spicyplayer.ui.settings.QuickSettingsModal
+import com.tx24.spicyplayer.ui.settings.rememberAndroidSettingsHost
+import com.tx24.spicyplayer.ui.settings.settingsState
 import com.tx24.spicyplayer.ui.components.LocalUiAnimations
 import com.tx24.spicyplayer.ui.controls.LyricsControls
 import com.tx24.spicyplayer.ui.controls.controlsClearancePx
@@ -983,9 +985,8 @@ private class AndroidLyricsHost(
 
         QuickSettingsModal(
             visible = overlays.quickSettings,
-            state = state,
-            viewModel = viewModel,
-            settings = settings,
+            state = settingsState(state),
+            host = rememberAndroidSettingsHost(state, viewModel, updater, settings),
             backdrop = backdrop,
             startOn = overlays.quickStart,
             onDismiss = { overlays.quickSettings = false },
