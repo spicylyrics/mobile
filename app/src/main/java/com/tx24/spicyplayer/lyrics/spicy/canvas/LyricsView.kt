@@ -295,12 +295,15 @@ fun LyricsView(
 
         if (lineLayouts.isEmpty()) return@BoxWithConstraints
 
-        var animStates by remember { mutableStateOf<List<LineAnimState>>(emptyList()) }
+        // Per-line state belongs to the lyrics it was computed for: new lyrics start empty, as on
+        // a first load, until their own frame loop's first frame, rather than drawing one frame
+        // with the previous lyrics' states.
+        var animStates by remember(shownId) { mutableStateOf<List<LineAnimState>>(emptyList()) }
         // Where the credits start: under the last line as it stands, a folded background line taking no room.
-        var footerStart by remember { mutableStateOf(Float.NaN) }
+        var footerStart by remember(shownId) { mutableStateOf(Float.NaN) }
         // Refined Credits stay dim until the last line has been sung.
         var footerDim by remember { mutableStateOf(1f) }
-        var dynamicYOffsets by remember { mutableStateOf(FloatArray(0)) }
+        var dynamicYOffsets by remember(shownId) { mutableStateOf(FloatArray(0)) }
         var lastFrameTimeNanos by remember { mutableLongStateOf(0L) }
         val hostView = LocalView.current
         
