@@ -32,7 +32,7 @@ import com.tx24.spicyplayer.translation.RomanizationNote
 import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
 
 object LyricsLayoutCalculator {
-    internal fun calculatePresentationLayouts(
+    internal suspend fun calculatePresentationLayouts(
         originals: List<Line>,
         display: List<Line>,
         presentation: TranslationPresentation?,
@@ -47,13 +47,16 @@ object LyricsLayoutCalculator {
         backgroundScale: Float,
         romanizationMode: RomanizationMode = RomanizationMode.Replace,
         refreshedSimple: Boolean = false,
+        /** Called before each line, so a long layout can let frames through ([LayoutPacer]); null runs straight through. */
+        pace: (suspend () -> Unit)? = null,
     ): List<LineLayout> {
         val base = calculateLineLayouts(originals, canvasWidth, textMeasurer, density, lyricsType, fontSizeScale,
-            romanize && romanizationMode == RomanizationMode.Replace, simpleMode, wideDuet, backgroundScale, refreshedSimple)
+            romanize && romanizationMode == RomanizationMode.Replace, simpleMode, wideDuet, backgroundScale, refreshedSimple, pace)
         val metrics = LyricsLayoutMetrics(canvasWidth, density, lyricsType, fontSizeScale)
         val hasDuet = originals.any { it.oppositeAligned }
         var extraY = 0f
         return base.mapIndexed { index, original ->
+            pace?.invoke()
             val line = display[index]
             var layout = original.copy(line = line, yOffset = original.yOffset + extraY)
             val size = metrics.baseFontSizeSp * if (line.isBackground) backgroundScale else 1f
@@ -237,7 +240,7 @@ object LyricsLayoutCalculator {
         return if (isRtl) !oppositeAligned else oppositeAligned
     }
 
-    internal fun calculateLineLayouts(
+    internal suspend fun calculateLineLayouts(
         lines: List<Line>,
         canvasWidth: Float,
         textMeasurer: TextMeasurer,
@@ -250,6 +253,8 @@ object LyricsLayoutCalculator {
         /** Background vocals' size against the lead's: 0.75, or the Apple Music style's own. */
         backgroundScale: Float = 0.75f,
         refreshedSimple: Boolean = false,
+        /** Called before each line, so a long layout can let frames through ([LayoutPacer]); null runs straight through. */
+        pace: (suspend () -> Unit)? = null,
     ): List<LineLayout> {
 
         val layouts = mutableListOf<LineLayout>()
@@ -262,6 +267,7 @@ object LyricsLayoutCalculator {
         val bgFontSize = baseFontSize * backgroundScale
 
         for (line in lines) {
+            pace?.invoke()
             val isInterlude = line.isInterlude
             val isBg = line.isBackground
             val fontSize = if (isBg) bgFontSize else baseFontSize

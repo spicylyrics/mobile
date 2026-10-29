@@ -57,6 +57,10 @@ import com.tx24.spicyplayer.lyrics.spicy.animation.LyricsAnimator
 import com.tx24.spicyplayer.lyrics.spicy.animation.AppleMusicMotion
 import com.tx24.spicyplayer.lyrics.spicy.resizeSnapsToLine
 import com.tx24.spicyplayer.lyrics.spicy.textLayoutContext
+import com.tx24.spicyplayer.lyrics.spicy.resizeRelayoutDelayMs
+import com.tx24.spicyplayer.lyrics.spicy.slicesTextLayout
+import com.tx24.spicyplayer.lyrics.spicy.frameDeltaCapS
+import com.tx24.spicyplayer.lyrics.spicy.recordFrameDelta
 import com.tx24.spicyplayer.lyrics.spicy.models.Line
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
 import com.tx24.spicyplayer.lyrics.spicy.models.FooterLine
@@ -67,6 +71,7 @@ import com.tx24.spicyplayer.translation.TranslationPresentation
 import com.tx24.spicyplayer.translation.TranslationMode
 import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
@@ -273,12 +278,17 @@ fun LyricsView(
         }
         val viewStateUpdated by rememberUpdatedState(viewState)
         val maskBottomUpdated by rememberUpdatedState(maskBottomPx)
+        // What the last measurement was for apart from the width, to tell a resize from new lyrics.
+        val lastMeasureInputs = remember { arrayOfNulls<Any>(1) }
         // Recalculate layouts whenever the lyrics, dimensions, or font size change.
         // A newer key cancels a measurement still running, so only the latest one lands.
-        LaunchedEffect(lines, letterConfig, canvasWidth, fontSizeScale, romanize, documentId, incomingType, incomingFooter, fontKey, translation, romanizationMode) {
+        LaunchedEffect(lines, letterConfig, canvasWidth, fontSizeScale, romanize, documentId, incomingType, incomingFooter, fontKey, translation, romanizationMode, density.density) {
             suspend fun measure(romanized: Boolean, presentation: TranslationPresentation? = translation): MeasuredLyrics {
-                val key = MeasureKey(letterConfig, canvasWidth, fontSizeScale, romanized, incomingType, fontKey, presentation, romanizationMode)
+                val key = MeasureKey(letterConfig, canvasWidth, fontSizeScale, romanized, incomingType, fontKey, presentation, romanizationMode, density.density)
                 measuredCache[key]?.let { return it }
+                // On the UI thread: a slice at a time, the old layout staying up meanwhile.
+                val pacer = if (slicesTextLayout) LayoutPacer() else null
+                val pace: (suspend () -> Unit)? = pacer?.let { p -> { p.pace() } }
                 return withContext(textLayoutContext) {
                     // Per-letter emphasis for held words (mode-dependent thresholds, romanized
                     // display). Syllable mode only; Line/Static never letter-split.
@@ -294,16 +304,33 @@ fun LyricsView(
                         if (letterConfig.isAppleMusic) AppleMusicMotion.BACKGROUND_SIZE else 0.75f,
                         romanizationMode,
                         refreshedSimple = letterConfig.isRefreshedSimple,
+                        pace = pace,
                     ) else LyricsLayoutCalculator.calculateLineLayouts(
                         display, canvasWidth, textMeasurer, density.density, incomingType, fontSizeScale, romanized, letterConfig.isSimple,
                         letterConfig.wideDuetPadding,
                         if (letterConfig.isAppleMusic) AppleMusicMotion.BACKGROUND_SIZE else 0.75f,
                         refreshedSimple = letterConfig.isRefreshedSimple,
+                        pace = pace,
                     ), romanizationLines = originals.takeIf {
                         presentation?.mode == TranslationMode.Replace && romanized && romanizationMode == RomanizationMode.UnderLine
                     })
-                }.also { measuredCache[key] = it }
+                }.also {
+                    // Measured in place, layouts for another size are only kept until the next one:
+                    // a window resized many times would otherwise hold every size it passed through.
+                    if (slicesTextLayout) measuredCache.keys.removeAll { old ->
+                        old.widthPx != key.widthPx || old.density != key.density || old.fontSizeScale != key.fontSizeScale
+                    }
+                    measuredCache[key] = it
+                }
             }
+            // Only the size changed (the width, and the text size that follows it), with lyrics on
+            // screen: wait for it to hold (a window being dragged), keeping the old layout up,
+            // rather than measuring at every step.
+            val inputs = listOf(lines, letterConfig, romanize, documentId, incomingType, incomingFooter, fontKey, translation, romanizationMode)
+            val widthOnly = lastMeasureInputs[0] == inputs && measuredShown?.documentId == documentId
+            lastMeasureInputs[0] = inputs
+            val cached = measuredCache[MeasureKey(letterConfig, canvasWidth, fontSizeScale, romanize, incomingType, fontKey, translation, romanizationMode, density.density)] != null
+            if (widthOnly && !cached && resizeRelayoutDelayMs > 0) delay(resizeRelayoutDelayMs)
             // What's asked for goes up first; the layouts a toggle switches to are measured after,
             // so they're ready without holding this one back.
             val measured = measure(romanize)
@@ -379,7 +406,11 @@ fun LyricsView(
                     lastLayouts = currentLayouts
                     val currentTime = currentTimeProvider()
 
-                    val deltaTime = frameDeltaSeconds(frameTimeNanos, lastFrameTimeNanos, frameIntervalS, resumed)
+                    val deltaTime = frameDeltaSeconds(
+                        frameTimeNanos, lastFrameTimeNanos, frameIntervalS, resumed,
+                        capS = frameDeltaCapS ?: (2f * frameIntervalS),
+                    )
+                    if (lastFrameTimeNanos != 0L) recordFrameDelta((frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f, deltaTime)
                     lastFrameTimeNanos = frameTimeNanos
                     resumed = false
 
@@ -859,6 +890,8 @@ private data class MeasureKey(
     val fontKey: String,
     val translation: TranslationPresentation? = null,
     val romanizationMode: RomanizationMode = RomanizationMode.Replace,
+    /** The screen density the layout was made at: the desktop's interface scale changes it without a new width. */
+    val density: Float = 1f,
 )
 
 private class MeasuredLyrics(val lines: List<Line>, val layouts: List<LineLayout>, val romanizationLines: List<Line>? = null)
@@ -883,13 +916,20 @@ internal fun nominalFrameIntervalS(refreshRate: Float?): Float =
     1f / (refreshRate?.takeIf { it >= 1f } ?: 60f)
 
 /**
- * Seconds to advance the animation by for this frame. A late frame advances by at most two
- * nominal intervals, so a stall doesn't leap the springs by the whole gap; the first frame
- * after a rest (or with no previous frame) advances by one interval.
+ * Seconds to advance the animation by for this frame. A late frame advances by at most [capS]
+ * (two nominal intervals unless the platform says otherwise), so a stall doesn't leap the springs
+ * by the whole gap; the first frame after a rest (or with no previous frame) advances by one
+ * interval.
  */
-internal fun frameDeltaSeconds(frameTimeNanos: Long, lastFrameTimeNanos: Long, nominalIntervalS: Float, resumed: Boolean): Float {
+internal fun frameDeltaSeconds(
+    frameTimeNanos: Long,
+    lastFrameTimeNanos: Long,
+    nominalIntervalS: Float,
+    resumed: Boolean,
+    capS: Float = 2f * nominalIntervalS,
+): Float {
     if (resumed || lastFrameTimeNanos == 0L) return nominalIntervalS
-    return ((frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f).coerceIn(0f, 2f * nominalIntervalS)
+    return ((frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f).coerceIn(0f, capS)
 }
 
 /** The desktop lyric size (its 3.5rem cap), in CSS px. */

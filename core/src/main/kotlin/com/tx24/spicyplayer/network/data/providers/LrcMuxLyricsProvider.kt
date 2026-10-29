@@ -25,7 +25,10 @@ class LrcMuxLyricsProvider @Inject constructor(
         releaseChannel = SourceReleaseChannel.EXTENDED,
     )
 
-    override suspend fun fetch(request: LyricsLookupRequest): ProviderResult = try {
+    override suspend fun fetch(request: LyricsLookupRequest): ProviderResult = if (request.artist.isBlank()) {
+        // The lookup needs an artist (a blank one is a 400): a player that names none has no match here.
+        ProviderResult.Miss
+    } else try {
         val url = "https://api.lrcmux.dev/get".toHttpUrl().newBuilder()
             .addQueryParameter("artist", request.artist).addQueryParameter("title", request.title)
             .addQueryParameter("duration", request.durationSeconds.toString())

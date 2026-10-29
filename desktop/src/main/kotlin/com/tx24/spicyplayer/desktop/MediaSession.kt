@@ -80,6 +80,8 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
     private var stampOutlived = false
     /** The last report as the platform sent it, to drop the copies some players send. */
     private var lastRaw: List<Any?>? = null
+    /** After [resync]: the next report is taken as it is, not smoothed against the clock. */
+    @Volatile private var snapNext = false
 
     /** Takes one snapshot, received at [receivedMono] (monotonic) and [receivedWall] (epoch) ms. */
     fun feed(snapshot: MediaSnapshot, receivedMono: Long, receivedWall: Long): SessionEvent? {
@@ -117,7 +119,10 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
         val raw = listOf(app, next.key, status, positionMs, stamp, speed)
         if (raw == lastRaw && !newTrack) return null
         lastRaw = raw
-        if (stampOutlived && !newTrack) {
+        val snapping = snapNext && !newTrack
+        if (snapping) {
+            positionMs += offsetMs
+        } else if (stampOutlived && !newTrack) {
             positionMs = clock.positionAt(receivedMono)
             updatedAtMono = receivedMono
         } else {
@@ -143,9 +148,10 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
             clock.onReport(report, receivedMono, snap = true)
             return SessionEvent.NewTrack(next)
         }
-        if (!clock.isFresh(report)) return null
+        if (!snapping && !clock.isFresh(report)) return null
+        snapNext = false
         val before = clock.positionAt(receivedMono)
-        val outcome = clock.onReport(report, receivedMono)
+        val outcome = clock.onReport(report, receivedMono, snap = snapping)
         return SessionEvent.Moved(snapshot.event, status.name, report.positionMs, receivedWall - stamp, before, outcome)
     }
 
@@ -161,6 +167,20 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
         }
     }
 
+    /**
+     * The lyrics have drifted from the music: the player's next report is taken as it is, and the
+     * player is asked for one now by seeking it to where the clock is, as the phone's resync does.
+     */
+    fun resync(source: MediaSource) {
+        lastRaw = null
+        stampOutlived = false
+        snapNext = true
+        val app = track?.app ?: return
+        if (Transport.SEEK in source.capabilities) {
+            source.control(app, Transport.SEEK, (clock.positionAt(monoMs()) - offsetMs).coerceAtLeast(0L))
+        }
+    }
+
     /** The followed player is gone (it quit, or the source stopped): no track, and the clock stopped at 0. */
     fun clear() {
         track = null
@@ -172,6 +192,7 @@ class MediaSession(private val appFilter: String? = null, private val offsetFor:
         lastStatus = null
         stampOutlived = false
         lastRaw = null
+        snapNext = false
         clock.reset(monoMs())
     }
 

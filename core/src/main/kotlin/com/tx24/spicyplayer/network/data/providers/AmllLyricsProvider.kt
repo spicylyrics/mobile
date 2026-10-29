@@ -41,7 +41,10 @@ class AmllLyricsProvider @Inject constructor(
         releaseChannel = SourceReleaseChannel.RECOMMENDED,
     )
 
-    override suspend fun fetch(request: LyricsLookupRequest): ProviderResult = try {
+    override suspend fun fetch(request: LyricsLookupRequest): ProviderResult = if (request.artist.isBlank()) {
+        // The search needs an artist (a blank one is a 400): a player that names none has no match here.
+        ProviderResult.Miss
+    } else try {
         val searchUrl = "$BASE/v1/lyrics/search".toHttpUrl().newBuilder()
             .addQueryParameter("trackName", request.title)
             .addQueryParameter("artistName", request.artist)

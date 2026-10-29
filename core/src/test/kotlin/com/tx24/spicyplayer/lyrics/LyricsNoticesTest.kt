@@ -21,6 +21,18 @@ class LyricsNoticesTest {
         assertEquals("2 sources had none. Couldn't check MUSIXMATCH (HTTP 503)", error.detail)
     }
 
+    @Test fun aSongWithoutAnArtistSaysSoInsteadOfListingFailures() {
+        val misses = LyricsNotices.noLyrics(
+            listOf(
+                ProviderAttempt("lrclib", ProviderAttemptOutcome.MISS),
+                ProviderAttempt("amll", ProviderAttemptOutcome.MISS),
+            ),
+            artistMissing = true,
+        ) { it.uppercase() }
+        assertEquals(NoticeKind.NoLyrics, misses.kind)
+        assertEquals("The player didn't report an artist, so only the title could be searched", misses.detail)
+    }
+
     @Test fun anOfflinePhoneIsOfflineWhateverTheSourcesSay() {
         // Offline for a while, the sources back off and answer "cooling down"; a local one has none.
         val error = LyricsNotices.noLyrics(

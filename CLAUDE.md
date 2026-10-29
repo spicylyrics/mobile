@@ -45,9 +45,9 @@ The data flows through five layers. `docs/architecture.md` has the detail for ea
 5. **Rendering**: `lyrics/spicy/canvas/` in `:renderer`, the word-synced renderer. The Kawarp engine and shader are in `:renderer` too; its Android host (`kawarp/KawarpBackground.kt`) and the other backgrounds (`ui/background/`) are in `:app`.
 
 The UI is split across these places:
-- `MainActivity.kt` is the lyrics screen (class `LyricsActivity`; the name `MainActivity` is the default launcher alias, so pinned icons survive the icon choice).
+- The lyrics screen is `ui/lyrics/LyricsScreen.kt` in `:ui`, shared with the desktop. `MainActivity.kt` hosts it on Android (class `LyricsActivity`; the name `MainActivity` is the default launcher alias, so pinned icons survive the icon choice), supplying the phone-only parts through `LyricsScreenHost`: picture-in-picture, the lock screen, haptics, refresh rate, the background, the pop-ups and settings.
 - `ui/nowplaying/` holds the header, and `ui/controls/` the controls. Both live in `:ui`, behind the `NowPlaying` interface and the `NowPlayingPlatform` seam (`docs/renderer-module.md`); the Android-only parts (session artwork, animated-cover video, the view-model adapter) stay in `:app`'s `ui/nowplaying/`.
-- `ui/settings/` holds settings.
+- `ui/settings/` holds settings: the screens in `:ui` behind `SettingsHost`, the phone-only pages in `:app` (`docs/settings.md`).
 
 The design tokens and glass live in `ui/theme/SpicyTokens.kt` and `ui/components/` (`Spicy*` components), split between `:ui` (tokens, glass, skeleton, glyphs) and `:app` (the rest, until they move). New chrome uses those, not Material defaults.
 

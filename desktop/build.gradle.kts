@@ -62,6 +62,8 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":renderer"))
     implementation(project(":ui"))
+    // The shared lyrics screen's Scaffold takes its colours from the dark Material theme, as on the phone.
+    implementation("org.jetbrains.compose.material3:material3:1.9.0")
     implementation(compose.desktop.currentOs)
     // Dispatchers.Main, the UI thread the lyrics state lives on.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
@@ -93,6 +95,16 @@ compose.desktop {
     application {
         mainClass = "com.tx24.spicyplayer.desktop.MainKt"
         args += desktopArgs
+        // Live data after a GC is under 100 MB, but without a cap the heap may grow to a quarter
+        // of RAM and G1 keeps what it took. Capped, with free heap handed back after a periodic GC
+        // when the app is quiet. Those GCs also free Skia's native objects, which are released only
+        // when the JVM collects their wrappers.
+        jvmArgs += listOf(
+            "-Xmx384m",
+            "-XX:G1PeriodicGCInterval=15000",
+            "-XX:MinHeapFreeRatio=10",
+            "-XX:MaxHeapFreeRatio=20",
+        )
 
         nativeDistributions {
             // MSI over EXE: jpackage's EXE is the same MSI behind a bootstrapper, and the MSI on
@@ -104,8 +116,9 @@ compose.desktop {
             description = "Word-synced lyrics for whatever your computer is playing"
             vendor = "TX24"
             appResourcesRootDir = layout.buildDirectory.dir("appResources")
-            // suggestRuntimeModules, plus jdk.crypto.ec, which jdeps can't see but TLS needs.
-            modules("java.instrument", "java.sql", "jdk.unsupported", "jdk.crypto.ec")
+            // suggestRuntimeModules, plus jdk.crypto.ec, which jdeps can't see but TLS needs, and
+            // jdk.httpserver for the debug port (-Dspicy.debugPort).
+            modules("java.instrument", "java.sql", "jdk.unsupported", "jdk.crypto.ec", "jdk.httpserver")
             windows {
                 iconFile = file("packaging/icon.ico")
                 menuGroup = "Spicy Lyrics"
@@ -134,7 +147,12 @@ compose.desktop {
 
 // The Compose plugin registers these after the script runs.
 tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(helperResources) }
-tasks.matching { it.name == "run" }.configureEach { dependsOn(gsmtcHelper) }
+tasks.matching { it.name == "run" }.configureEach {
+    dependsOn(gsmtcHelper)
+    // `-Pspicy.debugPort=9300` and the other `spicy.*` switches reach the app as system properties.
+    val switches = providers.gradlePropertiesPrefixedBy("spicy.")
+    (this as JavaExec).doFirst { switches.get().forEach { (k, v) -> systemProperty(k, v) } }
+}
 
 tasks.register<JavaExec>("console") {
     description = "Prints the current line of Windows' media session, for measuring each player."

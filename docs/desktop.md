@@ -90,7 +90,7 @@ The desktop's library is `DesktopLyricsLibrary`, a wrapper over `:core`'s `Local
   - The view modes are page, cinema and fullscreen. `layoutFor` picks the side layout (cover beside the lyrics) or the compact one (song as a bar) from the window size.
   - The background follows `backgroundType` (`DesktopBackgrounds.kt`): Kawarp (`DesktopKawarp.kt`), Legacy, Color, Cover Art, Artist Header and Auto. Each falls back to Kawarp when it has no picture.
   - The update banner sits at the bottom.
-- **Settings** (`SettingsPage.kt`): `SettingsPanel` as a page.
+- **Settings** (`SettingsPage.kt`): the phone's settings screen and quick settings over the lyrics, through `DesktopSettingsHost` (the followed player's delay, the source switches, the font picker, the About card). A wide window gets them as one floating panel with the pages down its side. The phone-only pages and rows are left out. Ctrl+, opens them; Esc steps back through them (`DesktopBack`).
 - **Lyrics Manager** (`LyricsManagerPage.kt`): `LyricsLibraryPanel` as a page. After an upload, a reset or deleting the playing song's entry, it calls `DesktopLyrics.load` so the lyrics switch at once.
 - **Sync delay** (`SyncDelayPage.kt`), a page: the followed player's offset, with ±10/±50 ms nudges, Reset and a tap pad that works the offset out from taps along to the beat (`TapSync`). `--offset` on the command line overrides it for every player.
 
@@ -136,7 +136,7 @@ At **≥ 840 dp wide and ≥ 480 dp tall** (`usesBigScreenSettings` in `:ui`: Ma
 | Phone below the line | Big screen at or above it |
 |---|---|
 | The phone's lyrics screen | `BigScreenPage` through `AndroidBigScreenPage.kt`. It adds a Popup Lyrics view control for picture-in-picture, keeps the screen on and hides the controls on the phone's idle timer. Back leaves cinema. |
-| The phone's settings pages | `SettingsPanel` through `AdaptiveSettings`. Its **Device** tab holds the Android-only rows (`bigScreenDeviceGroups`), and **All Settings** opens the phone pages for what only they hold. Back closes it. |
+| The phone's settings pages | The same pages as one floating panel with the pages down its side (`FloatingSettings`), through `AdaptiveSettings`. Back clears a search, then closes it. |
 | The phone's source picker and translate button | The More menu, through `ViewModelLyricsActions`, with the phone's consent prompts |
 
 The Lyrics Manager is not wired on Android yet. The phone keeps its own.

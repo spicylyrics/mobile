@@ -100,7 +100,7 @@ class LyricsLookup(clientKey: String = spicyLyricsKey(), private val local: Desk
             return Found(LyricsNotices.lookupFailed(e), null)
         }
         if (result !is RemoteLyricsResolution.Found) {
-            return Found(LyricsNotices.noLyrics(result.attempts) { id -> providers.firstOrNull { it.descriptor.id == id }?.descriptor?.displayName ?: id }, result)
+            return Found(LyricsNotices.noLyrics(result.attempts, artistMissing = request.artist.isBlank()) { id -> providers.firstOrNull { it.descriptor.id == id }?.descriptor?.displayName ?: id }, result)
         }
         val lyrics = runCatching { RemoteLyricsAdapter.render(result.selection, track.durationMs, romanize = romanize) }
             .getOrElse { LyricsNotices.renderFailed(result.selection.source.displayName, it) }

@@ -32,6 +32,9 @@ class LyricsSource @Inject constructor(
     )
 
     override suspend fun fetch(request: LyricsLookupRequest): ProviderResult {
+        // A player that names no artist (a browser tab, say): the exact lookup needs one and
+        // answers 400 without, so only a title search can find the song.
+        if (request.artist.isBlank()) return titleOnly(request)
         return try {
             val response = lyricsService.getSongLyrics(
                 request.artist,
@@ -115,6 +118,34 @@ class LyricsSource @Inject constructor(
         val candidates = lyricsService.searchSongLyrics(request.artist, request.title)
         val match = chooseSearchResult(request, candidates) ?: return ProviderResult.Miss
         return ProviderResult.Hit(RemoteLyricsPayload(match.plainLyrics, match.syncedLyrics))
+    }
+
+    /** The title search for a song without an artist; anything that goes wrong is a miss. */
+    private suspend fun titleOnly(request: LyricsLookupRequest): ProviderResult {
+        val candidates = try {
+            lyricsService.searchSongLyrics("", request.title)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            return ProviderResult.Miss
+        }
+        val match = chooseTitleOnlyResult(request, candidates) ?: return ProviderResult.Miss
+        return ProviderResult.Hit(RemoteLyricsPayload(match.plainLyrics, match.syncedLyrics))
+    }
+
+    /**
+     * With no artist to check, a search result counts only with the same title and a length within
+     * 8 s of the song's, and only when the song's length is known; synced lyrics first.
+     */
+    fun chooseTitleOnlyResult(request: LyricsLookupRequest, candidates: List<LrclibSearchEntry>): LrclibSearchEntry? {
+        if (request.durationSeconds <= 0) return null
+        val title = SpotifyTrackMatcher.normalize(request.title)
+        return candidates
+            .filter { SpotifyTrackMatcher.normalize(it.trackName.orEmpty()) == title }
+            .filter { it.duration != null && kotlin.math.abs(it.duration - request.durationSeconds) <= 8 }
+            .filter { !it.plainLyrics.isNullOrBlank() || !it.syncedLyrics.isNullOrBlank() }
+            .sortedByDescending { !it.syncedLyrics.isNullOrBlank() }
+            .firstOrNull()
     }
 
     /** Too little to be a song's lyrics: under three lines and eight words, for a song over a minute long. */

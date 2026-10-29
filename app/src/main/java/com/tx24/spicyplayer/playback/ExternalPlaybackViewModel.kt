@@ -103,9 +103,6 @@ private const val TRACK_SETTLE_MS = 700L
 private const val RAPID_SWITCH_WINDOW_MS = 1_000L
 private const val RAPID_SWITCH_BACKOFF_MS = 400L
 
-/** Beats Spotify is less sure of than this aren't tapped to. */
-private const val CALIBRATION_BEAT_CONFIDENCE = 0.2f
-
 /** Upcoming queue entries whose lyrics are fetched ahead. */
 private const val FETCH_AHEAD = 3
 
@@ -1691,7 +1688,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         val lyrics = when {
             // Nothing picked yet: whatever is up stays up until the lookup ends.
             selection == null && !final -> mutableState.value.lyrics
-            selection == null -> LyricsNotices.noLyrics(resolution.attempts, offline = deviceOffline()) { id ->
+            selection == null -> LyricsNotices.noLyrics(resolution.attempts, offline = deviceOffline(), artistMissing = request.artist.isBlank()) { id ->
                 lyricsBackend.descriptors.firstOrNull { it.id == id }?.displayName ?: id
             }
             selection == shownSelection -> mutableState.value.lyrics
@@ -2095,11 +2092,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     }
 
     /** The playing song's beats in ms, for [TapCalibration], or null while there are none. */
-    fun calibrationBeatsMs(): LongArray? = audioAnalysis?.beats
-        ?.filter { it.confidence >= CALIBRATION_BEAT_CONFIDENCE }
-        ?.map { (it.start * 1000f).toLong() }
-        ?.takeIf { it.size >= 2 }
-        ?.toLongArray()
+    fun calibrationBeatsMs(): LongArray? = audioAnalysis?.let(TapCalibration::beatsMs)
 
     /** The player's own position at [elapsedRealtimeMs], with no delay taken off. */
     fun playerPositionAt(elapsedRealtimeMs: Long): Long = clock.positionAt(elapsedRealtimeMs)

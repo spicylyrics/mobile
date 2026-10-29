@@ -28,8 +28,6 @@ import kotlinx.coroutines.flow.first
 
 import androidx.compose.runtime.snapshotFlow
 
-import android.os.Build
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -80,9 +78,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -180,9 +176,9 @@ fun SpicyModal(
     }
     val body: @Composable ColumnScope.() -> Unit = if (settled) content else skeleton!!
 
-    if (onDismissRequest != null) BackHandler(enabled = visible) { onDismissRequest() }
+    if (onDismissRequest != null) PlatformBackHandler(enabled = visible) { onDismissRequest() }
     // Declared after, so it's asked first.
-    if (onBack != null) BackHandler(enabled = visible) { onBack() }
+    if (onBack != null) PlatformBackHandler(enabled = visible) { onBack() }
 
     // Set by the plate when a touch lands on it. Marking rather than consuming: drags inside the
     // plate (a text field's scroll, say) give up on a touch that something else consumed.
@@ -575,25 +571,6 @@ private fun Modifier.plateEdges(top: Color, ring: Color): Modifier = drawBehind 
         cornerRadius = CornerRadius(radius.x - px / 2f),
         style = Stroke(px),
     )
-}
-
-/**
- * `0 24px 64px -12px rgba(0,0,0,.45)` as an Android shadow layer: the plate shrunk by the spread,
- * pushed down, blurred. Hardware canvases only draw shadow layers for shapes from API 28.
- */
-private fun Modifier.modalShadow(): Modifier = drawBehind {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return@drawBehind
-    val spread = 12.dp.toPx()
-    // A CSS blur length is twice the Gaussian sigma; Skia's sigma = radius * 0.57735 + 0.5.
-    val radius = ((32.dp.toPx() - 0.5f) / 0.57735f).coerceAtLeast(0.1f)
-    val corner = SpicyRadii.Lg.toPx()
-    drawIntoCanvas { canvas ->
-        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.TRANSPARENT
-            setShadowLayer(radius, 0f, 24.dp.toPx(), Color.Black.copy(alpha = 0.45f).toArgb())
-        }
-        canvas.nativeCanvas.drawRoundRect(spread, spread, size.width - spread, size.height - spread, corner, corner, paint)
-    }
 }
 
 private const val OVERLAY_ALPHA = 0.45f

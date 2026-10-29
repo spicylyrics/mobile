@@ -1,6 +1,5 @@
 package com.tx24.spicyplayer.ui.settings
 
-import android.os.SystemClock
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -25,6 +24,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -36,8 +36,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.tx24.spicyplayer.playback.ExternalPlaybackViewModel
-import com.tx24.spicyplayer.playback.PlayerUiState
 import com.tx24.spicyplayer.playback.TapCalibration
 import com.tx24.spicyplayer.ui.components.SettingRow
 import com.tx24.spicyplayer.ui.components.SpicyButton
@@ -52,20 +50,35 @@ import kotlinx.coroutines.launch
 private const val BEATS_WAIT_MS = 8_000L
 
 /**
+ * What finding the delay by tapping needs from the platform. [song] changes when the song does,
+ * which starts the taps over. [beatsMs]: the playing song's beats, null until it has them.
+ * [tapPositionMs]: the player's own position (no delay taken off) when a press stamped with
+ * [androidx.compose.ui.input.pointer.PointerInputChange.uptimeMillis] landed. [onCalibrating] is
+ * told while the pad is up, so the platform can fetch the beats.
+ */
+class TapCalibrationPlatform(
+    val playing: Boolean,
+    val song: Any?,
+    val beatsMs: () -> LongArray?,
+    val tapPositionMs: (uptimeMillis: Long) -> Long,
+    val onCalibrating: (Boolean) -> Unit,
+)
+
+/**
  * Finding the output delay by tapping along to the song playing ([TapCalibration]). The beats come
  * from the song's Spotify analysis, so it works with any player once the song is matched there.
  */
 @Composable
-internal fun DelayCalibrationRow(state: PlayerUiState, viewModel: ExternalPlaybackViewModel) {
+fun DelayCalibrationRow(outputLabel: String, lyricDelayMs: Int, platform: TapCalibrationPlatform, setDelay: (Int) -> Unit) {
     var active by remember { mutableStateOf(false) }
     SettingRow(
         label = "Tap to the beat",
-        description = "Finds the delay for ${state.outputLabel}: tap along to the song playing and it works out how late the sound arrives.",
+        description = "Finds the delay for $outputLabel: tap along to the song playing and it works out how late the sound arrives.",
         icon = Icons.Rounded.TouchApp,
         stacked = active,
     ) {
         if (active) {
-            TapPad(state, viewModel, onDone = { active = false })
+            TapPad(lyricDelayMs, platform, setDelay, onDone = { active = false })
         } else {
             SpicyButton("Start", { active = true })
         }
@@ -73,35 +86,37 @@ internal fun DelayCalibrationRow(state: PlayerUiState, viewModel: ExternalPlayba
 }
 
 @Composable
-private fun TapPad(state: PlayerUiState, viewModel: ExternalPlaybackViewModel, onDone: () -> Unit) {
+private fun TapPad(lyricDelayMs: Int, platform: TapCalibrationPlatform, setDelay: (Int) -> Unit, onDone: () -> Unit) {
+    val onCalibrating by rememberUpdatedState(platform.onCalibrating)
     DisposableEffect(Unit) {
-        viewModel.setCalibratingDelay(true)
-        onDispose { viewModel.setCalibratingDelay(false) }
+        onCalibrating(true)
+        onDispose { onCalibrating(false) }
     }
     // The player's position at each tap; a new song starts over.
     val taps = remember { mutableStateListOf<Long>() }
-    LaunchedEffect(state.title, state.artist) { taps.clear() }
+    LaunchedEffect(platform.song) { taps.clear() }
     // The beats arrive a moment after the song is looked up on Spotify.
-    val beats by produceState<LongArray?>(null, state.title, state.artist) {
+    val beatsMs by rememberUpdatedState(platform.beatsMs)
+    val beats by produceState<LongArray?>(null, platform.song) {
         value = null
         while (true) {
-            value = viewModel.calibrationBeatsMs()
+            value = beatsMs()
             delay(if (value == null) 250L else 2_000L)
         }
     }
-    val beatsLate by produceState(false, state.title, state.artist) {
+    val beatsLate by produceState(false, platform.song) {
         value = false
         delay(BEATS_WAIT_MS)
         value = true
     }
-    val estimate = beats?.let { TapCalibration.estimate(taps, it, state.lyricDelayMs) }
+    val estimate = beats?.let { TapCalibration.estimate(taps, it, lyricDelayMs) }
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val flash = remember { Animatable(0f) }
-    val ready = state.isPlaying && beats != null
+    val ready = platform.playing && beats != null
 
     val (headline, detail) = when {
-        !state.isPlaying -> "Play a song" to "Then tap along to its beat here."
+        !platform.playing -> "Play a song" to "Then tap along to its beat here."
         beats == null && beatsLate -> "No beats for this song" to "It needs the song on Spotify. Try another one."
         beats == null -> "Getting the beats…" to "Looking the song up on Spotify."
         estimate == null -> "Tap along to the beat" to
@@ -123,9 +138,7 @@ private fun TapPad(state: PlayerUiState, viewModel: ExternalPlaybackViewModel, o
                     if (!ready) return@pointerInput
                     awaitEachGesture {
                         val down = awaitFirstDown()
-                        // When the finger landed, not when the event got here.
-                        val landedAt = SystemClock.elapsedRealtime() - (SystemClock.uptimeMillis() - down.uptimeMillis)
-                        taps.add(viewModel.playerPositionAt(landedAt))
+                        taps.add(platform.tapPositionMs(down.uptimeMillis))
                         haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
                         scope.launch {
                             flash.snapTo(1f)
@@ -146,7 +159,7 @@ private fun TapPad(state: PlayerUiState, viewModel: ExternalPlaybackViewModel, o
             SpicyButton(
                 "Use it",
                 {
-                    estimate?.let { viewModel.setLyricDelay(it.delayMs) }
+                    estimate?.let { setDelay(it.delayMs) }
                     onDone()
                 },
                 Modifier.weight(1f),

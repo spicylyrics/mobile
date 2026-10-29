@@ -90,10 +90,10 @@ fun DrawScope.drawBrandMark(
 
 /** "♪ Spicy Lyrics Mobile": the small brand line over a themed heading, in muted ink. */
 @Composable
-fun SpicyBrandLine(modifier: Modifier = Modifier) {
+fun SpicyBrandLine(modifier: Modifier = Modifier, name: String = "Spicy Lyrics Mobile") {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(vectorResource(Res.drawable.app_glyph), null, Modifier.size(16.dp), tint = SpicyColors.TextSecondary)
-        Text("Spicy Lyrics Mobile", style = SpicyType.Caption.copy(fontSize = 13.12.sp, fontWeight = FontWeight.SemiBold, color = SpicyColors.TextSecondary))
+        Text(name, style = SpicyType.Caption.copy(fontSize = 13.12.sp, fontWeight = FontWeight.SemiBold, color = SpicyColors.TextSecondary))
     }
 }
 
