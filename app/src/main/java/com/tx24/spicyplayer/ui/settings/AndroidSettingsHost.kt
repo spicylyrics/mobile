@@ -87,6 +87,8 @@ internal class AndroidSettingsHost(
     private val updater: UpdateViewModel,
     private val settings: AppSettings,
     context: Context,
+    /** A wide window: settings float as one panel ([SettingsHost.floatingPanel]). */
+    override val floatingPanel: Boolean = false,
 ) : SettingsHost() {
     override fun setLyricDelay(ms: Int) = viewModel.setLyricDelay(ms)
     override fun setSongDelay(ms: Int) = viewModel.setSongDelay(ms)
@@ -190,9 +192,12 @@ internal fun rememberAndroidSettingsHost(
     viewModel: ExternalPlaybackViewModel,
     updater: UpdateViewModel,
     settings: AppSettings,
+    floatingPanel: Boolean = false,
 ): AndroidSettingsHost {
     val context = LocalContext.current
-    return remember(state, viewModel, updater, settings, context) { AndroidSettingsHost(state, viewModel, updater, settings, context) }
+    return remember(state, viewModel, updater, settings, context, floatingPanel) {
+        AndroidSettingsHost(state, viewModel, updater, settings, context, floatingPanel)
+    }
 }
 
 /** Font files come labelled all sorts of ways, so the picker offers these (and checks the file). */

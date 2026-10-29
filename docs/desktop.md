@@ -136,7 +136,7 @@ At **≥ 840 dp wide and ≥ 480 dp tall** (`usesBigScreenSettings` in `:ui`: Ma
 | Phone below the line | Big screen at or above it |
 |---|---|
 | The phone's lyrics screen | `BigScreenPage` through `AndroidBigScreenPage.kt`. It adds a Popup Lyrics view control for picture-in-picture, keeps the screen on and hides the controls on the phone's idle timer. Back leaves cinema. |
-| The phone's settings pages | `SettingsPanel` through `AdaptiveSettings`. Its **Device** tab holds the Android-only rows (`bigScreenDeviceGroups`), and **All Settings** opens the phone pages for what only they hold. Back closes it. |
+| The phone's settings pages | The same pages as one floating panel with the pages down its side (`FloatingSettings`), through `AdaptiveSettings`. Back clears a search, then closes it. |
 | The phone's source picker and translate button | The More menu, through `ViewModelLyricsActions`, with the phone's consent prompts |
 
 The Lyrics Manager is not wired on Android yet. The phone keeps its own.

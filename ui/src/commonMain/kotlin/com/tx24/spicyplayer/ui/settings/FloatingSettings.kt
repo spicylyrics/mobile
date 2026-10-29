@@ -98,15 +98,16 @@ internal fun FloatingSettings(
         Modifier.fillMaxSize()
             // A click beside the panel closes it.
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClose)
-            .padding(contentPadding).padding(SpicySpacing.S6),
+            .padding(contentPadding),
         contentAlignment = Alignment.Center,
     ) {
         Row(
             Modifier
+                // A fixed size, so switching pages never resizes it.
+                .fillMaxWidth(PANEL_WIDTH_SHARE)
                 .widthIn(max = PANEL_MAX_WIDTH)
-                .fillMaxWidth()
+                .fillMaxHeight(PANEL_HEIGHT_SHARE)
                 .heightIn(max = PANEL_MAX_HEIGHT)
-                .fillMaxHeight()
                 .clip(PANEL_SHAPE)
                 .background(PANEL_FILL)
                 .border(1.dp, SpicyColors.Hairline, PANEL_SHAPE)
@@ -114,13 +115,14 @@ internal fun FloatingSettings(
                 .clickable(remember { MutableInteractionSource() }, indication = null) {},
         ) {
             Column(
-                Modifier.width(SIDEBAR_WIDTH).fillMaxHeight().background(SIDEBAR_FILL).padding(SpicySpacing.S3),
+                Modifier.width(SIDEBAR_WIDTH).fillMaxHeight().background(SIDEBAR_FILL)
+                    .padding(start = 12.dp, end = 12.dp, top = 22.dp, bottom = SpicySpacing.S4),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 Text(
                     "Settings",
-                    style = SpicyType.Headline,
-                    modifier = Modifier.padding(start = SpicySpacing.S2, top = SpicySpacing.S2, bottom = SpicySpacing.S2),
+                    style = SpicyType.Headline.copy(fontWeight = FontWeight.Bold),
+                    modifier = Modifier.padding(start = 10.dp, bottom = SpicySpacing.S3),
                 )
                 SpicySearchBar(query, onQueryChange, Modifier.fillMaxWidth().padding(bottom = SpicySpacing.S2))
                 Column(Modifier.weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -131,6 +133,7 @@ internal fun FloatingSettings(
                         }
                     }
                 }
+                Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = SpicySpacing.S2).height(1.dp).background(SpicyColors.Hairline))
                 SidebarItem(Icons.Rounded.Info, "About", selected = query.isBlank() && selected == null) {
                     onQueryChange("")
                     selected = null
@@ -183,15 +186,13 @@ private fun SidebarItem(icon: ImageVector, label: String, selected: Boolean, onC
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val hovered by interaction.collectIsHoveredAsState()
-    val fill by animateColorAsState(
-        when {
-            selected -> SpicyColors.TintBgPressed
-            pressed || hovered -> SpicyColors.TintBg
-            else -> Color.Transparent
-        },
+    // The selection swaps at once: pages are switched too often for it to travel. Hover still eases.
+    val hover by animateColorAsState(
+        if (pressed || hovered) SpicyColors.TintBg else Color.Transparent,
         tween(SpicyMotion.FAST_MS, easing = SpicyMotion.Standard),
         label = "sidebarItem",
     )
+    val fill = if (selected) SpicyColors.TintBgPressed else hover
     Row(
         Modifier
             .fillMaxWidth()
@@ -200,11 +201,12 @@ private fun SidebarItem(icon: ImageVector, label: String, selected: Boolean, onC
             .focusRing(ITEM_SHAPE)
             .hoverable(interaction)
             .clickable(interaction, indication = null, role = Role.Tab, onClick = onClick)
-            .padding(horizontal = SpicySpacing.S3, vertical = 9.dp),
+            .height(ITEM_HEIGHT)
+            .padding(horizontal = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(icon, null, tint = if (selected) SpicyColors.TextPrimary else SpicyColors.TextSecondary, modifier = Modifier.size(18.dp))
-        Spacer(Modifier.size(SpicySpacing.S3))
+        Spacer(Modifier.size(10.dp))
         Text(
             label,
             style = SpicyType.Body.copy(fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium),
@@ -230,10 +232,14 @@ private fun pageIcon(page: SettingsPage, host: SettingsHost): ImageVector = when
     SettingsPage.Advanced -> Icons.Rounded.Tune
 }
 
-private val PANEL_MAX_WIDTH = 980.dp
-private val PANEL_MAX_HEIGHT = 720.dp
-private val SIDEBAR_WIDTH = 240.dp
+private val PANEL_MAX_WIDTH = 940.dp
+private val PANEL_MAX_HEIGHT = 700.dp
+private const val PANEL_WIDTH_SHARE = 0.94f
+private const val PANEL_HEIGHT_SHARE = 0.88f
+private val SIDEBAR_WIDTH = 216.dp
+private val ITEM_HEIGHT = 34.dp
 private val PANEL_SHAPE = RoundedCornerShape(SpicyRadii.Lg)
 private val ITEM_SHAPE = RoundedCornerShape(SpicyRadii.Md)
 private val PANEL_FILL = Color(0xF2141418)
-private val SIDEBAR_FILL = Color.White.copy(alpha = 0.03f)
+// A heavier, flat tint than the page beside it: structure, not a surface to read.
+private val SIDEBAR_FILL = Color.Black.copy(alpha = 0.42f)

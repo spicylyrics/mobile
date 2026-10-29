@@ -33,10 +33,9 @@ import dev.chrisbanes.haze.HazeState
 
 /**
  * Settings for the window's width: in a wide window (a tablet in landscape, an unfolded
- * foldable, a DeX window; not a phone on its side) the big-screen [SettingsPanel], else
- * [SettingsScreen] as on a phone.
- * Read again whenever the window is resized. The panel's Device tab opens [SettingsScreen] too,
- * for what only its pages hold (sources, delays, translation).
+ * foldable, a DeX window; not a phone on its side) one floating panel with the pages down its
+ * side, else the full-screen pages as on a phone. Both show the same pages. Read again whenever
+ * the window is resized.
  */
 @Composable
 internal fun AdaptiveSettings(
@@ -53,55 +52,21 @@ internal fun AdaptiveSettings(
     restorePages: List<SettingsPage> = emptyList(),
     onPagesChange: (List<SettingsPage>) -> Unit = {},
 ) {
-    var allPages by remember { mutableStateOf(false) }
     val window = LocalConfiguration.current
-    if (!allPages && isBigScreenWindow(window.screenWidthDp.toFloat(), window.screenHeightDp.toFloat())) {
-        BigScreenSettings(settings, contentPadding, onClosed, onOpenAllPages = { allPages = true })
-    } else {
-        SettingsScreen(
-            state = settingsState(state),
-            host = rememberAndroidSettingsHost(state, viewModel, updater, settings),
-            settings = settings,
-            backdrop = backdrop,
-            contentPadding = contentPadding,
-            onClosed = onClosed,
-            onOpenLyricsManager = onOpenLyricsManager,
-            onOpenSpotifySearch = onOpenSpotifySearch,
-            onPeekChange = onPeekChange,
-            restorePages = restorePages,
-            onPagesChange = onPagesChange,
-        )
-    }
-}
-
-@Composable
-private fun BigScreenSettings(settings: AppSettings, contentPadding: PaddingValues, onClosed: () -> Unit, onOpenAllPages: () -> Unit) {
-    val context = LocalContext.current
-    val platform = rememberAndroidPlatformActions()
-    val sections = remember(settings) {
-        val device = bigScreenDeviceGroups(
-            settings,
-            pipSupported = PictureInPicture.supported(context),
-            canPlayMusicHaptics = HapticPlayer(context).canPlayMusic,
-            lockScreen = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1,
-            onOpenAllPages = onOpenAllPages,
-        )
-        val actions = PanelActions(
-            version = BuildConfig.VERSION_NAME,
-            links = listOf("GitHub" to "https://github.com/spicylyrics/mobile"),
-        )
-        // The interface scale is the desktop window's; the tablet keeps the system's size.
-        settingsPanelSections(settings, actions, device, hiddenRows = setOf("interfaceScale"))
-    }
-    CompositionLocalProvider(LocalPlatformActions provides platform) {
-        // Back clears a search, then leaves a section for the list, and only then closes.
-        SettingsPanel(
-            sections, settings.settingsTheme, onClose = onClosed, modifier = Modifier.fillMaxSize().padding(contentPadding),
-            systemBack = { BackHandler(onBack = it) },
-            // A focused field raises the keyboard over half the panel; tap the search to type.
-            autoFocusSearch = false,
-        )
-    }
+    val wide = isBigScreenWindow(window.screenWidthDp.toFloat(), window.screenHeightDp.toFloat())
+    SettingsScreen(
+        state = settingsState(state),
+        host = rememberAndroidSettingsHost(state, viewModel, updater, settings, floatingPanel = wide),
+        settings = settings,
+        backdrop = backdrop,
+        contentPadding = contentPadding,
+        onClosed = onClosed,
+        onOpenLyricsManager = onOpenLyricsManager,
+        onOpenSpotifySearch = onOpenSpotifySearch,
+        onPeekChange = onPeekChange,
+        restorePages = restorePages,
+        onPagesChange = onPagesChange,
+    )
 }
 
 /**
