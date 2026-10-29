@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -169,7 +170,19 @@ internal class AndroidSettingsHost(
     override fun HapticsSection() = HapticsSection(settings)
 
     @Composable
-    override fun DelayCalibrationRow() = DelayCalibrationRow(state, viewModel)
+    override fun DelayCalibrationRow() = DelayCalibrationRow(
+        state.outputLabel,
+        state.lyricDelayMs,
+        TapCalibrationPlatform(
+            playing = state.isPlaying,
+            song = state.title to state.artist,
+            beatsMs = viewModel::calibrationBeatsMs,
+            // When the finger landed, not when the event got here.
+            tapPositionMs = { uptime -> viewModel.playerPositionAt(SystemClock.elapsedRealtime() - (SystemClock.uptimeMillis() - uptime)) },
+            onCalibrating = viewModel::setCalibratingDelay,
+        ),
+        viewModel::setLyricDelay,
+    )
 
     @Composable
     override fun LyricsLanguageRow() = LyricsLanguageRow(state, viewModel)

@@ -1,5 +1,6 @@
 package com.tx24.spicyplayer.playback
 
+import com.tx24.spicyplayer.network.data.spotify.AudioAnalysis
 import kotlin.math.abs
 
 /**
@@ -12,10 +13,8 @@ import kotlin.math.abs
  * Bluetooth) could otherwise match the wrong beat. The first few taps, while the hand finds the
  * beat, and taps far from any beat don't count. The median of the rest is the answer, and their
  * spread says whether it can be trusted.
- *
- * Plain Kotlin, no Android.
  */
-internal object TapCalibration {
+object TapCalibration {
     /** Taps that count before there is an answer. */
     const val MIN_TAPS = 12
     /** Taps left out at the start while the hand finds the beat. */
@@ -24,6 +23,15 @@ internal object TapCalibration {
     private const val MATCH_FRACTION = 0.45
     /** Taps spread wider than this (median distance from their median) are too uneven to trust. */
     const val MAX_SPREAD_MS = 40
+    /** Beats Spotify is less sure of than this aren't tapped to. */
+    private const val BEAT_CONFIDENCE = 0.2f
+
+    /** [analysis]'s beats in ms, the ones sure enough to tap to; null when fewer than two are. */
+    fun beatsMs(analysis: AudioAnalysis): LongArray? = analysis.beats
+        .filter { it.confidence >= BEAT_CONFIDENCE }
+        .map { (it.start * 1000f).toLong() }
+        .takeIf { it.size >= 2 }
+        ?.toLongArray()
 
     /**
      * [delayMs]: the output delay the taps call for. [spreadMs]: how unevenly they fell. [taps]:

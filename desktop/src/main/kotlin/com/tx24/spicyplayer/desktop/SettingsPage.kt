@@ -46,6 +46,8 @@ import com.tx24.spicyplayer.ui.settings.LyricsFont
 import com.tx24.spicyplayer.ui.settings.SettingsHost
 import com.tx24.spicyplayer.ui.settings.SettingsPage
 import com.tx24.spicyplayer.ui.settings.SettingsState
+import com.tx24.spicyplayer.ui.settings.TapCalibrationPlatform
+import com.tx24.spicyplayer.ui.settings.DelayCalibrationRow
 import com.tx24.spicyplayer.ui.theme.SpicyColors
 import com.tx24.spicyplayer.ui.theme.SpicySpacing
 import com.tx24.spicyplayer.ui.theme.SpicyType
@@ -64,6 +66,7 @@ val desktopSettings: CommonAppSettings by lazy {
  * picker and the links. The pages only a phone has (This song, translation, the floating window,
  * Advanced) and its device rows are left out. The Lyrics Manager keeps its songs in [library];
  * [reloadLyrics] looks the playing song's lyrics up again once they change, and [say] shows a notice.
+ * Tapping to the beat reads the playing song's [beats], and [calibrating] is told while it runs.
  */
 class DesktopSettingsHost(
     window: Frame?,
@@ -73,6 +76,8 @@ class DesktopSettingsHost(
     private val library: DesktopLyricsLibrary,
     private val reloadLyrics: () -> Unit = {},
     private val say: (String) -> Unit = {},
+    private val beats: () -> LongArray? = { null },
+    private val calibrating: (Boolean) -> Unit = {},
 ) : SettingsHost() {
     private val platform = DesktopPlatformActions(window)
     private val files = DesktopLyricsFiles(platform, window)
@@ -99,6 +104,33 @@ class DesktopSettingsHost(
     }
 
     override fun setSongDelay(ms: Int) = Unit
+
+    @Composable
+    override fun DelayCalibrationRow() {
+        val shown = state.value
+        val playing by produceState(session.clock.isPlaying) {
+            while (true) {
+                value = session.clock.isPlaying
+                delay(PLAYING_POLL_MS)
+            }
+        }
+        DelayCalibrationRow(
+            shown.outputLabel,
+            shown.lyricDelayMs,
+            TapCalibrationPlatform(playing, shown.lyrics, beats, ::tapPositionMs, calibrating),
+            ::setLyricDelay,
+        )
+    }
+
+    /**
+     * The player's own position when a click stamped [uptimeMillis] landed: the clock runs
+     * [MediaSession.offsetMs] ahead of the player. Compose stamps clicks with the AWT event's
+     * time, so how long ago that was is taken off.
+     */
+    private fun tapPositionMs(uptimeMillis: Long): Long {
+        val ago = (System.currentTimeMillis() - uptimeMillis).coerceIn(0L, MAX_TAP_AGE_MS)
+        return session.clock.positionAt(monoMs() - ago) - session.offsetMs
+    }
     override val songDelay: Boolean get() = false
 
     override fun hasPage(page: SettingsPage): Boolean = when (page) {
@@ -301,6 +333,10 @@ class DesktopSettingsHost(
 
     private companion object {
         const val STATE_POLL_MS = 500L
+        // The tap pad says "Play a song" while paused, so it follows the player more closely.
+        const val PLAYING_POLL_MS = 250L
+        // A click older than this when it gets here is a stamp in some other clock, not a slow event.
+        const val MAX_TAP_AGE_MS = 200L
         val ABOUT_TERMS = listOf("About", "Version", "GitHub", "Star", "Spicy Lyrics Desktop", "Discord", "Feedback", "Bug", "Report")
         const val PROJECT_URL = "https://github.com/spicylyrics/mobile"
         // The server invite, not a thread link: a thread link only opens for people already in the server.

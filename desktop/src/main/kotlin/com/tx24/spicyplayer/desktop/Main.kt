@@ -79,6 +79,7 @@ import com.tx24.spicyplayer.lyrics.spicy.models.buildDisplayTimeline
 import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
 import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.BackgroundSpeed
 import com.tx24.spicyplayer.network.data.spotify.AudioAnalysis
+import com.tx24.spicyplayer.playback.TapCalibration
 import com.tx24.spicyplayer.network.data.spotify.LocalTrackMetadata
 import com.tx24.spicyplayer.network.data.spotify.SharedSpotify
 import com.tx24.spicyplayer.platform.CoreLog
@@ -174,6 +175,8 @@ fun main(args: Array<String>) {
     val avatars = DesktopAvatars(DesktopImageCache(File(cacheDir, "avatars"))::bytes)
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     var beats: Job? = null
+    // Tapping to the beat in Settings needs the song's beats, with or without Move with the Music.
+    var calibratingDelay = false
 
     /** The background follows [track]'s beats: its audio analysis, where Spotify has one. */
     fun fetchBeats(track: Track) {
@@ -222,7 +225,7 @@ fun main(args: Array<String>) {
             lookUp(track)
             analysis.value = null
             beats?.cancel()
-            if (desktopSettings.desktopBackground().beatReactive) fetchBeats(track)
+            if (desktopSettings.desktopBackground().beatReactive || calibratingDelay) fetchBeats(track)
         }
     }
 
@@ -338,6 +341,11 @@ fun main(args: Array<String>) {
                         window, session, delays, sourceSettings, lyricsLibrary,
                         reloadLyrics = { songLyrics.shown.value?.track?.let(songLyrics::load) },
                         say = { toasts.tryEmit(it) },
+                        beats = { analysis.value?.let(TapCalibration::beatsMs) },
+                        calibrating = { on ->
+                            calibratingDelay = on
+                            if (on && analysis.value == null) session.track?.let(::fetchBeats)
+                        },
                     )
                 }
                 fun desktopHost(drawsOverlays: Boolean) =
