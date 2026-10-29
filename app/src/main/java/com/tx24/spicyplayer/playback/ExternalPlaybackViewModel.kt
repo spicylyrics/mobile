@@ -72,6 +72,7 @@ import com.tx24.spicyplayer.network.data.spotify.SpotifyTrackCandidate
 import com.tx24.spicyplayer.lyrics.spicy.canvas.kawarp.BackgroundSpeed
 import com.tx24.spicyplayer.ui.nowplaying.SessionCustomAction
 import com.tx24.spicyplayer.ui.nowplaying.TrackDirection
+import com.tx24.spicyplayer.ui.settings.CustomSourceForm
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -1343,6 +1344,9 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         refreshSourcePolicy()
         loadLyrics()
     }
+
+    /** The custom source form open in settings, kept while the settings are off screen. */
+    internal var customSourceForm: CustomSourceForm? = null
 
     /** What a custom source's test got: lyrics or not, said in a few words. */
     data class SourceTest(val found: Boolean, val message: String)

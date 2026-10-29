@@ -62,8 +62,14 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 @Composable
 internal fun CustomSourcesSection(state: PlayerUiState, viewModel: ExternalPlaybackViewModel) {
     val context = LocalContext.current
-    // The source being edited: a saved one, or a new one not in the list yet.
-    var editing by remember { mutableStateOf<CustomLyricsSource?>(null) }
+    // The source being edited: a saved one, or a new one not in the list yet. Its form is kept on
+    // the view model, so what's typed survives the settings leaving the screen (the floating window).
+    var form by remember { mutableStateOf(viewModel.customSourceForm) }
+    fun edit(source: CustomLyricsSource?) {
+        form = source?.let(::CustomSourceForm)
+        viewModel.customSourceForm = form
+    }
+    val editing = form?.source
     SettingsSection("Custom sources") {
         Searchable("Custom sources", "Custom", "API", "URL") {
             Text(
@@ -75,16 +81,16 @@ internal fun CustomSourcesSection(state: PlayerUiState, viewModel: ExternalPlayb
         }
         state.customSources.forEach { custom ->
             if (editing?.id == custom.id) {
-                CustomSourceEditor(custom, saved = true, viewModel) { editing = null }
+                CustomSourceEditor(form!!, saved = true, viewModel) { edit(null) }
             } else {
                 SettingRow(label = custom.name, description = custom.url.toHttpUrlOrNull()?.host ?: custom.url, icon = Icons.Rounded.Link) {
-                    SpicyButton("Edit", onClick = { editing = custom }, enabled = editing == null)
+                    SpicyButton("Edit", onClick = { edit(custom) }, enabled = editing == null)
                 }
             }
         }
         val draft = editing?.takeIf { e -> state.customSources.none { it.id == e.id } }
         if (draft != null) {
-            CustomSourceEditor(draft, saved = false, viewModel) { editing = null }
+            CustomSourceEditor(form!!, saved = false, viewModel) { edit(null) }
         } else if (editing == null) {
             SettingRow(
                 label = "Add a source",
@@ -96,13 +102,22 @@ internal fun CustomSourcesSection(state: PlayerUiState, viewModel: ExternalPlayb
                         val pasted = context.getSystemService(ClipboardManager::class.java)?.primaryClip
                             ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
                         val shared = CustomLyricsSource.fromShare(pasted)
-                        if (shared == null) viewModel.showMessage("The clipboard has no shared source in it.") else editing = shared
+                        if (shared == null) viewModel.showMessage("The clipboard has no shared source in it.") else edit(shared)
                     })
-                    SpicyButton("Add", onClick = { editing = CustomLyricsSource(CustomLyricsSource.newId(), "", "") })
+                    SpicyButton("Add", onClick = { edit(CustomLyricsSource(CustomLyricsSource.newId(), "", "")) })
                 }
             }
         }
     }
+}
+
+/** A source being edited and what's typed into its form so far. */
+internal class CustomSourceForm(val source: CustomLyricsSource) {
+    var name by mutableStateOf(source.name)
+    var url by mutableStateOf(source.url)
+    var path by mutableStateOf(source.path)
+    var headers by mutableStateOf(CustomLyricsSource.headersText(source.headers))
+    var result by mutableStateOf<SourceTest?>(null)
 }
 
 /**
@@ -111,18 +126,19 @@ internal fun CustomSourcesSection(state: PlayerUiState, viewModel: ExternalPlayb
  */
 @Composable
 private fun CustomSourceEditor(
-    source: CustomLyricsSource,
+    form: CustomSourceForm,
     saved: Boolean,
     viewModel: ExternalPlaybackViewModel,
     onClose: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var name by remember(source.id) { mutableStateOf(source.name) }
-    var url by remember(source.id) { mutableStateOf(source.url) }
-    var path by remember(source.id) { mutableStateOf(source.path) }
-    var headers by remember(source.id) { mutableStateOf(CustomLyricsSource.headersText(source.headers)) }
-    var result by remember(source.id) { mutableStateOf<SourceTest?>(null) }
+    val source = form.source
+    var name by form::name
+    var url by form::url
+    var path by form::path
+    var headers by form::headers
+    var result by form::result
     var testing by remember { mutableStateOf(false) }
     var confirmDelete by remember { mutableStateOf(false) }
     LaunchedEffect(confirmDelete) {
