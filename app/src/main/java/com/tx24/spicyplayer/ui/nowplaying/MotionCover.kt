@@ -103,6 +103,8 @@ fun CrossfadingMotionVideo(
     onFailed: (String) -> Unit,
     modifier: Modifier = Modifier,
     cropFromTop: Float? = null,
+    /** Covered: the loops hold their frames ([MotionCoverVideo]'s `held`). */
+    held: Boolean = false,
 ) {
     // Oldest first: at most the newest loop that has shown a frame and the one coming in.
     val layers = remember { mutableStateListOf<String>() }
@@ -131,6 +133,7 @@ fun CrossfadingMotionVideo(
                     modifier = Modifier.matchParentSize(),
                     cropFromTop = cropFromTop,
                     onFirstFrame = { ready[layer] = true },
+                    held = held,
                 )
             }
         }
@@ -159,9 +162,11 @@ fun MotionCoverVideo(
     layerPaint: Paint? = null,
     cropFromTop: Float? = null,
     onFirstFrame: () -> Unit = {},
+    /** Covered by something opaque: the loop holds its frame until it shows again. */
+    held: Boolean = false,
 ) = key(url) {
     val latestOnFirstFrame by rememberUpdatedState(onFirstFrame)
-    val stream = rememberMotionCoverStream(url, onFailed)
+    val stream = rememberMotionCoverStream(url, onFailed, held)
     var firstFrame by remember { mutableStateOf(false) }
     val alpha by animateFloatAsState(
         targetValue = if (firstFrame && visible) 1f else 0f,
@@ -215,9 +220,11 @@ fun MotionCoverVideo(
 /**
  * The shared stream of [url], held while this is composed: one player for every view and sampler
  * of it, looping only while the app is on screen. A stream that fails to play calls [onFailed].
+ * [held] (covered by something opaque) stops this one keeping it looping, so a loop nobody can
+ * see holds its frame instead of decoding; one that hasn't drawn yet still plays to its first.
  */
 @Composable
-internal fun rememberMotionCoverStream(url: String, onFailed: () -> Unit): MotionCoverStream {
+internal fun rememberMotionCoverStream(url: String, onFailed: () -> Unit, held: Boolean = false): MotionCoverStream {
     val context = LocalContext.current
     val stream = remember(url) { MotionCoverLease(MotionCovers.acquire(context, url)) }.stream
     val latestOnFailed by rememberUpdatedState(onFailed)
@@ -246,6 +253,11 @@ internal fun rememberMotionCoverStream(url: String, onFailed: () -> Unit): Motio
             lifecycle.removeObserver(observer)
             if (started) stream.onScreen(false)
         }
+    }
+    DisposableEffect(stream, held) {
+        if (!held) return@DisposableEffect onDispose {}
+        stream.cover(true)
+        onDispose { stream.cover(false) }
     }
     return stream
 }

@@ -22,10 +22,10 @@ import androidx.compose.ui.graphics.graphicsLayer
  * Portrait, with the big cover up: the song's Spotify Canvas fills the screen in the cover's
  * place, as Spotify's own player shows it. A portrait loop on a portrait screen, so little of it is
  * cut. Dimmed a little, and more along the bottom, where the song is docked ([PortraitCanvasDock]).
- * The loop crossfades to the next song's.
+ * The loop crossfades to the next song's. [held] (covered by something opaque) holds its frame.
  */
 @Composable
-fun PortraitCanvas(url: String, onFailed: (String) -> Unit, modifier: Modifier = Modifier) {
+fun PortraitCanvas(url: String, onFailed: (String) -> Unit, modifier: Modifier = Modifier, held: Boolean = false) {
     Box(modifier) {
         CrossfadingMotionVideo(
             url = url,
@@ -33,6 +33,7 @@ fun PortraitCanvas(url: String, onFailed: (String) -> Unit, modifier: Modifier =
             modifier = Modifier.fillMaxSize(),
             // Faces sit in the upper half of most canvases, as on the stage.
             cropFromTop = 0.4f,
+            held = held,
         )
         Box(
             Modifier.fillMaxSize().drawBehind {
@@ -81,7 +82,7 @@ fun PortraitCanvasDock(
                 .width(with(density) { widthPx.toDp() })
                 .graphicsLayer { this.alpha = (1f - controlsShown()) * alpha() },
         ) {
-            StageMetadata(info, sizes, Alignment.Start, bias = { -1f }, widthPx = widthPx)
+            StageMetadata(info, sizes, Alignment.Start, bias = { -1f }, widthPx = widthPx, active = { (1f - controlsShown()) * alpha() > 0f })
             // No spacer: the bar's touch height already stands it 11dp clear of the artists, as on the stage.
             DockTimeline(controls)
         }
@@ -93,7 +94,7 @@ fun PortraitCanvasDock(
                 .padding(start = with(density) { gutterPx.toDp() }, bottom = with(density) { controlsHeightPx.toDp() })
                 .graphicsLayer { this.alpha = controlsShown() * alpha() },
         ) {
-            StageMetadata(info, sizes, Alignment.Start, bias = { -1f }, widthPx = widthPx)
+            StageMetadata(info, sizes, Alignment.Start, bias = { -1f }, widthPx = widthPx, active = { controlsShown() * alpha() > 0f })
         }
     }
 }

@@ -58,6 +58,8 @@ fun SpicySessionBackground(
     /** Cover Art only: the record's animated cover, played over the still one. */
     motionCoverUrl: String? = null,
     onMotionCoverFailed: () -> Unit = {},
+    /** Covered by something opaque: the animated cover holds its frame. */
+    motionCoverHeld: Boolean = false,
     /** False when no player is around: the logo then stands in at once. */
     hasSession: Boolean = true,
     /** Changes crossfade in place, a change of [type] too (Settings → Background → Refined Background). */
@@ -70,7 +72,7 @@ fun SpicySessionBackground(
     fun background(type: BackgroundType, modifier: Modifier, retired: Boolean) = BackgroundOfType(
         artwork, artworkUri, isPlaying, modifier, type, animate && !retired, blurDp, artistHeaderUrl,
         artistHeaderPending, speed, motionCoverUrl, onMotionCoverFailed, hasSession, refined, retired,
-        followMotionUrl, onFollowMotionFailed,
+        followMotionUrl, onFollowMotionFailed, motionCoverHeld,
     )
     if (!refined) {
         background(type, modifier, retired = false)
@@ -134,6 +136,7 @@ private fun BackgroundOfType(
     retired: Boolean,
     followMotionUrl: String?,
     onFollowMotionFailed: () -> Unit,
+    motionCoverHeld: Boolean,
 ) {
     when (type) {
         BackgroundType.Default, BackgroundType.Legacy -> {
@@ -176,7 +179,7 @@ private fun BackgroundOfType(
                     refined = refined,
                     retired = retired,
                 )
-                if (motionCoverUrl != null) MotionImageBackground(motionCoverUrl, blurDp, onMotionCoverFailed, refined = refined)
+                if (motionCoverUrl != null) MotionImageBackground(motionCoverUrl, blurDp, onMotionCoverFailed, refined = refined, held = motionCoverHeld)
             }
         }
         BackgroundType.Auto, BackgroundType.ArtistHeader -> {

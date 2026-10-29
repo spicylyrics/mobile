@@ -34,11 +34,12 @@ import kotlinx.coroutines.withContext
  * The page's backdrop while the cover stage shows a Spotify Canvas: the canvas itself, drawn into
  * an image [AMBIENT_WIDTH] pixels wide, blurred and graded there and stretched over the page, so
  * the blur costs a few thousand pixels instead of a full-screen pass. The moving background fades
- * out under it. A stream that fails to play calls [onFailed].
+ * out under it. A stream that fails to play calls [onFailed]. [held] (covered by something opaque)
+ * keeps the last image up and samples nothing until it shows again.
  */
 @Composable
-fun CanvasAmbient(url: String, onFailed: () -> Unit, modifier: Modifier = Modifier) {
-    val stream = rememberMotionCoverStream(url, onFailed)
+fun CanvasAmbient(url: String, onFailed: () -> Unit, modifier: Modifier = Modifier, held: Boolean = false) {
+    val stream = rememberMotionCoverStream(url, onFailed, held)
     var pageSize by remember { mutableStateOf(IntSize.Zero) }
     var image by remember { mutableStateOf<ImageBitmap?>(null) }
     // Kept across songs, so the next canvas blends in over the last one's glow.

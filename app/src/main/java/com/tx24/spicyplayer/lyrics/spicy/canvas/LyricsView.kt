@@ -64,6 +64,7 @@ import com.tx24.spicyplayer.translation.TranslationMode
 import com.tx24.spicyplayer.lyrics.spicy.romanization.RomanizationMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
@@ -108,6 +109,8 @@ fun LyricsView(
     onFrameTick: ((Long) -> Unit)? = null,
     // Paused, the frame loop rests once nothing moves, looking in a few times a second for a seek.
     isPlaying: Boolean = true,
+    /** False while none of the view shows (covered, or faded out): the frame loop rests until it does. */
+    visible: () -> Boolean = { true },
     /** Shared with the screen: the scroll-to-active button and the pinned credits. */
     viewState: LyricsViewState? = null,
     /** Credits drawn pinned by the screen instead of after the lyrics. */
@@ -168,6 +171,7 @@ fun LyricsView(
     val lineLayoutsUpdated by rememberUpdatedState(lineLayouts)
     val onFrameTickUpdated by rememberUpdatedState(onFrameTick)
     val isPlayingUpdated by rememberUpdatedState(isPlaying)
+    val visibleUpdated by rememberUpdatedState(visible)
     val scrollConfigUpdated by rememberUpdatedState(config.scroll)
 
     val scrollPolicy = remember(shownId) { ScrollPolicyController() }
@@ -324,6 +328,14 @@ fun LyricsView(
             var resumed = true
             var frameIntervalS = nominalFrameIntervalS(hostView.display?.refreshRate)
             while (true) {
+                if (!visibleUpdated()) {
+                    // Out of sight, nothing to draw: it waits to show again, then picks up where
+                    // the song has got to (over a second on, the scroll jumps there).
+                    snapshotFlow { visibleUpdated() }.first { it }
+                    resumed = true
+                    stillFrames = 0
+                    frameIntervalS = nominalFrameIntervalS(hostView.display?.refreshRate)
+                }
                 if (stillFrames >= REST_AFTER_STILL_FRAMES) {
                     withTimeoutOrNull(REST_POLL_MS) { wake.receive() }
                     resumed = true

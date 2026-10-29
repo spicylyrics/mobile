@@ -911,6 +911,8 @@ private fun LyricsApp(
     }
     val ambientFade = animateFloatAsState(if (ambient) 1f else 0f, tween(if (ambient) AMBIENT_IN_MS else AMBIENT_OUT_MS), label = "ambient")
     val ambientDrawn by remember { derivedStateOf { ambientFade.value > 0f } }
+    // Fully dark, nothing under the black shows: the loops beneath hold their frames.
+    val ambientOpaque by remember { derivedStateOf { ambientFade.value >= 1f } }
     // Never brighter than the phone already is.
     DisposableEffect(activity, ambient) {
         val window = activity?.window
@@ -1196,6 +1198,8 @@ private fun LyricsApp(
                 var immersivePicture by remember { mutableStateOf<StagePicture?>(null) }
                 shownPortrait?.let { immersivePicture = it }
                 val immersive = { immersiveShown * expansion }
+                // Fully up, the portrait picture hides the header's cover.
+                val immersiveOpaque by remember { derivedStateOf { immersiveShown * expansion >= 1f } }
                 var failedFollowMotionUrl by remember { mutableStateOf<String?>(null) }
                 val motionScope = rememberCoroutineScope()
                 val stageInfo = NowPlayingInfo(state.title, state.artist, state.album, state.artwork, state.artworkUri, state.trackDirection, hasSession = state.sourcePackage != null)
@@ -1224,12 +1228,14 @@ private fun LyricsApp(
                             failedBackgroundMotionUrl = backgroundMotionUrl
                             motionScope.launch { forgetMotionCover(context, backgroundMotionQuery) }
                         },
+                        motionCoverHeld = ambientOpaque,
                     )
                     ambientUrl?.takeIf { ambientShown > 0f }?.let { url ->
                         CanvasAmbient(
                             url = url,
                             onFailed = { viewModel.canvasFailed(url) },
                             modifier = Modifier.fillMaxSize().graphicsLayer { alpha = ambientShown },
+                            held = ambientOpaque,
                         )
                     }
                     if (landscape && stageVisible) {
@@ -1254,12 +1260,14 @@ private fun LyricsApp(
                                 url = picture.url,
                                 onFailed = viewModel::canvasFailed,
                                 modifier = Modifier.fillMaxSize().graphicsLayer { alpha = immersive() },
+                                held = ambientOpaque,
                             )
                         } else {
                             PortraitCoverStage(
                                 info = stageInfo,
                                 picture = picture,
                                 modifier = Modifier.fillMaxSize().graphicsLayer { alpha = immersive() },
+                                held = ambientOpaque,
                             )
                         }
                     }
@@ -1326,6 +1334,8 @@ private fun LyricsApp(
                             fontSizeScale = lyricsFontScale,
                             noticeActions = noticeActions,
                             modifier = Modifier.weight(1f),
+                            // Under the fully expanded big cover they're drawn at alpha 0.
+                            visible = { expansion < 1f },
                         )
                     }
                     // Ambient mode: the lyrics sink into the black under the song docked at the bottom,
@@ -1422,6 +1432,8 @@ private fun LyricsApp(
                     panelLeft = { landscapeMetrics.coverLeftPx(panelSide.value) },
                     stage = { stageShown.value },
                     immersive = { if (landscape) 0f else immersive() },
+                    animatedCoverHeld = ambientOpaque || (!landscape && immersiveOpaque),
+                    visible = { ambientFade.value < 1f },
                     coverOverlay = if (!controlsOnCover || controlsGone || stageOn) null else {
                         {
                             // No glass blur here: the cover is part of what the glass blurs.
@@ -1467,8 +1479,10 @@ private fun LyricsApp(
                     },
                 )
                 // The song docked over the portrait Canvas or cover, where the big cover's text was.
-                // The controls' shade is off with the big cover up, so nothing blurs it here.
-                if (!landscape && immersivePicture != null) {
+                // The controls' shade is off with the big cover up, so nothing blurs it here. Only
+                // while it shows: faded out, its timeline and names would run on unseen.
+                val canvasDockShown by remember { derivedStateOf { immersiveShown * expansion * (1f - ambientFade.value) > 0f } }
+                if (!landscape && immersivePicture != null && canvasDockShown) {
                     // In line with the controls' rows, so the song sits over the timeline.
                     val gutter = controlsContentStartPx(pageWidth, density)
                     PortraitCanvasDock(
@@ -1763,6 +1777,12 @@ private fun PipLyrics(
             else 1f
         // The floating window has its own lyrics size, apart from the full screen's.
         val fontScale = windowScale * (settings.pipLyricsSize / 100f) * staticBoost
+        // The Canvas background, as on the full screen.
+        val canvasShown by animateFloatAsState(
+            if (settings.canvasBackground && !lowPerformance && canvasUrl != null) 1f else 0f,
+            tween(STAGE_FADE_MS, easing = StageEaseOut),
+            label = "pipCanvas",
+        )
         SpicySessionBackground(
             artwork = state.artwork,
             artworkUri = state.artworkUri,
@@ -1770,17 +1790,12 @@ private fun PipLyrics(
             hasSession = state.sourcePackage != null,
             modifier = Modifier.fillMaxSize(),
             type = settings.backgroundType,
-            animate = !lowPerformance && !settings.staticBackground,
+            // Held still once the Canvas backdrop covers it, as on the full screen.
+            animate = !lowPerformance && !settings.staticBackground && canvasShown < 1f,
             blurDp = settings.backgroundBlurFor(settings.backgroundType),
             artistHeaderUrl = state.artistHeaderUrl,
             artistHeaderPending = state.artistHeaderPending,
             refined = settings.refinedBackground,
-        )
-        // The Canvas background, as on the full screen.
-        val canvasShown by animateFloatAsState(
-            if (settings.canvasBackground && !lowPerformance && canvasUrl != null) 1f else 0f,
-            tween(STAGE_FADE_MS, easing = StageEaseOut),
-            label = "pipCanvas",
         )
         var shownCanvasUrl by remember { mutableStateOf<String?>(null) }
         canvasUrl?.let { shownCanvasUrl = it }
@@ -2116,6 +2131,8 @@ private fun LyricsPanel(
     translation: TranslationResult? = null,
     translationMode: TranslationMode = TranslationMode.UnderLine,
     romanizationMode: RomanizationMode = RomanizationMode.Replace,
+    /** False while the lyrics are fully hidden: their frame loop rests. */
+    visible: () -> Boolean = { true },
     /** Whether the credits say who translated the lyrics; [romanizationCredit] is already null when they don't. */
     textCredits: Boolean = true,
     romanizationCredit: String? = null,
@@ -2132,6 +2149,7 @@ private fun LyricsPanel(
             romanizationMode = romanizationMode,
             textCredits = textCredits,
             romanizationCredit = romanizationCredit,
+            visible = visible,
         )
         AnimatedVisibility(
             visible = lyrics == LyricsState.Loading,
@@ -2177,6 +2195,7 @@ private fun LyricsPanelContent(
     romanizationMode: RomanizationMode = RomanizationMode.Replace,
     textCredits: Boolean = true,
     romanizationCredit: String? = null,
+    visible: () -> Boolean = { true },
 ) {
     when (lyrics) {
         LyricsState.Idle -> LyricsNotice("Waiting for a song", modifier, bottomPx = noticeBottomPx, compact = noticeActions == null)
@@ -2221,6 +2240,7 @@ private fun LyricsPanelContent(
                 romanizationMode = romanizationMode,
                 translation = presentation,
                 isPlaying = isPlaying,
+                visible = visible,
                 activeLineTopPx = activeLineTopPx,
                 focusAnchorFraction = 0.5f,
                 focusLiftPx = centredLiftPx,

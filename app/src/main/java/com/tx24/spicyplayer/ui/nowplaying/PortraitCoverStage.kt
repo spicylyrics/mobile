@@ -38,6 +38,8 @@ fun PortraitCoverStage(
     info: NowPlayingInfo,
     picture: StagePicture,
     modifier: Modifier = Modifier,
+    /** Covered by something opaque: the animated cover holds its frame. */
+    held: Boolean = false,
 ) {
     val artwork = rememberSessionArtwork(info.artwork, info.artworkUri, maxDimension = ARTWORK_MAX_PX, hasSession = info.hasSession)
     // The last cover stays up while the player has none to show.
@@ -85,6 +87,7 @@ fun PortraitCoverStage(
                     modifier = Modifier.fillMaxSize(),
                     // Covers the box at its own shape, centred across.
                     cropFromTop = 0.5f,
+                    held = held,
                 )
             }
         }
