@@ -239,12 +239,14 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
          * song's usual one once the ID is cleared.
          */
         internal fun cacheName(title: String, artist: String, manualSpotifyId: String? = null): String =
-            cacheKey(title, artist) + manualSpotifyId?.let { "-$it" }.orEmpty() + ".json"
+            cacheKey(title, artist) + manualSpotifyId?.let { "-" + sha256(it).take(16) }.orEmpty() + ".json"
+
+        private fun sha256(text: String): String =
+            MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
 
         private fun cacheKey(title: String, artist: String): String {
             val identity = listOf(title, artist).joinToString("\u001f") { it.trim().lowercase() }
-            return MessageDigest.getInstance("SHA-256").digest(identity.toByteArray())
-                .joinToString("") { "%02x".format(it) }
+            return sha256(identity)
         }
 
         /** Whether every source ranked above the pick (every source, for "no lyrics") really answered. */
