@@ -21,13 +21,17 @@ import okhttp3.Request
  * can only be reached by the album's id.
  *
  * The animation belongs to the record, not the track, so the album name is what gets searched.
- * A single is the one case where they coincide, and there the song title stands in.
+ * A single is the one case where they coincide, and there the song title stands in. The track is
+ * searched too: Apple often gives the animation to only one edition of a record (the explicit
+ * one), and the album search returns just one of a clean/explicit pair, often the other. A track
+ * result names the edition it actually sits on.
  *
  * All of this is best effort. The album may have no animation, and the page format is Apple's
  * and undocumented. Every failure ends the same way: no URL, and the still cover stays.
  *
  * Answers are memoised in [memoFile], misses included, since a miss is what saves a search next
- * time. A miss is retried after [MISS_TTL_MS], in case the album has gained an animation.
+ * time. A miss is retried after [MISS_TTL_MS], in case the album has gained an animation, or
+ * straight away when an older [MEMO_VERSION] of the search remembered it.
  */
 class MotionCoverFinder(
     private val client: OkHttpClient,
@@ -76,24 +80,32 @@ class MotionCoverFinder(
             "$artist $title".takeIf { single && title.isNotBlank() },
         ).map { it.split(Regex("\\s+")).filter(String::isNotEmpty).joinToString(" ") }.distinct()
 
+        val song = "$artist $title".split(Regex("\\s+")).filter(String::isNotEmpty).joinToString(" ")
+
         // The Search API first, as it is quick. Its index runs years behind for some records
-        // ("Linkin Park From Zero" never returns the 2024 album), so the web search follows.
-        for (finder in listOf(::itunesAlbums, ::webAlbums)) {
-            val hits = terms.flatMap { finder(it) }
-            val ranked = rankAlbums(hits, artist, name)
-            if (ranked.isEmpty()) continue
-            for (url in ranked) {
+        // ("Linkin Park From Zero" never returns the 2024 album), so the web search follows,
+        // also when none of the Search API's albums turned out to be animated.
+        val stages = listOf<suspend () -> List<AlbumHit>>(
+            {
+                val tracks = if (title.isNotBlank()) itunes(song, "song") else emptyList()
+                tracks + terms.flatMap { itunes(it, "album") }
+            },
+            { terms.flatMap { webAlbums(it) } },
+        )
+        val tried = mutableSetOf<String>()
+        for (stage in stages) {
+            for (url in rankAlbums(stage(), artist, name)) {
+                if (!tried.add(albumId(url))) continue
                 val page = runCatching { get(url) }.getOrNull() ?: continue
                 ambientVideo(page)?.let { return it }
             }
-            return null
         }
         return null
     }
 
-    private suspend fun itunesAlbums(term: String): List<AlbumHit> {
+    private suspend fun itunes(term: String, entity: String): List<AlbumHit> {
         val body = runCatching {
-            get("https://itunes.apple.com/search?term=${encode(term)}&entity=album&limit=10")
+            get("https://itunes.apple.com/search?term=${encode(term)}&entity=$entity&limit=10")
         }.getOrNull() ?: return emptyList()
         return parseAlbums(body)
     }
@@ -125,9 +137,14 @@ class MotionCoverFinder(
     private fun memo(): MutableMap<String, MemoEntry> = memo ?: run {
         val loaded = mutableMapOf<String, MemoEntry>()
         runCatching {
-            JsonParser.parseString(memoFile!!.readText()).asJsonObject.entrySet().forEach { (key, value) ->
+            val root = JsonParser.parseString(memoFile!!.readText()).asJsonObject
+            val current = root.get(VERSION_KEY)?.asInt == MEMO_VERSION
+            root.entrySet().forEach { (key, value) ->
+                if (!value.isJsonObject) return@forEach
                 val o = value.asJsonObject
-                loaded[key] = MemoEntry(o.get("url").asString, o.get("at").asLong)
+                val entry = MemoEntry(o.get("url").asString, o.get("at").asLong)
+                // An older search's misses may be records it couldn't find; its hits still stand.
+                if (current || entry.url.isNotEmpty()) loaded[key] = entry
             }
         }
         loaded.also { memo = it }
@@ -139,6 +156,7 @@ class MotionCoverFinder(
             file.parentFile?.mkdirs()
             val tmp = File(file.path + ".tmp")
             val json = JsonObject()
+            json.addProperty(VERSION_KEY, MEMO_VERSION)
             memo?.forEach { (key, entry) ->
                 json.add(key, JsonObject().apply { addProperty("url", entry.url); addProperty("at", entry.at) })
             }
@@ -149,11 +167,15 @@ class MotionCoverFinder(
 
     private class MemoEntry(val url: String, val at: Long)
 
-    data class AlbumHit(val url: String, val name: String, val artist: String)
+    data class AlbumHit(val url: String, val name: String, val artist: String, val explicit: Boolean = false)
 
     companion object {
         /** How long a miss is trusted before the album is searched again. */
         const val MISS_TTL_MS = 30L * 24 * 60 * 60 * 1000
+
+        /** Raised when the search improves, so misses an older one remembered are retried. */
+        const val MEMO_VERSION = 2
+        private const val VERSION_KEY = "_v"
 
         private const val BROWSER_UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 " +
             "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -195,36 +217,44 @@ class MotionCoverFinder(
          * Album pages worth opening, best first. The artist is checked as hard as the name:
          * album names are far from unique ("NF NO NAME" also returns Jack White's "No Name"), and
          * since a page without an animation is skipped, a loose match would hang another
-         * artist's video on this record.
+         * artist's video on this record. Among equal names the explicit edition goes first, as
+         * that is the one Apple usually animates.
          */
         fun rankAlbums(hits: List<AlbumHit>, artist: String, name: String): List<String> =
             hits.asSequence()
                 .filter { it.url.isNotEmpty() && loose(name, it.name) && loose(artist, it.artist) }
-                .distinctBy { it.url }
-                .sortedBy {
-                    when {
-                        akey(it.name) == akey(name) -> 0
-                        akey(plain(it.name)) == akey(plain(name)) -> 1
-                        else -> 2
-                    }
-                }
+                .sortedWith(
+                    compareBy<AlbumHit> {
+                        when {
+                            akey(it.name) == akey(name) -> 0
+                            akey(plain(it.name)) == akey(plain(name)) -> 1
+                            else -> 2
+                        }
+                    }.thenBy { !it.explicit },
+                )
+                .distinctBy { albumId(it.url) }
                 .map { it.url }
                 .toList()
 
         fun parseAlbums(json: String): List<AlbumHit> = runCatching {
             JsonParser.parseString(json).asJsonObject.getAsJsonArray("results").mapNotNull { element ->
                 val o = element.asJsonObject
-                if (o.get("wrapperType")?.asString != "collection") return@mapNotNull null
+                // A track result stands for the album it sits on.
+                if (o.get("wrapperType")?.asString !in setOf("collection", "track")) return@mapNotNull null
                 AlbumHit(
                     url = o.get("collectionViewUrl")?.asString.orEmpty().substringBefore('?'),
                     name = o.get("collectionName")?.asString.orEmpty(),
                     artist = o.get("artistName")?.asString.orEmpty(),
+                    explicit = o.get("collectionExplicitness")?.asString == "explicit",
                 )
             }
         }.getOrDefault(emptyList())
 
         fun albumIds(html: String): List<String> =
             ALBUM_LINK.findAll(html).map { it.groupValues[1] }.distinct().take(12).toList()
+
+        /** The album id that ends its page URL; the slug before it differs between results. */
+        fun albumId(url: String): String = url.substringAfterLast('/')
 
         fun ambientVideo(html: String): String? = AMBIENT_VIDEO.find(html)?.groupValues?.get(1)
 

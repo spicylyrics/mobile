@@ -9,6 +9,8 @@ import com.tx24.spicyplayer.network.motion.MotionCoverFinder.Companion.parseAlbu
 import com.tx24.spicyplayer.network.motion.MotionCoverFinder.Companion.plain
 import com.tx24.spicyplayer.network.motion.MotionCoverFinder.Companion.rankAlbums
 import com.tx24.spicyplayer.ui.nowplaying.leadArtist
+import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import org.junit.Assert.assertEquals
@@ -69,6 +71,78 @@ class MotionCoverFinderTest {
         assertEquals(emptyList<AlbumHit>(), parseAlbums("not json"))
     }
 
+    // Trimmed from a real song search. The album search for "Dua Lipa Radical Optimism" returns
+    // only the clean edition (1745741774), whose page has no animation; the explicit one has it.
+    private val radicalOptimismTracks = """{"results":[
+        {"wrapperType":"track","trackName":"End Of An Era","collectionName":"Radical Optimism",
+         "artistName":"Dua Lipa","collectionExplicitness":"explicit",
+         "collectionViewUrl":"https://music.apple.com/us/album/end-of-an-era/1734980417?i=1734980418&uo=4"},
+        {"wrapperType":"track","trackName":"End Of An Era (Extended)","collectionName":"Radical Optimism (Extended)",
+         "artistName":"Dua Lipa","collectionExplicitness":"explicit",
+         "collectionViewUrl":"https://music.apple.com/us/album/end-of-an-era-extended/1753352305?i=1&uo=4"},
+        {"wrapperType":"track","trackName":"End Of An Era","collectionName":"Radical Optimism",
+         "artistName":"Dua Lipa","collectionExplicitness":"cleaned",
+         "collectionViewUrl":"https://music.apple.com/us/album/end-of-an-era/1745741774?i=2&uo=4"},
+        {"wrapperType":"track","trackName":"End of an Era","collectionName":"Dinner Party",
+         "artistName":"Niall Horan","collectionExplicitness":"explicit",
+         "collectionViewUrl":"https://music.apple.com/us/album/end-of-an-era/1884418567?i=3&uo=4"}]}"""
+
+    private val radicalOptimismAlbums = """{"results":[
+        {"wrapperType":"collection","collectionName":"Radical Optimism","artistName":"Dua Lipa",
+         "collectionExplicitness":"cleaned",
+         "collectionViewUrl":"https://music.apple.com/us/album/radical-optimism/1745741774?uo=4"}]}"""
+
+    @Test
+    fun `the explicit edition a track sits on is tried before the clean one`() {
+        val hits = parseAlbums(radicalOptimismTracks) + parseAlbums(radicalOptimismAlbums)
+        assertEquals(
+            listOf(
+                "https://music.apple.com/us/album/end-of-an-era/1734980417",
+                "https://music.apple.com/us/album/end-of-an-era/1745741774",
+                "https://music.apple.com/us/album/end-of-an-era-extended/1753352305",
+            ),
+            rankAlbums(hits, "Dua Lipa", "Radical Optimism"),
+        )
+    }
+
+    @Test
+    fun `the explicit edition wins a tie however the results are ordered`() {
+        // Zara Larsson's "Midnight Sun": the album search only knows the clean 1841486100.
+        val hits = listOf(
+            AlbumHit("https://music.apple.com/us/album/midnight-sun/1841486100", "Midnight Sun", "Zara Larsson"),
+            AlbumHit("https://music.apple.com/us/album/midnight-sun/1817499239", "Midnight Sun", "Zara Larsson", explicit = true),
+            AlbumHit("https://music.apple.com/us/album/midnight-sun-single/1852285641", "Midnight Sun - Single", "Zara Larsson & Muni Long"),
+        )
+        assertEquals(
+            listOf(
+                "https://music.apple.com/us/album/midnight-sun/1817499239",
+                "https://music.apple.com/us/album/midnight-sun/1841486100",
+                "https://music.apple.com/us/album/midnight-sun-single/1852285641",
+            ),
+            rankAlbums(hits, "Zara Larsson", "Midnight Sun"),
+        )
+    }
+
+    @Test
+    fun `misses remembered by an older search are retried, its hits kept`() {
+        val memo = File.createTempFile("motion", ".json").apply { deleteOnExit() }
+        memo.writeText(
+            """{"dualipa|radicaloptimism":{"url":"","at":1},
+               "taylorswift|midnights":{"url":"https://x/P1_default.m3u8","at":1}}""",
+        )
+        var requests = 0
+        val offline = OkHttpClient.Builder()
+            .addInterceptor { requests++; throw IOException("offline") }
+            .build()
+        val finder = MotionCoverFinder(offline, memo, now = { 2 })
+        runBlocking {
+            assertEquals("https://x/P1_default.m3u8", finder.find("Taylor Swift", "Midnights", "Anti-Hero"))
+            assertEquals(0, requests)
+            assertNull(finder.find("Dua Lipa", "Radical Optimism", "End Of An Era"))
+            assertTrue(requests > 0)
+        }
+    }
+
     @Test
     fun `album ids and the ambient video come out of the pages`() {
         val search = """<a href="https://music.apple.com/us/album/from-zero/1766137049">
@@ -96,8 +170,16 @@ class MotionCoverFinderTest {
     fun `live lookup finds a known animated cover`() {
         assumeTrue(System.getenv("RUN_MOTION_COVER_TEST") == "1")
         val finder = MotionCoverFinder(OkHttpClient(), memoFile = null)
-        val url = runBlocking { finder.find("Taylor Swift", "Midnights", "Anti-Hero") }
-        assertNotNull(url)
-        assertTrue(url!!.endsWith(".m3u8"))
+        // Midnights is animated on the edition the album search returns; the other two only on
+        // the explicit edition, which the album search leaves out.
+        listOf(
+            Triple("Taylor Swift", "Midnights", "Anti-Hero"),
+            Triple("Dua Lipa", "Radical Optimism", "End Of An Era"),
+            Triple("Zara Larsson", "Midnight Sun", "Midnight Sun"),
+        ).forEach { (artist, album, title) ->
+            val url = runBlocking { finder.find(artist, album, title) }
+            assertNotNull("$artist – $album", url)
+            assertTrue(url!!.endsWith(".m3u8"))
+        }
     }
 }
