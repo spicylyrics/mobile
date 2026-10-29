@@ -25,6 +25,14 @@ class FrameDeltaTest {
     }
 
     @Test
+    fun `with a hitch cap, a normal frame slower than the display advances by its real gap`() {
+        // A 165 Hz display drawn at 60 fps: two display intervals (12 ms) would cut each frame short.
+        val interval165 = nominalFrameIntervalS(165f)
+        assertEquals(0.0167f, frameDeltaSeconds(ms(1000) + 16_700_000L, ms(1000), interval165, resumed = false, capS = 0.1f), 1e-6f)
+        assertEquals(0.1f, frameDeltaSeconds(ms(1500), ms(1000), interval165, resumed = false, capS = 0.1f), 1e-7f)
+    }
+
+    @Test
     fun `the first frame after a rest advances by one interval`() {
         assertEquals(interval120, frameDeltaSeconds(ms(5000), ms(1000), interval120, resumed = true), 1e-7f)
     }
