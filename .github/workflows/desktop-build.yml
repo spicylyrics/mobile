@@ -61,6 +61,16 @@ jobs:
           SPICY_LYRICS_CLIENT_KEY: ${{ secrets.SPICY_LYRICS_CLIENT_KEY || vars.SPICY_LYRICS_CLIENT_KEY }}
           DESKTOP_VERSION: ${{ steps.version.outputs.version }}
         run: ./gradlew.bat --no-daemon :desktop:packageMsi ${DESKTOP_VERSION:+-PdesktopVersion=$DESKTOP_VERSION}
+      # The app can't open its window without skiko's native library beside its jars.
+      - name: Check the MSI carries skiko's native library
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem desktop/build/compose/binaries/main/msi/*.msi | Select-Object -First 1
+          $out = Join-Path $env:RUNNER_TEMP "msi-image"
+          Start-Process msiexec -ArgumentList "/a `"$($msi.FullName)`" /qn TARGETDIR=`"$out`"" -Wait
+          $dll = Get-ChildItem $out -Recurse -Filter "skiko-windows-x64.dll" | Select-Object -First 1
+          if (-not $dll) { Write-Error "skiko-windows-x64.dll is missing from the MSI's app"; exit 1 }
+          Write-Output "Found $($dll.FullName)"
       - name: Checksum
         run: |
           cd desktop/build/compose/binaries/main/msi
@@ -118,6 +128,10 @@ jobs:
           SPICY_LYRICS_CLIENT_KEY: ${{ secrets.SPICY_LYRICS_CLIENT_KEY || vars.SPICY_LYRICS_CLIENT_KEY }}
           DESKTOP_VERSION: ${{ steps.version.outputs.version }}
         run: ./gradlew --no-daemon :desktop:packageDeb ${DESKTOP_VERSION:+-PdesktopVersion=$DESKTOP_VERSION}
+      - name: Check the .deb carries skiko's native library
+        run: |
+          deb=$(ls desktop/build/compose/binaries/main/deb/*.deb | head -1)
+          dpkg-deb -c "$deb" | grep -q 'libskiko-linux-x64\.so$' || { echo "libskiko-linux-x64.so is missing from the .deb" >&2; exit 1; }
       - name: Checksum
         run: |
           cd desktop/build/compose/binaries/main/deb
@@ -166,6 +180,15 @@ jobs:
           SPICY_LYRICS_CLIENT_KEY: ${{ secrets.SPICY_LYRICS_CLIENT_KEY || vars.SPICY_LYRICS_CLIENT_KEY }}
           DESKTOP_VERSION: ${{ steps.version.outputs.version }}
         run: ./gradlew --no-daemon :desktop:packageDmg ${DESKTOP_VERSION:+-PdesktopVersion=$DESKTOP_VERSION}
+      - name: Check the .dmg carries skiko's native library
+        run: |
+          dmg=$(ls desktop/build/compose/binaries/main/dmg/*.dmg | head -1)
+          mnt=$(mktemp -d)
+          hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg" >/dev/null
+          found=$(find "$mnt" -name 'libskiko-macos-*.dylib' | head -1)
+          hdiutil detach "$mnt" >/dev/null
+          [ -n "$found" ] || { echo "libskiko-macos-*.dylib is missing from the .dmg" >&2; exit 1; }
+          echo "Found $found"
       - name: Checksum
         run: |
           cd desktop/build/compose/binaries/main/dmg

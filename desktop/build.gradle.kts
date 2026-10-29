@@ -66,6 +66,19 @@ sourceSets.main {
 // against 1.12, run on it. The material icons are published apart, at 1.7.3.
 val desktopComposeVersion = "1.13.0-beta01"
 val desktopSkikoVersion = "0.156.0"
+// 1.13 brings skiko's natives for every OS in one jar (skiko-awt-runtime-all), which the 1.12
+// Gradle plugin used here doesn't unpack into the app, so the installed app found no native
+// library and never opened its window. Each installer builds on its own OS, so it takes that OS's
+// runtime instead, as 1.12 did; tests run on it too.
+val skikoRuntime = run {
+    val os = System.getProperty("os.name").lowercase()
+    val arm = System.getProperty("os.arch").lowercase().let { it == "aarch64" || it == "arm64" }
+    when {
+        os.startsWith("windows") -> if (arm) "windows-arm64" else "windows-x64"
+        os.startsWith("mac") -> if (arm) "macos-arm64" else "macos-x64"
+        else -> if (arm) "linux-arm64" else "linux-x64"
+    }
+}
 configurations.all {
     resolutionStrategy.eachDependency {
         val group = requested.group
@@ -74,6 +87,11 @@ configurations.all {
             group.startsWith("org.jetbrains.compose.") && !requested.name.startsWith("material-icons") ->
                 useVersion(desktopComposeVersion)
         }
+    }
+    resolutionStrategy.dependencySubstitution {
+        substitute(module("org.jetbrains.skiko:skiko-awt-runtime-all"))
+            .using(module("org.jetbrains.skiko:skiko-awt-runtime-$skikoRuntime:$desktopSkikoVersion"))
+            .because("the 1.12 Gradle plugin unpacks only a per-OS skiko runtime into the app")
     }
 }
 
