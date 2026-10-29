@@ -9,6 +9,7 @@ import com.tx24.spicyplayer.lyrics.spicy.models.Word
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.InputStream
+import java.io.StringReader
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.roundToLong
@@ -52,7 +53,12 @@ object TtmlLyricsParser {
     private fun readTree(input: InputStream): Element {
         val parser = XmlPullParserFactory.newInstance().newPullParser()
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-        parser.setInput(input.reader(Charsets.UTF_8))
+        // A byte-order mark or whitespace ahead of the `<?xml?>` declaration is a parse error.
+        val text = input.reader(Charsets.UTF_8).readText().trimStart { it == '\uFEFF' || it.isWhitespace() }
+        parser.setInput(StringReader(text))
+        // HTML's `&nbsp;` is not an XML entity, but some catalogues write it. A parser that can't
+        // take extra entities still reads every document without one.
+        runCatching { parser.defineEntityReplacementText("nbsp", "\u00A0") }
         val stack = ArrayDeque<Element>()
         var root: Element? = null
         var event = parser.eventType
@@ -187,7 +193,7 @@ object TtmlLyricsParser {
             }?.trim()?.takeIf(String::isNotEmpty)
             if (!hasLyricsText(text) && !hasLyricsText(roman)) return@mapNotNull null
             val startMs = ms(start) ?: 0L
-            val endMs = ms(end) ?: startMs
+            val endMs = (ms(end) ?: startMs).coerceAtLeast(startMs)
             // Line-synced lines are never duet-aligned from TTML; our own converter says so explicitly.
             val opposite = p["spicy:oppositeAligned"]?.toBooleanStrictOrNull() ?: false
             Line(listOf(Word(display(text.orEmpty()), startMs, endMs, romanizedText = roman)), startMs, endMs,
@@ -219,8 +225,8 @@ object TtmlLyricsParser {
                 if (lead.isEmpty()) {
                     val fallback = getLineText(p).orEmpty().trim()
                     if (fallback.isNotEmpty() || leadRoman.isNotEmpty()) {
-                        lead += Syllable(fallback, leadRoman.ifEmpty { null }, false,
-                            convertTimeToSeconds(p["begin"]), convertTimeToSeconds(p["end"]))
+                        val start = convertTimeToSeconds(p["begin"])
+                        lead += Syllable(fallback, leadRoman.ifEmpty { null }, false, start, endAfter(start, convertTimeToSeconds(p["end"])))
                     }
                 }
                 // The line's window covers its own words too: catalogues write zero-length lines
@@ -228,6 +234,8 @@ object TtmlLyricsParser {
                 // interlude dots, and hold the scroll, while the words are being sung.
                 var leadStart = listOfNotNull(convertTimeToSeconds(p["begin"]), lead.mapNotNull { it.start }.minOrNull()).minOrNull()
                 var leadEnd = listOfNotNull(convertTimeToSeconds(p["end"]), lead.mapNotNull { it.end }.maxOrNull()).maxOrNull()
+                // Where the lead's own words can run to, before background vocals widen the line.
+                val wordsEnd = leadEnd
 
                 val backgrounds = pSpans.filter { isSpanObject(it) && it["ttm:role"] == "x-bg" }.mapIndexedNotNull { bgIndex, bgSpan ->
                     val bgChildren = bgSpan.elements("span")
@@ -253,12 +261,14 @@ object TtmlLyricsParser {
                 val id = groupId++
                 val leadStartMs = ms(leadStart) ?: 0L
                 val untimed = leadStart == null
-                lines += Line(toWords(lead, leadStartMs), leadStartMs, ms(leadEnd) ?: leadStartMs,
+                val leadWords = toWords(lead, leadStartMs, (ms(wordsEnd) ?: leadStartMs).coerceAtLeast(leadStartMs))
+                lines += Line(leadWords, leadStartMs, (ms(leadEnd) ?: leadStartMs).coerceAtLeast(leadStartMs),
                     agent = agent, role = LineRole.LEAD, groupId = id, oppositeAligned = opposite, translation = translated.lead(p),
                     untimed = untimed)
                 backgrounds.forEach { (syllables, start, end, translation) ->
                     val startMs = ms(start) ?: leadStartMs
-                    lines += Line(toWords(syllables, startMs), startMs, ms(end) ?: startMs,
+                    val endMs = (ms(end) ?: startMs).coerceAtLeast(startMs)
+                    lines += Line(toWords(syllables, startMs, endMs), startMs, endMs,
                         agent = agent, role = LineRole.BACKGROUND, groupId = id, oppositeAligned = opposite, translation = translation,
                         untimed = untimed)
                 }
@@ -304,17 +314,44 @@ object TtmlLyricsParser {
     /** How long a line with no timing after the last timed one stays. */
     private const val UNTIMED_MS = 4_000L
 
-    /** The reference marks a syllable that continues into the next; our words mark the one glued to the previous. */
-    private fun toWords(syllables: List<Syllable>, lineStartMs: Long): List<Word> {
+    /**
+     * The reference marks a syllable that continues into the next; our words mark the one glued to
+     * the previous. A syllable missing its end runs until the next one starts (or the line ends);
+     * a run of syllables with no timing at all shares that gap evenly.
+     */
+    private fun toWords(syllables: List<Syllable>, lineStartMs: Long, lineEndMs: Long): List<Word> {
+        val starts = syllables.map { ms(it.start) }
+        fun nextStart(after: Int) = starts.drop(after + 1).firstNotNullOfOrNull { it } ?: lineEndMs
+        val times = mutableListOf<Pair<Long, Long>>()
         var previousEnd = lineStartMs
-        return syllables.mapIndexed { i, s ->
-            val start = ms(s.start) ?: previousEnd
-            val end = ms(s.end) ?: start
+        var i = 0
+        while (i < syllables.size) {
+            val s = syllables[i]
+            if (starts[i] == null && s.end == null) {
+                var j = i
+                while (j < syllables.size && starts[j] == null && syllables[j].end == null) j++
+                val until = nextStart(j - 1).coerceAtLeast(previousEnd)
+                val step = (until - previousEnd) / (j - i)
+                for (k in i until j) times += (previousEnd + step * (k - i)) to (if (k == j - 1) until else previousEnd + step * (k - i + 1))
+                previousEnd = until
+                i = j
+                continue
+            }
+            val start = starts[i] ?: previousEnd
+            val end = (ms(s.end) ?: nextStart(i)).coerceAtLeast(start)
+            times += start to end
             previousEnd = end
-            Word(display(s.text), start, end, isPartOfWord = i > 0 && syllables[i - 1].partOfWord,
+            i++
+        }
+        return syllables.mapIndexed { index, s ->
+            val (start, end) = times[index]
+            Word(display(s.text), start, end, isPartOfWord = index > 0 && syllables[index - 1].partOfWord,
                 romanizedText = s.roman?.let(::display))
         }
     }
+
+    /** A span's end, unless it comes before its begin. */
+    private fun endAfter(start: Double?, end: Double?) = end?.takeIf { start == null || it >= start }
 
     private fun buildSyllables(
         parent: Element,
@@ -338,8 +375,8 @@ object TtmlLyricsParser {
                 !rawText.trim().endsWith(',') && !rawText.lastOrNull().isWs()
 
             val roman = findTransliteratedText(transliterations, node["begin"], node["end"])?.let { clean(it.text) }
-            Syllable(text, roman?.ifEmpty { null }, partOfWord,
-                convertTimeToSeconds(node["begin"]), convertTimeToSeconds(node["end"]))
+            val start = convertTimeToSeconds(node["begin"])
+            Syllable(text, roman?.ifEmpty { null }, partOfWord, start, endAfter(start, convertTimeToSeconds(node["end"])))
         }
     }
 

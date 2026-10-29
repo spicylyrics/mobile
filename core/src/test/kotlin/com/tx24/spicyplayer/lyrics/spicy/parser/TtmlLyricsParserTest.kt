@@ -59,6 +59,41 @@ class TtmlLyricsParserTest {
         assertEquals(listOf("keep"), parse(doc(body)).lines.map { it.words.single().text })
     }
 
+    @Test fun aByteOrderMarkOrWhitespaceBeforeTheDeclarationIsIgnored() {
+        val xml = """<?xml version="1.0" encoding="UTF-8"?>""" +
+            doc("""<div><p begin="1s" end="2s"><span begin="1s" end="2s">Hello</span></p></div>""")
+        for (prefix in listOf("\uFEFF", "\n  ", "\uFEFF\r\n")) {
+            assertEquals("Hello", parse(prefix + xml).lines.single().words.single().text)
+        }
+    }
+
+    @Test fun nbspReadsAsANoBreakSpace() {
+        val p = """<p begin="1s" end="2s"><span begin="1s" end="2s">Hello&nbsp;there</span></p>"""
+        assertEquals("Hello\u00A0there", parse(doc("<div>$p</div>")).lines.single().words.single().text)
+    }
+
+    @Test fun aSpanEndingBeforeItBeginsRunsToTheNextSpan() {
+        val p = """<p begin="1s" end="4s"><span begin="1s" end="2s">One</span> <span begin="3s" end="2s">two</span> <span begin="3.5s" end="4s">three</span></p>"""
+        val words = parse(doc("<div>$p</div>")).lines.single().words
+        assertEquals(listOf(1_000L to 2_000L, 3_000L to 3_500L, 3_500L to 4_000L), words.map { it.startMs to it.endMs })
+    }
+
+    @Test fun aLineEndingBeforeItBeginsEndsWhereItBegins() {
+        val line = parse(doc("""<div><p begin="5s" end="3s">Words</p><p begin="6s" end="7s"><span begin="6s" end="7s">x</span></p></div>""")).lines.first()
+        assertEquals(5_000L to 5_000L, line.startMs to line.endMs)
+        val lineSynced = parse(doc("""<div><p begin="5s" end="3s">Words</p></div>""", timing = "Line")).lines.single()
+        assertEquals(5_000L to 5_000L, lineSynced.startMs to lineSynced.endMs)
+    }
+
+    @Test fun untimedSpansShareTheGapUntilTheNextTimedOne() {
+        // In the middle: two untimed spans split 2s-4s; at the end: the last runs to the line's end.
+        val p = """<p begin="1s" end="6s"><span begin="1s" end="2s">A</span> <span xml:lang="en">b</span> <span xml:lang="en">c</span> """ +
+            """<span begin="4s" end="5s">D</span> <span xml:lang="en">e</span></p>"""
+        val words = parse(doc("<div>$p</div>")).lines.single().words
+        assertEquals(listOf(1_000L to 2_000L, 2_000L to 3_000L, 3_000L to 4_000L, 4_000L to 5_000L, 5_000L to 6_000L),
+            words.map { it.startMs to it.endMs })
+    }
+
     @Test fun readsEveryTimeFormat() {
         assertEquals(0.3, TtmlLyricsParser.convertTimeToSeconds("300ms")!!, 1e-9)
         assertEquals(90.0, TtmlLyricsParser.convertTimeToSeconds("1.5m")!!, 1e-9)
