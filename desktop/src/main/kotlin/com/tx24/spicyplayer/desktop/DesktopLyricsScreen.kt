@@ -1,6 +1,13 @@
 package com.tx24.spicyplayer.desktop
 
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.runtime.CompositionLocalProvider
 import com.tx24.spicyplayer.ui.settings.QuickSettingsModal
 import com.tx24.spicyplayer.ui.settings.SettingsScreen
@@ -76,6 +83,8 @@ class DesktopLyricsHost(
     }
 
     override val pictureInPicture: Boolean get() = true
+    // Until the phone's Lyrics Manager is shared.
+    override val lyricsManager: Boolean get() = false
     override fun enterPip() { openMiniWindow() }
 
     @Composable
@@ -156,19 +165,26 @@ class DesktopKeys : ScreenKeys {
     }
 }
 
-/**
- * The screen's pop-ups on the desktop: settings and quick settings open over the lyrics as on the
- * phone ([DesktopLyricsHost.Overlays]); the Lyrics Manager is the window's own page.
- */
-class DesktopOverlays(private val nav: DesktopNav) : LyricsOverlays() {
-    override fun openLyricsManager() = nav.open(Destination.LyricsManager)
-    override fun openQuickSettings(start: QuickScreen) {
-        if (start == QuickScreen.LyricsManager) nav.open(Destination.LyricsManager) else super.openQuickSettings(start)
-    }
+/** The screen's pop-ups on the desktop: settings and quick settings open over the lyrics as on the phone ([DesktopLyricsHost.Overlays]). */
+class DesktopOverlays : LyricsOverlays() {
     override fun openSpotifySearch() = Unit
 
     /** Settings or quick settings are up, which take the keys from the lyrics behind them. */
     val open: Boolean get() = settings || quickSettings
+
+    /**
+     * For the window's `onPreviewKeyEvent`, so focused fields don't swallow them: Ctrl+, opens
+     * settings and Ctrl+D quick settings, where the delay is (Cmd on a Mac).
+     */
+    fun onShortcut(event: KeyEvent): Boolean {
+        if (event.type != KeyEventType.KeyDown || !(event.isCtrlPressed || event.isMetaPressed)) return false
+        when (event.key) {
+            Key.Comma -> openSettings()
+            Key.D -> openQuickSettings(QuickScreen.Main)
+            else -> return false
+        }
+        return true
+    }
 }
 
 /**

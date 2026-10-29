@@ -47,11 +47,8 @@ abstract class SettingsHost {
     /** A quick settings screen was opened (the queue, the Lyrics Manager). */
     open fun quickScreenOpened(screen: QuickScreen) {}
 
-    /**
-     * Opens the Lyrics Manager as a page of its own instead of a screen of quick settings; false
-     * where it's a quick settings screen ([LyricsManagerScreen]).
-     */
-    open fun openLyricsManagerPage(): Boolean = false
+    /** There's a Lyrics Manager ([LyricsManagerScreen]) to open from quick settings and its own button. */
+    open val lyricsManager: Boolean get() = true
 
     /** Quick settings came up for these lyrics. */
     open fun quickSettingsShown() {}

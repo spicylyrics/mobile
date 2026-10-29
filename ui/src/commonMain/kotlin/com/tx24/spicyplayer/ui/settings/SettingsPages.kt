@@ -785,7 +785,7 @@ fun ControlsContent(settings: CommonAppSettings, host: SettingsHost) {
             icon = SpicyGlyphs.PictureInPicture,
             enabled = host.pictureInPicture,
         )
-        ToggleRow(
+        if (host.lyricsManager) ToggleRow(
             label = "Lyrics Manager button",
             checked = settings.lyricsManagerButton,
             onCheckedChange = { settings.lyricsManagerButton = it },

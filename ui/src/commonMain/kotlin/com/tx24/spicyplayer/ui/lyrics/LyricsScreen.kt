@@ -619,7 +619,7 @@ fun LyricsScreen(
                     animate = uiAnimations,
                 )
                 val onEnterPipButton = host::enterPip.takeIf { host.pictureInPicture && settings.pipButton }
-                val onOpenLyricsManager = if (settings.lyricsManagerButton) ({ overlays.openLyricsManager() }) else null
+                val onOpenLyricsManager = if (host.lyricsManager && settings.lyricsManagerButton) ({ overlays.openLyricsManager() }) else null
                 val onOpenQuickSettings = if (host.quickSettings && settings.quickSettingsButton) ({ overlays.openQuickSettings(QuickScreen.Main) }) else null
                 // The queue's own button opens quick settings on its queue screen.
                 val onOpenQueue = if (host.quickSettings && settings.queueButton && state.hasQueue) ({ overlays.openQuickSettings(QuickScreen.Queue) }) else null

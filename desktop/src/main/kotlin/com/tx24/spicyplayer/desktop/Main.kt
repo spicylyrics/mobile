@@ -137,7 +137,7 @@ private sealed interface Screen {
 }
 
 /**
- * Usage: `run [--app <id substring>] [--offset <ms>] [--helper <gsmtc.exe on Windows>] [--page settings|manager|sync] [--snap file.png --snap-at S]`, or `run --demo ...` for the
+ * Usage: `run [--app <id substring>] [--offset <ms>] [--helper <gsmtc.exe on Windows>] [--page settings] [--snap file.png --snap-at S]`, or `run --demo ...` for the
  * renderer on a made-up song (see [runDemo]).
  *
  * Shows the lyrics of Windows' current media session (or the first whose app id contains
@@ -266,18 +266,8 @@ fun main(args: Array<String>) {
         val windowState = rememberWindowState(size = DpSize(1100.dp, 760.dp))
         val mainLyricsView = remember { LyricsViewState() }
         val miniLyricsView = remember { LyricsViewState() }
-        // `--page` starts on a page instead of the lyrics, for screenshots of it.
-        val nav = remember { DesktopNav(startPage(opts["--page"])) }
-        // Settings open over the lyrics, as on the phone, for the shortcut and --page settings alike.
-        val overlays = remember {
-            DesktopOverlays(nav).also { overlays ->
-                nav.openSettings = overlays::openSettings
-                if (nav.at == Destination.Settings) {
-                    nav.back()
-                    overlays.settings = true
-                }
-            }
-        }
+        // Settings open over the lyrics, as on the phone; `--page settings` starts with them open.
+        val overlays = remember { DesktopOverlays().also { it.settings = opts["--page"] == "settings" } }
         // A key on the lyrics shows their controls, as a touch does on the phone.
         val desktopKeys = remember { DesktopKeys() }
         var page by remember { mutableStateOf(BigScreenState(romanized = desktopSettings.romanize).withSavedView(desktopSettings)) }
@@ -296,20 +286,19 @@ fun main(args: Array<String>) {
         }
         Window(
             onCloseRequest = { stop(); exitApplication() },
-            onPreviewKeyEvent = nav::onShortcut,
+            onPreviewKeyEvent = overlays::onShortcut,
             state = windowState,
             title = "Spicy Lyrics",
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
             onKeyEvent = { event ->
-                if (event.type == KeyEventType.KeyDown && nav.at == Destination.Lyrics) desktopKeys.press()
-                MiniLyrics.onKey(event) || nav.onPageKey(event) || overlayKey(event, overlays) ||
+                if (event.type == KeyEventType.KeyDown && !overlays.open) desktopKeys.press()
+                MiniLyrics.onKey(event) || overlayKey(event, overlays) ||
                     pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: onPlaybackKey(event, nowPlaying, capabilities)
             },
         ) {
-            // Back from another window or a page, the lyrics jump to the line being sung, wherever they were scrolled.
+            // Back from another window, the lyrics jump to the line being sung, wherever they were scrolled.
             OnWindowFocus(window) { mainLyricsView.scrollToActive() }
             LaunchedEffect(window) { DebugControl.startIfAsked(window) }
-            LaunchedEffect(nav.at) { if (nav.at == Destination.Lyrics) mainLyricsView.scrollToActive() }
             DisposableEffect(window) {
                 refreshRate = refreshRateOf(window)
                 val listener = object : ComponentAdapter() {
@@ -339,7 +328,7 @@ fun main(args: Array<String>) {
                     )
                 }
                 val settingsHost = remember(window) {
-                    DesktopSettingsHost(window, session, delays, sourceSettings, openLyricsManager = { nav.open(Destination.LyricsManager) })
+                    DesktopSettingsHost(window, session, delays, sourceSettings)
                 }
                 fun desktopHost(drawsOverlays: Boolean) =
                     DesktopLyricsHost(
@@ -450,15 +439,6 @@ fun main(args: Array<String>) {
                     }
                     }
                     UpdateBanner(updates.update, Modifier.align(Alignment.BottomCenter))
-                    // The lyrics stay composed under a page, so they and the background carry on where they were.
-                    when (nav.at) {
-                        Destination.Lyrics -> {}
-                        Destination.Settings -> {}
-                        Destination.LyricsManager -> NavPage { LyricsManagerPage(window, lyricsLibrary, songLyrics, onClose = nav::back) }
-                        Destination.SyncDelay -> NavPage {
-                            SyncDelayPage(session, delays, analysis, { (screen.value as? Screen.Track)?.lyrics }, onClose = nav::back)
-                        }
-                    }
                 }
             }
             opts["--snap"]?.let { SnapAfter(window, File(it), ((opts["--snap-at"]?.toDouble() ?: 8.0) * 1000).toLong()) }
@@ -502,14 +482,6 @@ fun main(args: Array<String>) {
         }
         }
     }
-}
-
-/** The page `--page` names (settings, manager or sync), or the lyrics. */
-private fun startPage(name: String?) = when (name) {
-    "settings" -> Destination.Settings
-    "manager" -> Destination.LyricsManager
-    "sync" -> Destination.SyncDelay
-    else -> Destination.Lyrics
 }
 
 /** The refresh rate of the screen [window] is on, or 60 Hz when it doesn't say. */

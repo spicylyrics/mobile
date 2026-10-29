@@ -49,14 +49,13 @@ val desktopSettings: CommonAppSettings by lazy {
 /**
  * The settings pages' desktop side: the followed player's delay, the source switches, the font
  * picker and the links. The pages only a phone has (This song, translation, the floating window,
- * Advanced) and its device rows are left out, and the Lyrics Manager opens as the window's page.
+ * Advanced) and its device rows are left out, and so is the Lyrics Manager for now.
  */
 class DesktopSettingsHost(
     window: Frame?,
     private val session: MediaSession,
     private val delays: SyncDelays,
     private val sources: DesktopSourceSettings?,
-    private val openLyricsManager: () -> Unit,
 ) : SettingsHost() {
     private val platform = DesktopPlatformActions(window)
 
@@ -96,10 +95,8 @@ class DesktopSettingsHost(
     override val aboutSearchTerms: List<String> get() = ABOUT_TERMS
     override val systemName: String get() = "the app"
 
-    override fun openLyricsManagerPage(): Boolean {
-        openLyricsManager()
-        return true
-    }
+    // Until the phone's Lyrics Manager is shared.
+    override val lyricsManager: Boolean get() = false
 
     /** What the settings show of the player, read again every half second while they're open. */
     @Composable

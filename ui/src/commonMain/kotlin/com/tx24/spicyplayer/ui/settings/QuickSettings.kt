@@ -53,7 +53,6 @@ fun QuickSettingsModal(
         }
     }
     fun open(target: QuickScreen) {
-        if (target == QuickScreen.LyricsManager && host.openLyricsManagerPage()) return onDismiss()
         if (target == QuickScreen.Queue || target == QuickScreen.LyricsManager) host.quickScreenOpened(target)
         screen = target
     }
@@ -97,18 +96,24 @@ fun QuickSettingsModal(
 @Composable
 private fun MainScreen(state: SettingsState, host: SettingsHost, open: (QuickScreen) -> Unit) {
     // The screens this opens share one compact card, so the settings tuned right here keep the room.
-    Column(Modifier.fillMaxWidth().outlinedCard()) {
-        if (state.queueSize > 0) {
+    val rows = buildList<@Composable () -> Unit> {
+        if (state.queueSize > 0) add {
             GroupRow(SpicyGlyphs.Queue, "Queue", "${state.queueSize} ${if (state.queueSize == 1) "song" else "songs"}") {
                 open(QuickScreen.Queue)
             }
-            GroupDivider()
         }
         state.sourceSummary?.let { summary ->
-            GroupRow(SpicyGlyphs.Source, "Lyrics source", summary) { open(QuickScreen.Source) }
-            GroupDivider()
+            add { GroupRow(SpicyGlyphs.Source, "Lyrics source", summary) { open(QuickScreen.Source) } }
         }
-        GroupRow(SpicyGlyphs.LyricsManager, "Lyrics Manager", "Save or upload lyrics, link a folder") { open(QuickScreen.LyricsManager) }
+        if (host.lyricsManager) add {
+            GroupRow(SpicyGlyphs.LyricsManager, "Lyrics Manager", "Save or upload lyrics, link a folder") { open(QuickScreen.LyricsManager) }
+        }
+    }
+    if (rows.isNotEmpty()) Column(Modifier.fillMaxWidth().outlinedCard()) {
+        rows.forEachIndexed { i, row ->
+            if (i > 0) GroupDivider()
+            row()
+        }
     }
     host.LyricsLanguageRow()
     if (host.songDelay) SongDelayRow(state, host)

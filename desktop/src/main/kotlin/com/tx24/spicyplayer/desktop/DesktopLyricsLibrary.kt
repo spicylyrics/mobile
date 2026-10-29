@@ -148,3 +148,6 @@ class DesktopLyricsFiles(private val platform: PlatformActions, private val pare
         onDone(runCatching { File(directory, name).writeText(text) }.isSuccess)
     }
 }
+
+/** The playing song as the library keys it. */
+fun Track.asLibraryTrack() = LibraryTrack(title, artist, album, durationMs)

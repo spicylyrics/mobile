@@ -165,6 +165,9 @@ abstract class LyricsScreenHost {
     /** Whether leaving the app may shrink the lyrics into the floating window now. */
     open fun setPipAllowed(allowed: Boolean) {}
 
+    /** There's a Lyrics Manager for its own button to open. */
+    open val lyricsManager: Boolean get() = true
+
     /** Quick settings (and the queue and source buttons that open its screens) exist here. */
     open val quickSettings: Boolean get() = true
 
