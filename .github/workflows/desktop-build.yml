@@ -131,7 +131,10 @@ jobs:
       - name: Check the .deb carries skiko's native library
         run: |
           deb=$(ls desktop/build/compose/binaries/main/deb/*.deb | head -1)
-          dpkg-deb -c "$deb" | grep -q 'libskiko-linux-x64\.so$' || { echo "libskiko-linux-x64.so is missing from the .deb" >&2; exit 1; }
+          # Listed to a file first: grep -q stops reading at the first match, and the broken pipe
+          # would fail the step under pipefail.
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/deb-contents.txt"
+          grep 'libskiko-linux-x64\.so$' "$RUNNER_TEMP/deb-contents.txt" || { echo "libskiko-linux-x64.so is missing from the .deb" >&2; exit 1; }
       - name: Checksum
         run: |
           cd desktop/build/compose/binaries/main/deb
