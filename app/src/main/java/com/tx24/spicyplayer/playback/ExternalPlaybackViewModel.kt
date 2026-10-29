@@ -1487,6 +1487,10 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     fun sourceChoices(): List<SourceChoice> {
         val known = lookedUp?.let { lookupCache[it] }.orEmpty()
         val shown = shownSelection?.source?.id
+        // Sources the lookup under way is still waiting on: they have no answer yet, but were asked.
+        val checking = mutableState.value.providerAttempts
+            .filter { it.outcome == ProviderAttemptOutcome.PENDING }
+            .mapTo(HashSet()) { it.sourceId }
         val ranking = lyricsBackend.ranking()
         return lyricsBackend.descriptors.filter { ranking.asked(it.id) }
             .sortedBy { ranking.bestPlace(it.id) }
@@ -1504,7 +1508,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
                         }
                         ProviderResult.Miss -> "No lyrics for this song"
                         ProviderResult.NeedsMatch -> "Needs a Spotify link"
-                        null -> "Not asked yet"
+                        null -> if (source.id in checking) "Still checking…" else "Not asked yet"
                         else -> "Unavailable right now"
                     },
                     available = result == null || result is ProviderResult.Hit && result.payload.measuredQuality() != RemoteLyricsQuality.NONE,
