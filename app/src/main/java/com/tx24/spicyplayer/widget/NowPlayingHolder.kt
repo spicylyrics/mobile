@@ -1,5 +1,7 @@
 package com.tx24.spicyplayer.widget
 
+import android.app.Activity
+import android.app.Application
 import android.content.BroadcastReceiver
 import android.content.ComponentCallbacks
 import android.content.ComponentName
@@ -23,11 +25,13 @@ import android.media.session.MediaSessionManager
 import android.media.session.MediaSession
 import android.media.session.PlaybackState
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import androidx.core.content.ContextCompat
+import com.tx24.spicyplayer.LyricsActivity
 import com.tx24.spicyplayer.lyrics.LocalLyricsStore
 import com.tx24.spicyplayer.lyrics.LyricsState
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
@@ -56,7 +60,8 @@ import kotlinx.coroutines.launch
  * listener ([SessionAccessService]) while access is granted, and runs only while a widget is placed.
  *
  * It follows the same session as the lyrics screen ([bestSession]) on a [LyricClock] of its own,
- * and wakes only when the shown line changes, never with the screen off or the music paused.
+ * and wakes only when the shown line changes, never with the screen off, under the full-size
+ * lyrics screen or with the music paused.
  * While the lyrics screen is up, the screen's own pick is used ([offer]); otherwise
  * [BackgroundLyrics] looks the song up, and with the screen off only once it's on again
  * ([ScreenOffLookup]). Main thread only.
@@ -124,7 +129,8 @@ internal object NowPlayingHolder {
     private var appShowing = false
     /** Lyrics the screen offered for a song this holder hasn't seen yet. */
     private var pendingOffer: Pair<String, LyricsState>? = null
-    private var screenOn = true
+    /** Nothing is sent with the screen off or under the full-size lyrics screen. */
+    private val visibility = WidgetVisibility()
     /** No lookups for songs that change with the screen off: the current one is looked up once it's on. */
     private val screenOffLookup = ScreenOffLookup()
     private var shown: WidgetLines? = null
@@ -139,18 +145,49 @@ internal object NowPlayingHolder {
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            screenOn = intent.action == Intent.ACTION_SCREEN_ON
-            if (!screenOn) {
+            visibility.screenOn = intent.action == Intent.ACTION_SCREEN_ON
+            if (!visibility.screenOn) {
                 main.removeCallbacks(tick)
                 return
             }
-            refreshSessions()
+            catchUp()
             // Only when that didn't find a new song, which is looked up on its own.
             if (screenOffLookup.screenOn() && !appShowing && leads.isEmpty() && lookupJob?.isActive != true) lookUpSong()
         }
     }
 
     private val tick = Runnable { refreshSessions() }
+
+    /** The lyrics screen in front at full size hides the home screen; in the floating window it doesn't. */
+    private val activityCallbacks = object : Application.ActivityLifecycleCallbacks {
+        override fun onActivityResumed(activity: Activity) {
+            if (activity !is LyricsActivity) return
+            val floating = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && activity.isInPictureInPictureMode
+            setAppCovering(!floating)
+        }
+
+        override fun onActivityPaused(activity: Activity) {
+            if (activity is LyricsActivity) setAppCovering(false)
+        }
+
+        override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+        override fun onActivityStarted(activity: Activity) = Unit
+        override fun onActivityStopped(activity: Activity) = Unit
+        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+        override fun onActivityDestroyed(activity: Activity) = Unit
+    }
+
+    private fun setAppCovering(covering: Boolean) {
+        if (visibility.appCovering == covering) return
+        visibility.appCovering = covering
+        if (covering) main.removeCallbacks(tick) else catchUp()
+    }
+
+    /** Seen again: reads the player afresh (with the screen back on, the cover too) and sends what was missed in full. */
+    private fun catchUp() {
+        refreshSessions()
+        if (visibility.missed) show(full = true)
+    }
 
     /** Whether the screen was wide when the widgets were last drawn ([LyricsWidget.screenDp]). */
     private var wide: Boolean? = null
@@ -191,9 +228,10 @@ internal object NowPlayingHolder {
         lookup = BackgroundLyrics(app)
         outputProfiles = AudioOutputProfiles(app)
         songDelays = SongDelays(app)
-        screenOn = app.getSystemService(PowerManager::class.java)?.isInteractive ?: true
+        visibility.screenOn = app.getSystemService(PowerManager::class.java)?.isInteractive ?: true
         val screen = IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_SCREEN_OFF) }
         ContextCompat.registerReceiver(app, screenReceiver, screen, ContextCompat.RECEIVER_NOT_EXPORTED)
+        (app as? Application)?.registerActivityLifecycleCallbacks(activityCallbacks)
         wide = LyricsWidget.screenDp(app).let { (width, height) -> width > height }
         app.registerComponentCallbacks(configCallbacks)
         connect(app)
@@ -219,6 +257,8 @@ internal object NowPlayingHolder {
         val app = context ?: return
         main.removeCallbacks(tick)
         runCatching { app.unregisterReceiver(screenReceiver) }
+        (app as? Application)?.unregisterActivityLifecycleCallbacks(activityCallbacks)
+        visibility.appCovering = false
         app.unregisterComponentCallbacks(configCallbacks)
         runCatching { sessionManager?.removeOnActiveSessionsChangedListener(sessionsListener) }
         controller?.unregisterCallback(controllerCallback)
@@ -362,7 +402,8 @@ internal object NowPlayingHolder {
         if (durationChanged) durationMs = reportedDuration
         // A manual Spotify ID holds while the song's length agrees, so the length coming late can bring or drop one.
         if (durationChanged && !newSong) recheckSpotifyId(metadata)
-        val coverChanged = refreshCover(metadata)
+        // With the screen off the cover waits: it's read again once the screen is on ([catchUp]).
+        val coverChanged = visibility.screenOn && refreshCover(metadata)
         val wasPlaying = clock.isPlaying
         report(session, newSong)
         show(full = newSong || coverChanged || durationChanged || wasPlaying != clock.isPlaying)
@@ -408,7 +449,7 @@ internal object NowPlayingHolder {
         val request = request?.takeIf { it.title.isNotBlank() && it.artist.isNotBlank() } ?: return
         val key = songKey ?: return
         val lookup = lookup ?: return
-        if (!screenOffLookup.request(screenOn)) return
+        if (!screenOffLookup.request(visibility.screenOn)) return
         val romanize = wantsRomanization
         val manual = manualSpotifyId
         lookupJob?.cancel()
@@ -537,16 +578,18 @@ internal object NowPlayingHolder {
 
     /**
      * Sends the widget its lines if they changed, and the progress bar's step ([full]:
-     * everything, cover and buttons too), then sleeps until the next line or step.
+     * everything, cover and buttons too), then sleeps until the next line or step. While the
+     * widget can't be seen ([visibility]) it sends nothing and doesn't wake; the next send is full.
      */
     private fun show(full: Boolean = false) {
         main.removeCallbacks(tick)
         val app = context ?: return
+        val sendFull = visibility.send(full) ?: return
         val position = positionMs()
         val lines = notice?.let { WidgetLines.notice(it) }
             ?: if (synced) WidgetLines.at(leads, position) else WidgetLines.unsynced(leads)
         val playing = clock.isPlaying
-        if (full || lines != shown || (wantsProgress && playing)) {
+        if (sendFull || lines != shown || (wantsProgress && playing)) {
             shown = lines
             val content = LyricsWidget.Content(
                 title = title,
@@ -562,10 +605,10 @@ internal object NowPlayingHolder {
                 duet = leads.any { it.oppositeAligned },
             )
             last = content
-            LyricsWidget.show(app, content, full)
+            LyricsWidget.show(app, content, sendFull)
         }
         // Paused, every player's own callbacks wake it again ([follow]).
-        if (!screenOn || !playing) return
+        if (!playing) return
         val speed = clock.anchor.speed.takeIf { it > 0f } ?: 1f
         val toLine = lines.changesAtMs?.let { ((it - position) / speed).toLong() }
         val wait = listOfNotNull(toLine, PROGRESS_STEP_MS.takeIf { wantsProgress }).minOrNull() ?: MAX_SLEEP_MS
