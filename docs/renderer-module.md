@@ -87,7 +87,7 @@ The next step after the renderer: a `:ui` module (same targets, same package nam
 - `nowplaying/` `CompactHeaderMetrics`, `LandscapeMetrics`, `HeaderMarquee`, `StageArt`
 - `background/CoverColors.kt`; `settings/SystemBarsMode.kt`
 
-`components/SettingsSkeleton.kt` stayed in `:app`: it draws its rows with `outlinedCard` from `SettingsControls.kt`, so it moves with the settings controls. The glyphs `:app` draws (`SpicyGlyphs`, `SkipGlyph`, `PlayPauseGlyph`) went from `internal` to public to be reachable across the module line. No drawables were needed then.
+`components/SettingsSkeleton.kt` moved later with the settings controls (below). The glyphs `:app` draws (`SpicyGlyphs`, `SkipGlyph`, `PlayPauseGlyph`) went from `internal` to public to be reachable across the module line. No drawables were needed then.
 
 **Moved with CMP resources:** `:ui` has Compose Multiplatform resources in `src/commonMain/composeResources`, read as `Res.drawable.*` from the fixed package `com.tx24.spicyplayer.ui.resources`. `components/SpicyBrand.kt` and `SpicyToast.kt` moved there, drawing the brand glyph from `Res.drawable.app_glyph`. The intro screen still draws `R.drawable.app_glyph`, so the vector is in both modules for now; `BrandGlyphResourceTest` keeps the two files identical. Drop the `:app` copy when the intro screen moves.
 
@@ -98,9 +98,9 @@ The next step after the renderer: a `:ui` module (same targets, same package nam
 **Movable behind an interface:**
 - The lyrics screen composable in `MainActivity.kt` (`LyricsApp` and below): the **now-playing state + transport** below, plus the settings store. Its components moved in step 3 (below); `LyricsApp` itself is still the Android shell's glue.
 - `settings/AppSettings.kt` (`SharedPreferences`): a **settings store**. Done in step 2, below.
-- `settings/` `SettingsScreen`, `SettingsPages`, `QuickSettings`, `Queue`, `CustomSources`, `DelayCalibration`, `HapticsSettings`, `SourcePicker`, `TranslationSettings`, `spotifysearch/SpotifySearch.kt`: the same **app-state interface** over the view model's lyrics/source/translation actions, plus **platform actions** (open a URL, open the system's notification-access or app settings, pick a file or folder).
+- `settings/` `SettingsScreen`, the settings-only pages of `SettingsPages`, `QuickSettings`, with `components/SpicyModal.kt`, `SettingsControls.kt` and `SettingsSkeleton.kt`: **moved** to `:ui` behind `SettingsHost`/`SettingsState`. Back, predictive back, the pop-up shadow, the menus' root height and accent folding are expect/actual in `components/Platform.kt`; on Android they make the same calls as before. Still in `:app` as host slots: `Queue`, `CustomSources`, `DelayCalibration`, `HapticsSettings`, `SourcePicker`, `TranslationSettings`, the This song, Sources and Advanced pages, and `spotifysearch/SpotifySearch.kt`.
 - Images in the header, queue and search (Coil 2): an **image loader** like the renderer's `LyricsImageLoader`, or Coil 3 (multiplatform) on both platforms once the phone is checked on it.
-- `components/SpicyModal.kt`, `SettingsControls.kt`, `background/SpicySessionBackground.kt`: `Build.VERSION` checks become a **platform capabilities** expect (backdrop blur, `RenderEffect`).
+- `background/SpicySessionBackground.kt`: `Build.VERSION` checks become a **platform capabilities** expect (backdrop blur, `RenderEffect`).
 - `intro/IntroScreen.kt`: its `R.drawable` vectors move to **CMP resources** in `:ui` (strings too, once there are any to translate; the UI's text is in Kotlin today). It also reads `AppSettings`, so it waits for the settings store.
 - Touch haptics (`ProvideTouchHaptics`, the groove haptics): a **haptics** interface, a no-op on desktop.
 - `background/StillBackgrounds.kt`, `LegacyBackground.kt`, `CanvasAmbient.kt`: Android `Bitmap` blur and grading become a **blurred-image** expect (Skia's blur on desktop), the same split as Kawarp's hosts.

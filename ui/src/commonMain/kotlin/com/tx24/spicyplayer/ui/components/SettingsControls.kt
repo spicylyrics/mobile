@@ -511,7 +511,8 @@ private fun SelectMenu(
     val menu = remember { MutableTransitionState(false) }
     // A tap on the pill while open lands after the popup has closed itself on touch-down;
     // without this it would open again at once.
-    var closedAt by remember { mutableStateOf(0L) }
+    // Long enough ago that the first tap is never taken for a reopen, however new the clock is.
+    var closedAt by remember { mutableStateOf(-REOPEN_GUARD_MS) }
     val close = {
         if (menu.targetState) closedAt = controlsClock.elapsedNow().inWholeMilliseconds
         menu.targetState = false
