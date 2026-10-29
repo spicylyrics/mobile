@@ -1134,12 +1134,25 @@ private fun TimelineRow(controls: PlaybackControlsState, shown: () -> Float, mod
     var dragFraction by remember { mutableStateOf<Float?>(null) }
     var positionMs by remember { mutableLongStateOf(controls.positionMs()) }
     val shownUpdated by rememberUpdatedState(shown)
-    LaunchedEffect(controls.positionMs) {
+    LaunchedEffect(controls.positionMs, controls.isPlaying) {
+        positionMs = controls.positionMs()
         while (true) {
+            if (!controls.isPlaying) {
+                // Paused, the bar only moves on a seek: a few reads a second, no frames, catch one
+                // from the player (a seek from here reads at once).
+                delay(HIDDEN_UPDATE_MS)
+                positionMs = controls.positionMs()
+                continue
+            }
             // Faded out, nobody sees the bar move: a few updates a second keep it close.
             if (shownUpdated() == 0f) delay(HIDDEN_UPDATE_MS)
             withFrameMillis { positionMs = controls.positionMs() }
         }
+    }
+    // Seeks, and shows where to at once rather than at the next read.
+    fun seek(toMs: Long) {
+        current.onSeek(toMs)
+        positionMs = current.positionMs()
     }
     val duration = controls.durationMs.coerceAtLeast(0L)
     val durationUpdated by rememberUpdatedState(duration)
@@ -1173,7 +1186,7 @@ private fun TimelineRow(controls: PlaybackControlsState, shown: () -> Float, mod
                         else -> return@onKeyEvent false
                     }
                     if (seekable && event.type == KeyEventType.KeyDown) {
-                        current.onSeek((current.positionMs() + delta).coerceIn(0L, duration))
+                        seek((current.positionMs() + delta).coerceIn(0L, duration))
                     }
                     seekable
                 }
@@ -1196,7 +1209,7 @@ private fun TimelineRow(controls: PlaybackControlsState, shown: () -> Float, mod
                         }
                         if (tapped) {
                             haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                            current.onSeek((down.position.x / size.width * duration).toLong().coerceIn(0L, duration))
+                            seek((down.position.x / size.width * duration).toLong().coerceIn(0L, duration))
                         }
                     }
                 }
@@ -1209,7 +1222,7 @@ private fun TimelineRow(controls: PlaybackControlsState, shown: () -> Float, mod
                         },
                         onDragEnd = {
                             haptics.performHapticFeedback(HapticFeedbackType.GestureEnd)
-                            dragFraction?.let { current.onSeek((it * duration).toLong()) }
+                            dragFraction?.let { seek((it * duration).toLong()) }
                             dragFraction = null
                         },
                         onDragCancel = { dragFraction = null },
