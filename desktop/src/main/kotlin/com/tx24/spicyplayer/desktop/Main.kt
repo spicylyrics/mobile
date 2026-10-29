@@ -308,6 +308,7 @@ fun main(args: Array<String>) {
         ) {
             // Back from another window or a page, the lyrics jump to the line being sung, wherever they were scrolled.
             OnWindowFocus(window) { mainLyricsView.scrollToActive() }
+            LaunchedEffect(window) { DebugControl.startIfAsked(window) }
             LaunchedEffect(nav.at) { if (nav.at == Destination.Lyrics) mainLyricsView.scrollToActive() }
             DisposableEffect(window) {
                 refreshRate = refreshRateOf(window)

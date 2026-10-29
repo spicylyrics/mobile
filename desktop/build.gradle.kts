@@ -116,8 +116,9 @@ compose.desktop {
             description = "Word-synced lyrics for whatever your computer is playing"
             vendor = "TX24"
             appResourcesRootDir = layout.buildDirectory.dir("appResources")
-            // suggestRuntimeModules, plus jdk.crypto.ec, which jdeps can't see but TLS needs.
-            modules("java.instrument", "java.sql", "jdk.unsupported", "jdk.crypto.ec")
+            // suggestRuntimeModules, plus jdk.crypto.ec, which jdeps can't see but TLS needs, and
+            // jdk.httpserver for the debug port (-Dspicy.debugPort).
+            modules("java.instrument", "java.sql", "jdk.unsupported", "jdk.crypto.ec", "jdk.httpserver")
             windows {
                 iconFile = file("packaging/icon.ico")
                 menuGroup = "Spicy Lyrics"
@@ -146,7 +147,12 @@ compose.desktop {
 
 // The Compose plugin registers these after the script runs.
 tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(helperResources) }
-tasks.matching { it.name == "run" }.configureEach { dependsOn(gsmtcHelper) }
+tasks.matching { it.name == "run" }.configureEach {
+    dependsOn(gsmtcHelper)
+    // `-Pspicy.debugPort=9300` and the other `spicy.*` switches reach the app as system properties.
+    val switches = providers.gradlePropertiesPrefixedBy("spicy.")
+    (this as JavaExec).doFirst { switches.get().forEach { (k, v) -> systemProperty(k, v) } }
+}
 
 tasks.register<JavaExec>("console") {
     description = "Prints the current line of Windows' media session, for measuring each player."
