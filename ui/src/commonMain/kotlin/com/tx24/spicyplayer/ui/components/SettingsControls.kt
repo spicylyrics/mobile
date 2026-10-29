@@ -1,5 +1,10 @@
 package com.tx24.spicyplayer.ui.components
 
+import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.ui.composed
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.animation.AnimatedVisibility
@@ -228,6 +233,12 @@ fun CollapsingColumn(header: @Composable () -> Unit, modifier: Modifier = Modifi
 
 @Composable
 fun SectionTitle(text: String, divider: Boolean = true) {
+    // On cards, a quiet caption over its card instead.
+    if (LocalRowCards.current != null) return Text(
+        text,
+        style = SpicyType.Caption.copy(color = SpicyColors.TextSecondary, fontWeight = FontWeight.SemiBold, letterSpacing = 0.01.em),
+        modifier = Modifier.padding(start = 4.dp, top = SpicySpacing.S6, bottom = SpicySpacing.S2),
+    )
     Column(Modifier.fillMaxWidth()) {
         if (divider) Box(Modifier.padding(top = SpicySpacing.S2).fillMaxWidth().height(1.dp).background(SpicyColors.Hairline))
         Text(
@@ -313,12 +324,18 @@ private fun RowFrame(
         label = "rowPress",
     )
     val bounds = remember { BoundsHolder() }
+    val cards = LocalRowCards.current
+    val key = remember { Any() }
+    if (cards != null) DisposableEffect(cards) { onDispose { cards.rows.remove(key) } }
     val frame = modifier
         .fillMaxWidth()
-        .onGloballyPositioned { bounds.rect = it.boundsInRoot() }
+        .onGloballyPositioned {
+            bounds.rect = it.boundsInRoot()
+            cards?.rows?.set(key, Rect(it.positionInRoot(), it.size.toSize()))
+        }
         .clip(RoundedCornerShape(SpicyRadii.Md))
         .background(background)
-        .padding(SpicySpacing.S3)
+        .then(if (cards != null) Modifier.padding(horizontal = 16.dp, vertical = 13.dp) else Modifier.padding(SpicySpacing.S3))
         .alpha(if (enabled) 1f else DISABLED_ALPHA)
     CompositionLocalProvider(LocalRowBounds provides { bounds.rect }) {
         if (stacked) {
@@ -335,12 +352,15 @@ private fun RowFrame(
     }
 }
 
+/** Whether settings rows lead with their icon; the floating panel's rows go without. */
+val LocalRowIcons = staticCompositionLocalOf { true }
+
 /** A row's label over its description, after an optional icon. */
 @Composable
 fun RowLabel(label: String, description: String?, modifier: Modifier = Modifier, icon: ImageVector? = null) {
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(SpicySpacing.S3)) {
         // Level with the label's first line, however long the description runs.
-        if (icon != null) Icon(icon, null, tint = SpicyColors.TextSecondary, modifier = Modifier.padding(top = 1.dp).size(20.dp))
+        if (icon != null && LocalRowIcons.current) Icon(icon, null, tint = SpicyColors.TextSecondary, modifier = Modifier.padding(top = 1.dp).size(20.dp))
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(label, style = SpicyType.Body.copy(fontWeight = FontWeight.Medium))
             if (description != null) Text(description, style = DescriptionStyle)
@@ -1074,3 +1094,46 @@ const val DISABLED_ALPHA = 0.45f
 
 /** A monotonic clock for the menus' reopen guard. */
 private val controlsClock = kotlin.time.TimeSource.Monotonic.markNow()
+
+/**
+ * Rows drawn on cards, as the floating panel's pages are: each row under a [LocalRowCards] reports
+ * where it is, and [rowCards] draws one rounded card behind each run of rows that touch, with a
+ * hairline between them from the text in. The pages themselves stay as they are.
+ */
+class RowCards {
+    internal val rows = mutableStateMapOf<Any, Rect>()
+    internal var origin by mutableStateOf(Offset.Zero)
+
+    /** The rows, top to bottom, in runs that touch. */
+    internal fun runs(slack: Float): List<List<Rect>> {
+        val runs = mutableListOf<MutableList<Rect>>()
+        rows.values.sortedBy { it.top }.forEach { row ->
+            val last = runs.lastOrNull()?.last()
+            if (last != null && row.top - last.bottom <= slack && kotlin.math.abs(row.left - last.left) < 1f) runs.last() += row
+            else runs += mutableListOf(row)
+        }
+        return runs
+    }
+}
+
+/** The rows below report to these cards; null leaves them plain. */
+val LocalRowCards = staticCompositionLocalOf<RowCards?> { null }
+
+/** Draws [cards] behind this content, which holds the rows. */
+fun Modifier.rowCards(cards: RowCards, fill: Color, line: Color): Modifier = this
+    .onGloballyPositioned { cards.origin = it.positionInRoot() }
+    .drawBehind {
+        val radius = CornerRadius(SpicyRadii.Md.toPx())
+        val hair = 1.dp.toPx()
+        val inset = 16.dp.toPx()
+        cards.runs(slack = 2.dp.toPx()).forEach { run ->
+            val top = run.first().top - cards.origin.y
+            val left = run.first().left - cards.origin.x
+            val size = Size(run.first().width, run.last().bottom - run.first().top)
+            drawRoundRect(fill, Offset(left, top), size, radius)
+            drawRoundRect(line, Offset(left + hair / 2, top + hair / 2), Size(size.width - hair, size.height - hair), radius, style = Stroke(hair))
+            run.drop(1).forEach { row ->
+                drawRect(line, Offset(left + inset, row.top - cards.origin.y), Size(size.width - inset, hair))
+            }
+        }
+    }

@@ -1,5 +1,19 @@
 package com.tx24.spicyplayer.ui.settings
 
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeInputScale
+import com.tx24.spicyplayer.ui.theme.LocalSpicyPalette
+import com.tx24.spicyplayer.ui.components.drawBrandMark
+import com.tx24.spicyplayer.ui.components.drawBrandRamp
+import com.tx24.spicyplayer.ui.components.rememberBrandGlyph
+import com.tx24.spicyplayer.ui.components.SpicyBrandLine
+import com.tx24.spicyplayer.ui.components.modalShadow
+import com.tx24.spicyplayer.ui.components.rowCards
+import com.tx24.spicyplayer.ui.components.LocalRowCards
+import com.tx24.spicyplayer.ui.components.RowCards
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -62,6 +76,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import com.tx24.spicyplayer.ui.components.LocalRowIcons
 import com.tx24.spicyplayer.ui.components.GlassButton
 import com.tx24.spicyplayer.ui.components.SpicySearchBar
 import com.tx24.spicyplayer.ui.components.focusRing
@@ -94,22 +114,36 @@ internal fun FloatingSettings(
     val pages = remember(host) { SettingsPage.entries.filter { it.parent == null && host.hasPage(it) } }
     // Null for the About card, the list's last entry.
     var selected by rememberSaveable { mutableStateOf<SettingsPage?>(pages.firstOrNull()) }
-    Box(
+    val backdrop = LocalSettingsBackdrop.current
+    val brand = LocalSpicyPalette.current.brand
+    val glyph = rememberBrandGlyph()
+    val cards = remember { RowCards() }
+    BoxWithConstraints(
         Modifier.fillMaxSize()
             // A click beside the panel closes it.
             .clickable(remember { MutableInteractionSource() }, indication = null, onClick = onClose)
             .padding(contentPadding),
         contentAlignment = Alignment.Center,
     ) {
+        // A fixed size, so switching pages never resizes it, and the screen shows around it.
+        val width = minOf(PANEL_MAX_WIDTH, maxWidth * PANEL_WIDTH_SHARE)
+        val height = minOf(PANEL_MAX_HEIGHT, maxHeight * PANEL_HEIGHT_SHARE)
         Row(
             Modifier
-                // A fixed size, so switching pages never resizes it.
-                .fillMaxWidth(PANEL_WIDTH_SHARE)
-                .widthIn(max = PANEL_MAX_WIDTH)
-                .fillMaxHeight(PANEL_HEIGHT_SHARE)
-                .heightIn(max = PANEL_MAX_HEIGHT)
+                .size(width, height)
+                .modalShadow()
                 .clip(PANEL_SHAPE)
-                .background(PANEL_FILL)
+                // Glass: the lyrics blurred behind it, under the theme's tint, its ramp and the mark.
+                .then(
+                    if (backdrop != null) Modifier.hazeEffect(backdrop, panelGlass(brand?.fieldDeep)) { inputScale = HazeInputScale.Fixed(BACKDROP_INPUT_SCALE) }
+                    else Modifier.background(PANEL_FILL),
+                )
+                .drawBehind {
+                    brand ?: return@drawBehind
+                    drawBrandRamp(brand, fromAlpha = 0.18f, toAlpha = 0.32f)
+                    val markWidth = size.width * 0.45f
+                    drawBrandMark(glyph, brand.tint, alpha = 0.16f, width = markWidth, right = -markWidth * 0.3f, top = -markWidth * 0.35f, degrees = -14f)
+                }
                 .border(1.dp, SpicyColors.Hairline, PANEL_SHAPE)
                 // The panel takes its clicks; one beside it closes.
                 .clickable(remember { MutableInteractionSource() }, indication = null) {},
@@ -119,9 +153,10 @@ internal fun FloatingSettings(
                     .padding(start = 12.dp, end = 12.dp, top = 22.dp, bottom = SpicySpacing.S4),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
+                SpicyBrandLine(Modifier.padding(start = 10.dp, bottom = 2.dp), name = host.appName)
                 Text(
                     "Settings",
-                    style = SpicyType.Headline.copy(fontWeight = FontWeight.Bold),
+                    style = PANEL_TITLE,
                     modifier = Modifier.padding(start = 10.dp, bottom = SpicySpacing.S3),
                 )
                 SpicySearchBar(query, onQueryChange, Modifier.fillMaxWidth().padding(bottom = SpicySpacing.S2))
@@ -132,17 +167,26 @@ internal fun FloatingSettings(
                             selected = page
                         }
                     }
-                }
-                Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = SpicySpacing.S2).height(1.dp).background(SpicyColors.Hairline))
-                SidebarItem(Icons.Rounded.Info, "About", selected = query.isBlank() && selected == null) {
-                    onQueryChange("")
-                    selected = null
+                    Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = SpicySpacing.S2).height(1.dp).background(SpicyColors.Hairline))
+                    SidebarItem(Icons.Rounded.Info, "About", selected = query.isBlank() && selected == null) {
+                        onQueryChange("")
+                        selected = null
+                    }
                 }
             }
             Box(Modifier.width(1.dp).fillMaxHeight().background(SpicyColors.Hairline))
             Column(Modifier.weight(1f).fillMaxHeight()) {
+                // A new scroll for each page, so a page opens at its top.
+                val scroll = key(query.isBlank(), selected) { rememberScrollState() }
+                val hairline = SpicyColors.Hairline
                 Row(
-                    Modifier.fillMaxWidth().padding(start = SpicySpacing.S5, end = SpicySpacing.S3, top = SpicySpacing.S3),
+                    Modifier.fillMaxWidth()
+                        .drawBehind {
+                            // No divider at rest; a hairline once the page scrolls beneath.
+                            if (scroll.value > 0) drawRect(hairline, Offset(0f, size.height - 1.dp.toPx()), Size(size.width, 1.dp.toPx()))
+                        }
+                        .padding(start = 32.dp, end = 18.dp, top = 22.dp, bottom = 14.dp)
+                        .heightIn(min = 34.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
@@ -150,33 +194,48 @@ internal fun FloatingSettings(
                             query.isNotBlank() -> "Search"
                             else -> selected?.path ?: "About"
                         },
-                        style = SpicyType.Headline,
+                        style = PANEL_TITLE,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    GlassButton(onClick = onClose, contentDescription = "Close settings", size = 36.dp) {
-                        Icon(Icons.Rounded.Close, null, tint = SpicyColors.TextPrimary, modifier = Modifier.size(20.dp))
-                    }
+                    CloseButton(onClose)
                 }
                 // A page opened from a row on another shows in place of it.
-                CompositionLocalProvider(LocalOpenSettingsPage provides { selected = it }) {
+                CompositionLocalProvider(LocalOpenSettingsPage provides { selected = it }, LocalRowIcons provides false, LocalRowCards provides cards) {
                     key(query.isBlank(), selected) {
                         Column(
-                            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                                .padding(horizontal = SpicySpacing.S5, vertical = SpicySpacing.S3),
+                            Modifier.fillMaxSize().verticalScroll(scroll)
+                                .padding(start = 32.dp, end = 32.dp, top = SpicySpacing.S2, bottom = 32.dp)
+                                .rowCards(cards, fill = SpicyColors.TintBg, line = SpicyColors.Hairline),
                         ) {
                             when {
                                 query.isNotBlank() -> SearchResults(query, state, host, settings, onOpenLyricsManager, onOpenSpotifySearch)
                                 selected == null -> host.AboutCard()
                                 else -> PageContent(selected!!, state, host, settings, onOpenLyricsManager, onOpenSpotifySearch)
                             }
-                            Spacer(Modifier.height(SpicySpacing.S6))
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** The pane's close button: a small tinted pill. */
+@Composable
+private fun CloseButton(onClick: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    Box(
+        Modifier.size(30.dp).clip(RoundedCornerShape(50))
+            .background(if (hovered) SpicyColors.TintBgPressed else SpicyColors.TintBg)
+            .hoverable(interaction)
+            .focusRing(RoundedCornerShape(50))
+            .clickable(interaction, indication = null, role = Role.Button, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Icons.Rounded.Close, "Close settings", tint = if (hovered) SpicyColors.TextPrimary else SpicyColors.TextSecondary, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -232,6 +291,9 @@ private fun pageIcon(page: SettingsPage, host: SettingsHost): ImageVector = when
     SettingsPage.Advanced -> Icons.Rounded.Tune
 }
 
+/** The panel's titles: 24, bold, set a little tight. */
+private val PANEL_TITLE @Composable get() = SpicyType.Title.copy(fontSize = 24.sp, lineHeight = 1.15.em, letterSpacing = (-0.025).em)
+
 private val PANEL_MAX_WIDTH = 940.dp
 private val PANEL_MAX_HEIGHT = 700.dp
 private const val PANEL_WIDTH_SHARE = 0.94f
@@ -242,4 +304,13 @@ private val PANEL_SHAPE = RoundedCornerShape(SpicyRadii.Lg)
 private val ITEM_SHAPE = RoundedCornerShape(SpicyRadii.Md)
 private val PANEL_FILL = Color(0xF2141418)
 // A heavier, flat tint than the page beside it: structure, not a surface to read.
-private val SIDEBAR_FILL = Color.Black.copy(alpha = 0.42f)
+private val SIDEBAR_FILL = Color.Black.copy(alpha = 0.22f)
+
+/** The panel's glass: a strong blur under the theme's deep colour (or plain dark), most of the way opaque. */
+private fun panelGlass(deep: Color?) = HazeStyle(
+    backgroundColor = Color.Black,
+    tints = listOf(HazeTint((deep ?: Color(0xFF16161A)).copy(alpha = 0.78f))),
+    blurRadius = 40.dp,
+    noiseFactor = 0f,
+    fallbackTint = HazeTint(PANEL_FILL),
+)

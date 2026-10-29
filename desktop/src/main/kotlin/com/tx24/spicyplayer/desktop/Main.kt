@@ -395,6 +395,7 @@ fun main(args: Array<String>) {
                     // Drawn at the size a phone held sideways would show it, whatever the window's size
                     // and the system's scaling, then sized by the Interface Scale setting.
                     val system = LocalDensity.current
+                    SideEffect { settingsHost.density = Density(system.density * desktopSettings.interfaceScale / 100f, system.fontScale) }
                     val targetScale = lyricsScreenScale(maxWidth.value, maxHeight.value, desktopSettings.interfaceScale)
                     var scale by remember { mutableStateOf(targetScale) }
                     LaunchedEffect(targetScale) {

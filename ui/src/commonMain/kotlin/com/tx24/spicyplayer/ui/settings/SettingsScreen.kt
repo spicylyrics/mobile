@@ -1,5 +1,6 @@
 package com.tx24.spicyplayer.ui.settings
 
+import androidx.compose.ui.platform.LocalWindowInfo
 import com.tx24.spicyplayer.ui.components.PlatformBackHandler
 import com.tx24.spicyplayer.ui.components.PlatformPredictiveBackHandler
 import kotlin.math.roundToInt
@@ -298,6 +299,9 @@ fun SettingsScreen(
     // The floating panel's search is always in view, so back clears it before closing.
     PlatformBackHandler(enabled = host.floatingPanel && query.isNotEmpty()) { query = "" }
 
+    // A wide window gets one floating panel, glass of its own, so the screen around it only dims.
+    val floating = host.floatingPanel &&
+        with(LocalDensity.current) { LocalWindowInfo.current.containerSize.width.toDp() } >= FLOATING_SETTINGS_MIN_WIDTH
     Box(
         Modifier
             .fillMaxSize()
@@ -313,7 +317,9 @@ fun SettingsScreen(
                 .matchParentSize()
                 .graphicsLayer { alpha = open.value * (1f - BACKDROP_PEEK * backSwipe.value) * (1f - peekAmount) }
                 .then(
-                    if (backdrop != null) {
+                    if (floating) {
+                        Modifier.background(Color.Black.copy(alpha = FLOATING_DIM))
+                    } else if (backdrop != null) {
                         Modifier.hazeEffect(backdrop, SettingsBackdrop) {
                             // Blurs a third-size copy: the backdrop is soft anyway, and a full-size
                             // blur of the whole screen every frame costs the phone about half its
@@ -328,7 +334,7 @@ fun SettingsScreen(
         )
         // The brand's glass: a deep tint, its ramp, and the logo cropped big off the top-right
         // corner, fading with the dim.
-        palette.brand?.let { brand ->
+        palette.brand?.takeIf { !floating }?.let { brand ->
             Box(
                 Modifier
                     .matchParentSize()
@@ -385,7 +391,7 @@ fun SettingsScreen(
             val width = constraints.maxWidth.toFloat()
             // How far the page above level [index] has slid in: it moves this one aside.
             fun covered(index: Int): Float = stack.getOrNull(index)?.shift?.value ?: 0f
-            if (host.floatingPanel && maxWidth >= FLOATING_SETTINGS_MIN_WIDTH) {
+            if (floating) {
                 FloatingSettings(state, host, settings, query, { query = it }, contentPadding, ::close, onOpenLyricsManager, onOpenSpotifySearch)
             } else {
                 // Every page stays built under the one above it, so going back doesn't wait on rebuilding it.
@@ -914,3 +920,6 @@ private val PEEK_PLATE = Color(0xE0141414)
 /** A monotonic clock for the peek button's tap-or-hold. */
 private val screenClock = kotlin.time.TimeSource.Monotonic.markNow()
 private fun screenUptimeMs(): Long = screenClock.elapsedNow().inWholeMilliseconds
+
+/** How dark the screen around the floating panel goes. */
+private const val FLOATING_DIM = 0.35f

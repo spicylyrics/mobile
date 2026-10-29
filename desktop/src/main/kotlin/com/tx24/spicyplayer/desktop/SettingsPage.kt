@@ -16,7 +16,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.setValue
 import com.tx24.spicyplayer.network.data.LyricsSourceSettings
 import com.tx24.spicyplayer.network.data.SourceRanking
 import com.tx24.spicyplayer.ui.components.LocalSettingsQuery
@@ -58,6 +60,13 @@ class DesktopSettingsHost(
 ) : SettingsHost() {
     private val platform = DesktopPlatformActions(window)
 
+    /**
+     * The density settings are drawn at: the window's own, times the Interface Scale setting,
+     * without the lyrics screen's fit to a small window, so the panel keeps its size in any
+     * window. Null until the window sets it.
+     */
+    var density by mutableStateOf<Density?>(null)
+
     /** What the settings show of the player; [rememberState] keeps it current while they're open. */
     private val state = mutableStateOf(SettingsState())
 
@@ -79,6 +88,7 @@ class DesktopSettingsHost(
     }
 
     override val floatingPanel: Boolean get() = true
+    override val appName: String get() = "Spicy Lyrics Desktop"
     override val phoneDevice: Boolean get() = false
     override val lockScreen: Boolean get() = false
     override val queueAndSource: Boolean get() = false

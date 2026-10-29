@@ -59,6 +59,9 @@ abstract class SettingsHost {
     /** Whether [page] is one of the settings here. */
     open fun hasPage(page: SettingsPage): Boolean = true
 
+    /** The app's name, over the floating panel's title. */
+    open val appName: String get() = "Spicy Lyrics Mobile"
+
     /** In a wide window, settings are one panel with the pages down its side ([FloatingSettings]). */
     open val floatingPanel: Boolean get() = false
 

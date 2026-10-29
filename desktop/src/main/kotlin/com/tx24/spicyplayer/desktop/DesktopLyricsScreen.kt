@@ -1,5 +1,7 @@
 package com.tx24.spicyplayer.desktop
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.CompositionLocalProvider
 import com.tx24.spicyplayer.ui.settings.QuickSettingsModal
 import com.tx24.spicyplayer.ui.settings.SettingsScreen
 import androidx.compose.runtime.Composable
@@ -95,7 +97,9 @@ class DesktopLyricsHost(
     override fun Overlays(context: LyricsScreenContext) {
         if (!drawsOverlays) return
         // Settings and quick settings over the lyrics, as on the phone. Esc is their back ([DesktopBack]).
-        if (overlays.settings || overlays.quickSettings) {
+        if (overlays.settings || overlays.quickSettings) CompositionLocalProvider(
+            LocalDensity provides (settingsHost.density ?: LocalDensity.current),
+        ) {
             val state = settingsHost.rememberState()
             if (overlays.settings) SettingsScreen(
                 state = state,
