@@ -21,6 +21,7 @@ import org.jetbrains.skia.FilterTileMode
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageFilter
 import org.jetbrains.skia.ImageInfo
+import org.jetbrains.skia.Matrix33
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.Surface
@@ -151,20 +152,24 @@ private inline fun DrawScope.drawMask(layout: TextLayoutResult, topLeft: Offset,
     paint.color = Color.White
     paint.alpha = 1f
     setUp(paint)
-    // The canvas origin is the text's, so the brush (in text coordinates) needs no shifting, and
-    // the image starts a pad up and left of it.
+    // The image sits at the canvas origin and the text a pad in from it; the brush is in text
+    // coordinates, so it is shifted by the pad. The shifted copy is closed once drawn, as the
+    // drawing holds its own reference.
     val pad = mask.pad.toFloat()
+    val shifted = paint.shader?.skiaShader?.makeWithLocalMatrix(Matrix33.makeTranslate(pad, pad))
+    if (shifted != null) paint.skiaPaint.shader = shifted
     drawIntoCanvas { canvas ->
         val skia = canvas.skiaCanvas
         val w = mask.image.width.toFloat()
         val h = mask.image.height.toFloat()
         skia.save()
-        skia.translate(topLeft.x, topLeft.y)
+        skia.translate(topLeft.x - pad, topLeft.y - pad)
         // Not strict: the mask's transparent border already keeps the filter inside it.
-        skia.drawImageRect(mask.image, Rect.makeWH(w, h), Rect.makeXYWH(-pad, -pad, w, h), SamplingMode.LINEAR, paint.skiaPaint, false)
+        skia.drawImageRect(mask.image, Rect.makeWH(w, h), Rect.makeWH(w, h), SamplingMode.LINEAR, paint.skiaPaint, false)
         MaskStats.drawn++
         skia.restore()
     }
+    shifted?.close()
     return true
 }
 
