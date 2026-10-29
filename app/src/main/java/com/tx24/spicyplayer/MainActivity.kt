@@ -1776,6 +1776,12 @@ private fun PipLyrics(
             else 1f
         // The floating window has its own lyrics size, apart from the full screen's.
         val fontScale = windowScale * (settings.pipLyricsSize / 100f) * staticBoost
+        // The Canvas background, as on the full screen.
+        val canvasShown by animateFloatAsState(
+            if (settings.canvasBackground && !lowPerformance && canvasUrl != null) 1f else 0f,
+            tween(STAGE_FADE_MS, easing = StageEaseOut),
+            label = "pipCanvas",
+        )
         SpicySessionBackground(
             artwork = state.artwork,
             artworkUri = state.artworkUri,
@@ -1783,17 +1789,12 @@ private fun PipLyrics(
             hasSession = state.sourcePackage != null,
             modifier = Modifier.fillMaxSize(),
             type = settings.backgroundType,
-            animate = !lowPerformance && !settings.staticBackground,
+            // Held still once the Canvas backdrop covers it, as on the full screen.
+            animate = !lowPerformance && !settings.staticBackground && canvasShown < 1f,
             blurDp = settings.backgroundBlurFor(settings.backgroundType),
             artistHeaderUrl = state.artistHeaderUrl,
             artistHeaderPending = state.artistHeaderPending,
             refined = settings.refinedBackground,
-        )
-        // The Canvas background, as on the full screen.
-        val canvasShown by animateFloatAsState(
-            if (settings.canvasBackground && !lowPerformance && canvasUrl != null) 1f else 0f,
-            tween(STAGE_FADE_MS, easing = StageEaseOut),
-            label = "pipCanvas",
         )
         var shownCanvasUrl by remember { mutableStateOf<String?>(null) }
         canvasUrl?.let { shownCanvasUrl = it }
