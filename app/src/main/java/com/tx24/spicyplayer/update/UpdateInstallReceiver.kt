@@ -38,6 +38,8 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                 @Suppress("DEPRECATION") intent.getParcelableExtra(Intent.EXTRA_INTENT)
             } ?: return
             if (outcome == Outcome.Confirm) {
+                mutablePending.value = null
+                UpdateNotification.cancel(context)
                 context.startActivity(Intent(confirm).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             } else {
                 mutablePending.value = confirm
