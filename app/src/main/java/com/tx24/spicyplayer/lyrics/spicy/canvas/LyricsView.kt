@@ -47,6 +47,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.lyrics.spicy.ScrollConfig
 import com.tx24.spicyplayer.lyrics.spicy.animation.LineAnimState
@@ -191,6 +194,11 @@ fun LyricsView(
     var trailNow by remember(shownId) { mutableLongStateOf(0L) }
     // Wakes a resting frame loop at once (a drag or tap), rather than at its next look.
     val wake = remember(shownId) { Channel<Unit>(Channel.CONFLATED) }
+    // Lines that hold still are drawn once into this layer and reused (see StaticLines).
+    val staticLines = remember(shownId) { StaticLines() }
+    val staticLayer = rememberGraphicsLayer().apply {
+        compositingStrategy = androidx.compose.ui.graphics.layer.CompositingStrategy.Offscreen
+    }
     val context = LocalContext.current
     val haptics by rememberUpdatedState(LocalHapticFeedback.current)
 
@@ -688,20 +696,11 @@ fun LyricsView(
                 else if (trailTime == 0L) viewScrollOffset
                 else centerY + scrollTrail.at(trailTime - scrollTrail.delayNanos(index))
 
-            lineLayouts.forEachIndexed { lineIdx, layout ->
-                val scrollOffset = scrollOffsetFor(lineIdx)
-                val lineAnim = animStates.getOrNull(lineIdx) ?: return@forEachIndexed
-                val dynamicY = dynamicYOffsets.getOrElse(lineIdx) { layout.yOffset }
-
-                // Optimization: Don't draw invisible lines.
-                if (lineAnim.opacity <= 0.01f) return@forEachIndexed
-
-                // Optimization: Don't draw lines off-screen.
-                val lineScreenY = scrollOffset + dynamicY
-                if (lineScreenY < -layout.height * 3 || lineScreenY > canvasHeight + layout.height * 3) {
-                    return@forEachIndexed
-                }
-
+            fun DrawScope.drawLine(drawn: DrawnLine) {
+                val layout = lineLayouts[drawn.index]
+                val lineAnim = drawn.anim
+                val scrollOffset = drawn.scrollOffset
+                val dynamicY = drawn.dynamicY
                 val lineStartX = getLineStartX(layout)
 
                 when {
@@ -724,6 +723,45 @@ fun LyricsView(
                     drawTranslationText(layout, lineAnim, lineStartX, scrollOffset, dynamicY, config, lyricsType == LyricsType.Static)
                 }
             }
+
+            val shownLines = ArrayList<DrawnLine>()
+            val stillLines = ArrayList<DrawnLine>()
+            lineLayouts.forEachIndexed { lineIdx, layout ->
+                val scrollOffset = scrollOffsetFor(lineIdx)
+                val lineAnim = animStates.getOrNull(lineIdx) ?: return@forEachIndexed
+                val dynamicY = dynamicYOffsets.getOrElse(lineIdx) { layout.yOffset }
+
+                // Optimization: Don't draw invisible lines.
+                if (lineAnim.opacity <= 0.01f) return@forEachIndexed
+
+                // Optimization: Don't draw lines off-screen.
+                val lineScreenY = scrollOffset + dynamicY
+                if (lineScreenY < -layout.height * 3 || lineScreenY > canvasHeight + layout.height * 3) {
+                    return@forEachIndexed
+                }
+                val drawn = DrawnLine(lineIdx, lineAnim, scrollOffset, dynamicY)
+                shownLines += drawn
+                if (!staticLines.isLive(lineIdx, lineAnim)) stillLines += drawn
+            }
+            val stillSet = StillSet(lineLayouts, config, size.width, size.height, stillLines)
+            val plan = staticLines.plan(stillSet)
+            if (plan == StaticLines.Plan.Direct) {
+                // In order, as each line overlaps the one before it.
+                shownLines.forEach { drawLine(it) }
+            } else {
+                if (plan == StaticLines.Plan.Record) {
+                    staticLayer.record(this, layoutDirection, IntSize(size.width.toInt(), size.height.toInt())) {
+                        stillLines.forEach { drawLine(it) }
+                    }
+                    staticLines.recordedAs(stillSet)
+                }
+                drawLayer(staticLayer)
+                var still = 0
+                shownLines.forEach { drawn ->
+                    if (still < stillLines.size && stillLines[still].index == drawn.index) still++ else drawLine(drawn)
+                }
+            }
+            staticLines.endFrame(animStates)
 
             val footerScroll = scrollOffsetFor(lineLayouts.size)
             drawFooterRows(footerLayouts, footerRowTops().map { it + footerScroll }, footerSlot.startPx, footerSlot.startPx + footerSlot.widthPx, footerAlignEnd, avatars, footerDim)
