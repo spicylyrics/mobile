@@ -1,12 +1,20 @@
 package com.tx24.spicyplayer.desktop
 
+import androidx.compose.ui.InternalComposeUiApi
+import androidx.compose.ui.platform.registerSkikoComposeImplementation
 import androidx.compose.ui.graphics.ImageBitmap
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
 
+@OptIn(InternalComposeUiApi::class)
 class DesktopAvatarsTest {
+    init {
+        // No window opens in a test, so Compose's Skia graphics aren't registered by one.
+        registerSkikoComposeImplementation()
+    }
+
     private val placeholder = runBlocking { PlaceholderAvatars.load("", 128) }
 
     @Test

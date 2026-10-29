@@ -20,6 +20,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.InternalComposeUiApi
+import androidx.compose.ui.platform.registerSkikoComposeImplementation
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.BitmapPainter
@@ -139,7 +141,11 @@ private sealed interface Screen {
  * Shows the lyrics of Windows' current media session (or the first whose app id contains
  * `--app`), word-synced on the session's position, `--offset` ms earlier.
  */
+@OptIn(InternalComposeUiApi::class)
 fun main(args: Array<String>) {
+    // Compose's Skia graphics register themselves when the first window opens; pictures made
+    // before that (avatars, covers decoded as the player reports in) would find none and throw.
+    registerSkikoComposeImplementation()
     if ("--demo" in args) return runDemo(args)
     holdInstanceLock()
     val opts = args.toList().zipWithNext().filter { it.first.startsWith("--") }.toMap()

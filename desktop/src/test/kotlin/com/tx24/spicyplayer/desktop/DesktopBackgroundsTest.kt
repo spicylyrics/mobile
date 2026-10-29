@@ -1,5 +1,7 @@
 package com.tx24.spicyplayer.desktop
 
+import androidx.compose.ui.InternalComposeUiApi
+import androidx.compose.ui.platform.registerSkikoComposeImplementation
 import java.io.File
 import java.nio.file.Files
 import org.junit.Assert.assertArrayEquals
@@ -9,7 +11,13 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(InternalComposeUiApi::class)
 class DesktopBackgroundsTest {
+    init {
+        // No window opens in a test, so Compose's Skia graphics aren't registered by one.
+        registerSkikoComposeImplementation()
+    }
+
     @Test
     fun `cover crop fills a wide box from the middle of a square`() {
         assertArrayEquals(intArrayOf(0, 160, 640, 320), coverCrop(640, 640, 200f, 100f))
