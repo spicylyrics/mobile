@@ -10,7 +10,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
@@ -57,15 +58,15 @@ class DesktopSettingsHost(
 ) : SettingsHost() {
     private val platform = DesktopPlatformActions(window)
 
-    /** Bumped by a change made here, so [rememberState] reads it back at once. */
-    private val changes = mutableIntStateOf(0)
+    /** What the settings show of the player; [rememberState] keeps it current while they're open. */
+    private val state = mutableStateOf(SettingsState())
 
     override fun setLyricDelay(ms: Int) {
         val app = session.track?.app ?: return
         // The desktop saves how much earlier the lyrics show; the settings show how much later.
         delays.set(app, -ms.toLong())
         session.offsetChanged()
-        changes.intValue++
+        state.value = read()
     }
 
     override fun setSongDelay(ms: Int) = Unit
@@ -82,6 +83,7 @@ class DesktopSettingsHost(
     override val lockScreen: Boolean get() = false
     override val queueAndSource: Boolean get() = false
     override val deviceName: String get() = "computer"
+    override val aboutSearchTerms: List<String> get() = ABOUT_TERMS
     override val systemName: String get() = "the app"
 
     override fun openLyricsManagerPage(): Boolean {
@@ -92,14 +94,13 @@ class DesktopSettingsHost(
     /** What the settings show of the player, read again every half second while they're open. */
     @Composable
     fun rememberState(): SettingsState {
-        val changed by changes
-        val state by produceState(read(), changed) {
+        LaunchedEffect(Unit) {
             while (true) {
-                value = read()
+                state.value = read()
                 delay(STATE_POLL_MS)
             }
         }
-        return state
+        return state.value
     }
 
     private fun read(): SettingsState {
@@ -159,7 +160,7 @@ class DesktopSettingsHost(
                         disclosure?.let(sources::agree)
                         sources.setSourceEnabled(origin.id, on)
                         version.intValue++
-                        changes.intValue++
+                        state.value = read()
                     }
                 },
                 searchDescription = "Lyrics source provider",
@@ -170,7 +171,7 @@ class DesktopSettingsHost(
     /** The name, the version the installer set (none from Gradle), and the links out. */
     @Composable
     override fun AboutCard() {
-        Searchable("About", "Version", "GitHub", "Spicy Lyrics Desktop", "Discord", "Feedback", "Bug", "Report") {
+        Searchable(*ABOUT_TERMS.toTypedArray()) {
             CompositionLocalProvider(LocalSettingsQuery provides "") {
                 Column(
                     Modifier.fillMaxWidth().outlinedCard().padding(SpicySpacing.S4),
@@ -197,6 +198,7 @@ class DesktopSettingsHost(
 
     private companion object {
         const val STATE_POLL_MS = 500L
+        val ABOUT_TERMS = listOf("About", "Version", "GitHub", "Star", "Spicy Lyrics Desktop", "Discord", "Feedback", "Bug", "Report")
         const val PROJECT_URL = "https://github.com/spicylyrics/mobile"
         // The server invite, not a thread link: a thread link only opens for people already in the server.
         const val DISCORD_URL = "https://discord.com/invite/uqgXU5wh8j"

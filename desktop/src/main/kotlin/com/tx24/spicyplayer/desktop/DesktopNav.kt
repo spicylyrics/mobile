@@ -43,8 +43,12 @@ class DesktopNav(start: Destination = Destination.Lyrics) {
     var at by mutableStateOf(start)
         private set
 
+    /** Opens settings over the lyrics instead of as a page, once the window has them. */
+    var openSettings: (() -> Unit)? = null
+
     fun open(destination: Destination) {
-        at = destination
+        val settings = openSettings
+        if (destination == Destination.Settings && settings != null) settings() else at = destination
     }
 
     fun back() {

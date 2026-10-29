@@ -955,7 +955,7 @@ fun DeviceContent(settings: CommonAppSettings, host: SettingsHost) {
         )
     }
     host.HapticsSection()
-    MoreOptions("Keeping the screen on, system bars, low performance mode, interface animations") {
+    MoreOptions(if (host.phoneDevice) "Keeping the screen on, system bars, low performance mode, interface animations" else "Low performance mode, interface animations") {
         if (host.phoneDevice) ToggleRow(
             label = "Keep the screen on",
             checked = settings.keepScreenOn,

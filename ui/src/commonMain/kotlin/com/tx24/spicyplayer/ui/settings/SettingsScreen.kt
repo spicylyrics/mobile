@@ -845,7 +845,7 @@ internal fun SearchResults(query: String, state: SettingsState, host: SettingsHo
 
 @Composable
 private fun AboutCardSpacer(host: SettingsHost) {
-    Searchable("About", "Version", "GitHub", "Star", "Spicy Lyrics Mobile", "Spicy Player", "Updates", "Check for updates", "Feedback", "Bug", "Report", "Feature", "Suggest", "Discord") { Spacer(Modifier.height(SpicySpacing.S4)) }
+    Searchable(*host.aboutSearchTerms.toTypedArray()) { Spacer(Modifier.height(SpicySpacing.S4)) }
     host.AboutCard()
 }
 

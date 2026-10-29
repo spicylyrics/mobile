@@ -100,6 +100,12 @@ abstract class SettingsHost {
     @Composable
     open fun AdvancedPage() {}
 
+    /** What finds [AboutCard] in a search: the words on it. */
+    open val aboutSearchTerms: List<String> get() = listOf(
+        "About", "Version", "GitHub", "Star", "Spicy Lyrics Mobile", "Spicy Player", "Updates", "Check for updates",
+        "Feedback", "Bug", "Report", "Feature", "Suggest", "Discord",
+    )
+
     /** The card at the foot of the first page: version, updates, links. */
     @Composable
     open fun AboutCard() {}

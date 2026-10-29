@@ -268,7 +268,16 @@ fun main(args: Array<String>) {
         val miniLyricsView = remember { LyricsViewState() }
         // `--page` starts on a page instead of the lyrics, for screenshots of it.
         val nav = remember { DesktopNav(startPage(opts["--page"])) }
-        val overlays = remember { DesktopOverlays(nav) }
+        // Settings open over the lyrics, as on the phone, for the shortcut and --page settings alike.
+        val overlays = remember {
+            DesktopOverlays(nav).also { overlays ->
+                nav.openSettings = overlays::openSettings
+                if (nav.at == Destination.Settings) {
+                    nav.back()
+                    overlays.settings = true
+                }
+            }
+        }
         // A key on the lyrics shows their controls, as a touch does on the phone.
         val desktopKeys = remember { DesktopKeys() }
         var page by remember { mutableStateOf(BigScreenState(romanized = desktopSettings.romanize).withSavedView(desktopSettings)) }
@@ -330,13 +339,6 @@ fun main(args: Array<String>) {
                 }
                 val settingsHost = remember(window) {
                     DesktopSettingsHost(window, session, delays, sourceSettings, openLyricsManager = { nav.open(Destination.LyricsManager) })
-                }
-                // Settings open over the lyrics, as on the phone: the shortcut and --page settings land here.
-                LaunchedEffect(nav.at) {
-                    if (nav.at == Destination.Settings) {
-                        nav.back()
-                        overlays.openSettings()
-                    }
                 }
                 fun desktopHost(drawsOverlays: Boolean) =
                     DesktopLyricsHost(
