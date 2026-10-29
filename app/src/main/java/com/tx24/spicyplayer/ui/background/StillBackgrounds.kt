@@ -213,6 +213,8 @@ fun MotionImageBackground(
     onFailed: () -> Unit,
     modifier: Modifier = Modifier,
     refined: Boolean = false,
+    /** Covered by something opaque: the loop holds its frame. */
+    held: Boolean = false,
 ) {
     val blurPx = with(LocalDensity.current) { blurDp.coerceAtLeast(0) * density }
     BoxWithConstraints(modifier.fillMaxSize().clipToBounds(), contentAlignment = Alignment.Center) {
@@ -224,6 +226,7 @@ fun MotionImageBackground(
             visible = true,
             onFailed = onFailed,
             layerPaint = StillGradePaint,
+            held = held,
             modifier = Modifier
                 .requiredSize(side)
                 .graphicsLayer {

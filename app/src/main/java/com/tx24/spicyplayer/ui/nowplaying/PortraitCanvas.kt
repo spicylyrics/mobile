@@ -22,10 +22,10 @@ import androidx.compose.ui.graphics.graphicsLayer
  * Portrait, with the big cover up: the song's Spotify Canvas fills the screen in the cover's
  * place, as Spotify's own player shows it. A portrait loop on a portrait screen, so little of it is
  * cut. Dimmed a little, and more along the bottom, where the song is docked ([PortraitCanvasDock]).
- * The loop crossfades to the next song's.
+ * The loop crossfades to the next song's. [held] (covered by something opaque) holds its frame.
  */
 @Composable
-fun PortraitCanvas(url: String, onFailed: (String) -> Unit, modifier: Modifier = Modifier) {
+fun PortraitCanvas(url: String, onFailed: (String) -> Unit, modifier: Modifier = Modifier, held: Boolean = false) {
     Box(modifier) {
         CrossfadingMotionVideo(
             url = url,
@@ -33,6 +33,7 @@ fun PortraitCanvas(url: String, onFailed: (String) -> Unit, modifier: Modifier =
             modifier = Modifier.fillMaxSize(),
             // Faces sit in the upper half of most canvases, as on the stage.
             cropFromTop = 0.4f,
+            held = held,
         )
         Box(
             Modifier.fillMaxSize().drawBehind {

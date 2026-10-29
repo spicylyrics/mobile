@@ -911,6 +911,8 @@ private fun LyricsApp(
     }
     val ambientFade = animateFloatAsState(if (ambient) 1f else 0f, tween(if (ambient) AMBIENT_IN_MS else AMBIENT_OUT_MS), label = "ambient")
     val ambientDrawn by remember { derivedStateOf { ambientFade.value > 0f } }
+    // Fully dark, nothing under the black shows: the loops beneath hold their frames.
+    val ambientOpaque by remember { derivedStateOf { ambientFade.value >= 1f } }
     // Never brighter than the phone already is.
     DisposableEffect(activity, ambient) {
         val window = activity?.window
@@ -1224,12 +1226,14 @@ private fun LyricsApp(
                             failedBackgroundMotionUrl = backgroundMotionUrl
                             motionScope.launch { forgetMotionCover(context, backgroundMotionQuery) }
                         },
+                        motionCoverHeld = ambientOpaque,
                     )
                     ambientUrl?.takeIf { ambientShown > 0f }?.let { url ->
                         CanvasAmbient(
                             url = url,
                             onFailed = { viewModel.canvasFailed(url) },
                             modifier = Modifier.fillMaxSize().graphicsLayer { alpha = ambientShown },
+                            held = ambientOpaque,
                         )
                     }
                     if (landscape && stageVisible) {
@@ -1254,12 +1258,14 @@ private fun LyricsApp(
                                 url = picture.url,
                                 onFailed = viewModel::canvasFailed,
                                 modifier = Modifier.fillMaxSize().graphicsLayer { alpha = immersive() },
+                                held = ambientOpaque,
                             )
                         } else {
                             PortraitCoverStage(
                                 info = stageInfo,
                                 picture = picture,
                                 modifier = Modifier.fillMaxSize().graphicsLayer { alpha = immersive() },
+                                held = ambientOpaque,
                             )
                         }
                     }
@@ -1422,6 +1428,7 @@ private fun LyricsApp(
                     panelLeft = { landscapeMetrics.coverLeftPx(panelSide.value) },
                     stage = { stageShown.value },
                     immersive = { if (landscape) 0f else immersive() },
+                    animatedCoverHeld = ambientOpaque,
                     coverOverlay = if (!controlsOnCover || controlsGone || stageOn) null else {
                         {
                             // No glass blur here: the cover is part of what the glass blurs.

@@ -148,6 +148,8 @@ fun CompactNowPlayingHeader(
     stage: () -> Float = { 0f },
     /** Portrait, while the song's Canvas fills the screen (0..1): the big cover and its text give way to it. */
     immersive: () -> Float = { 0f },
+    /** The cover hidden under something opaque: its animated cover holds its frame. */
+    animatedCoverHeld: Boolean = false,
 ) {
     val year = releaseYear?.takeIf { it.position != ReleaseYearPosition.Off }?.let { y ->
         when {
@@ -179,6 +181,7 @@ fun CompactNowPlayingHeader(
                 artwork = artwork,
                 motionUrl = motion.url,
                 motionSettled = motion.settled,
+                motionHeld = animatedCoverHeld,
                 motionQuery = motionQuery,
                 direction = info.direction,
                 metrics = metrics,
@@ -600,6 +603,8 @@ private fun HeaderArtwork(
     motionUrl: String?,
     /** False while the next song's loop is looked up: [motionUrl] is still the last song's, fading out. */
     motionSettled: Boolean,
+    /** Covered: the loop holds its frame. */
+    motionHeld: Boolean,
     motionQuery: MotionCoverQuery,
     direction: TrackDirection,
     metrics: CompactHeaderMetrics,
@@ -720,6 +725,7 @@ private fun HeaderArtwork(
                         scope.launch { forgetMotionCover(context, motionQuery) }
                     },
                     modifier = Modifier.fillMaxSize(),
+                    held = motionHeld,
                 )
             }
             incoming?.let { next ->
