@@ -217,6 +217,9 @@ open class CommonAppSettings(
      */
     var pipLyricsSize by int("pipLyricsSize", 100, LYRICS_SIZE_RANGE)
 
+    /** The desktop window's interface size, in percent of the size it picks from the window ([INTERFACE_SCALE_RANGE]). */
+    var interfaceScale by int("interfaceScale", 100, INTERFACE_SCALE_RANGE)
+
     /** The floating window's width over its height. */
     val pipAspect: Float
         get() = if (pipShape == PipShape.Custom) pipCustomRatio / 100f else pipShape.width.toFloat() / pipShape.height
@@ -432,6 +435,9 @@ enum class LyricsSize(val percent: Int, val label: String) {
 
 /** How far the lyrics' size goes either way, in percent of the default. */
 val LYRICS_SIZE_RANGE = 60..250
+
+/** How far the desktop's Interface Scale goes, in percent. */
+val INTERFACE_SCALE_RANGE = 50..200
 
 /** A choice the shared settings store by [name] while its type lives in the app, with its [label]. */
 class NamedChoice(val name: String, val label: String)

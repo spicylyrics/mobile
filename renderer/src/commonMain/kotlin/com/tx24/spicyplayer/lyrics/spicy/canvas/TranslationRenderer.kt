@@ -28,10 +28,9 @@ internal fun DrawScope.drawTranslationText(
         val opacity = (alpha * dimmer).coerceIn(0f, 1f)
         val size = with(result.layoutInput.density) { result.layoutInput.style.fontSize.toPx() }
         // Blur is a separate pass, scaled by the actual lyric font size rather than density.
-        if (blur > 0f && config.distanceBlurEnabled) unsnapped(result, offset) {
-            drawText(result, color = Color.Transparent, topLeft = offset,
-                shadow = Shadow(Color.White.copy(alpha = opacity), blurRadius = blur * size / 56f))
-            drawText(result, color = Color.Transparent, shadow = Shadow.None, topLeft = offset)
+        if (blur > 0f && config.distanceBlurEnabled) {
+            drawShadowOnly(result, Shadow(Color.White.copy(alpha = opacity), blurRadius = blur * size / 56f), offset)
+            unsnapped(result, offset) { drawText(result, color = Color.Transparent, shadow = Shadow.None, topLeft = offset) }
         } else drawLyricText(result, Color.White.copy(alpha = opacity), offset)
     }
     withTransform({

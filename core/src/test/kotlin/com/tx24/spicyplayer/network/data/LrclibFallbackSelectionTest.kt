@@ -21,6 +21,16 @@ class LrclibFallbackSelectionTest {
         assertEquals(matchingAlbum, source.chooseSearchResult(request, listOf(otherAlbum, wrongVersion, matchingAlbum)))
     }
 
+    @Test fun withoutAnArtistOnlyTheSameTitleAndLengthCount() {
+        val request = LyricsLookupRequest("", "Reincarnation Apple", "", 219)
+        val other = entry("Reincarnation Apple", "Someone Else", "Cover", 180.0)
+        val right = entry("Reincarnation Apple", "PinocchioP", "Album", 220.0)
+        val wrongTitle = entry("Reincarnation", "PinocchioP", "Album", 219.0)
+
+        assertEquals(right, source.chooseTitleOnlyResult(request, listOf(other, wrongTitle, right)))
+        assertEquals(null, source.chooseTitleOnlyResult(request.copy(durationSeconds = 0), listOf(right)))
+    }
+
     @Test fun instrumentalRecordIsAMissNotAnError() = kotlinx.coroutines.runBlocking {
         val instrumental = LyricsSource(object : LyricsService {
             override suspend fun getSongLyrics(artistName: String, trackName: String, albumName: String?, durationSeconds: Int?) =

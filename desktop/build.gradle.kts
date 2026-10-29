@@ -62,6 +62,8 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":renderer"))
     implementation(project(":ui"))
+    // The shared lyrics screen's Scaffold takes its colours from the dark Material theme, as on the phone.
+    implementation("org.jetbrains.compose.material3:material3:1.9.0")
     implementation(compose.desktop.currentOs)
     // Dispatchers.Main, the UI thread the lyrics state lives on.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")

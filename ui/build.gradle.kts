@@ -36,6 +36,8 @@ kotlin {
             api("dev.chrisbanes.haze:haze:1.7.3")
             implementation("org.jetbrains.compose.animation:animation:$composeVersion")
             implementation("org.jetbrains.compose.material3:material3:1.9.0")
+            // The lyrics screen's scroll-to-active arrow (Icons.Rounded.KeyboardArrowDown), as on the phone.
+            implementation("org.jetbrains.compose.material:material-icons-core:1.7.3")
             // NowPlaying's state is a StateFlow.
             api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
             implementation("org.jetbrains.compose.components:components-resources:$composeVersion")

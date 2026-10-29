@@ -84,6 +84,7 @@ class CommonAppSettingsTest {
         s.pipDockCover = s.pipDockCover
         s.pipWithoutLyrics = s.pipWithoutLyrics
         s.pipLyricsSize = s.pipLyricsSize
+        s.interfaceScale = s.interfaceScale
         s.rotateButton = s.rotateButton
         s.pipButton = s.pipButton
         s.hideHeader = s.hideHeader
@@ -186,6 +187,7 @@ class CommonAppSettingsTest {
             "pipDockCover" to true,
             "pipWithoutLyrics" to "Message",
             "pipLyricsSize" to 100,
+            "interfaceScale" to 100,
             "rotateButton" to true,
             "pipButton" to false,
             "hideHeader" to false,

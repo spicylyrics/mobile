@@ -160,7 +160,7 @@ private inline fun DrawScope.drawGlowThenText(
     shadow: Shadow?,
     drawBody: () -> Unit,
 ) {
-    if (shadow != null) unsnapped(layoutResult, topLeft) { drawText(layoutResult, color = Color.Transparent, shadow = shadow, topLeft = topLeft) }
+    if (shadow != null) drawShadowOnly(layoutResult, shadow, topLeft)
     drawBody()
 }
 
@@ -239,14 +239,7 @@ private fun DrawScope.drawInactiveText(
         drawLyricText(layoutResult, shadow.color, topLeft)
         return
     }
-    unsnapped(layoutResult, topLeft) {
-        drawText(
-            textLayoutResult = layoutResult,
-            color = Color.Transparent,
-            shadow = shadow,
-            topLeft = topLeft,
-        )
-    }
+    drawShadowOnly(layoutResult, shadow, topLeft)
 }
 
 internal fun DrawScope.drawInterludeGroup(

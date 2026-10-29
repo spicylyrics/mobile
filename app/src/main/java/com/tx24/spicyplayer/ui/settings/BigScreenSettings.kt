@@ -91,7 +91,8 @@ private fun BigScreenSettings(settings: AppSettings, contentPadding: PaddingValu
             version = BuildConfig.VERSION_NAME,
             links = listOf("GitHub" to "https://github.com/spicylyrics/mobile"),
         )
-        settingsPanelSections(settings, actions, device)
+        // The interface scale is the desktop window's; the tablet keeps the system's size.
+        settingsPanelSections(settings, actions, device, hiddenRows = setOf("interfaceScale"))
     }
     CompositionLocalProvider(LocalPlatformActions provides platform) {
         // Back clears a search, then leaves a section for the list, and only then closes.

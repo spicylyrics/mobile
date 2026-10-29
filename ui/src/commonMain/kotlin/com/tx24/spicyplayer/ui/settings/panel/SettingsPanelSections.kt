@@ -10,6 +10,7 @@ import com.tx24.spicyplayer.ui.settings.BackgroundType
 import com.tx24.spicyplayer.ui.settings.CommonAppSettings
 import com.tx24.spicyplayer.ui.settings.ControlsHideDelay
 import com.tx24.spicyplayer.ui.settings.LYRICS_SIZE_RANGE
+import com.tx24.spicyplayer.ui.settings.INTERFACE_SCALE_RANGE
 import com.tx24.spicyplayer.ui.settings.LyricsFont
 import com.tx24.spicyplayer.ui.settings.LyricsStyle
 import com.tx24.spicyplayer.ui.settings.MAX_BACKGROUND_BLUR
@@ -304,6 +305,13 @@ private fun interfaceSection(s: CommonAppSettings, actions: PanelActions) = Pane
     PanelSectionId.Interface, "Interface", PanelIcons.Interface,
     groups = listOf(
         PanelGroup("Lyrics View", listOf(
+            PanelRow.Slider(
+                "interfaceScale", "Interface Scale",
+                "How big the lyrics screen is drawn. 100% sizes it to the window, as on a phone held sideways.",
+                keywords = "zoom size dpi scale bigger smaller ui",
+                spec = SliderSpec(INTERFACE_SCALE_RANGE.first, INTERFACE_SCALE_RANGE.last, 5, default = 100, unit = "%"),
+                value = { s.interfaceScale }, onChange = { s.interfaceScale = it },
+            ),
             enumSelect<ViewControlsPosition>(
                 "viewControlsPosition", "View Controls Position", "Where the view controls sit on the lyrics page.",
                 keywords = "lyrics controls top bottom buttons",

@@ -33,3 +33,29 @@ internal expect val resizeSnapsToLine: Boolean
  * measures in place. Android's text layout is safe on a background thread.
  */
 internal expect val textLayoutContext: CoroutineContext
+
+/**
+ * How long a new width has to hold before the lyrics are laid out again for it, while lyrics
+ * laid out for the old one are on screen. Desktop measures on the UI thread, so a window dragged
+ * wider by a pixel a frame would otherwise measure every line every frame; the old layout stays
+ * up until the drag settles. 0 measures at once.
+ */
+internal expect val resizeRelayoutDelayMs: Long
+
+/**
+ * Lyrics laid out on the UI thread ([textLayoutContext]) are laid out a few ms at a time, letting
+ * frames through between slices, so a long song's layout never holds the window still. Laid out
+ * in the background, they run straight through.
+ */
+internal expect val slicesTextLayout: Boolean
+
+/**
+ * The most one frame advances the animation by, in seconds; null for two nominal frame intervals
+ * of the display. The desktop's display can run at 144 Hz or more while frames come at 60, so
+ * two of its intervals would cut every normal frame short and the motion would play slowed
+ * down; there only a real hitch is capped.
+ */
+internal expect val frameDeltaCapS: Float?
+
+/** Notes each frame's real and used time step, for the desktop's `spicy.frameStats`. */
+internal expect fun recordFrameDelta(rawS: Float, usedS: Float)

@@ -112,6 +112,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import com.tx24.spicyplayer.ui.nowplaying.LocalNowPlayingPlatform
+import com.tx24.spicyplayer.ui.nowplaying.NowPlayingPlatform
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Path
@@ -243,6 +245,7 @@ fun LyricsControls(
     showExpand: Boolean = true,
 ) {
     val backdrop = LocalBackdrop.current
+    val progressiveBlur = LocalNowPlayingPlatform.current.progressiveBlur
     Box(modifier.fillMaxWidth()) {
         // The shade: blur that grows from nothing at the top of this area to full strength at the
         // controls, plus a light darkening, so white controls read over anything.
@@ -260,11 +263,15 @@ fun LyricsControls(
                             noiseFactor = 0f
                             tints = emptyList()
                             fallbackTint = HazeTint(Color.Black.copy(alpha = 0.25f))
-                            progressive = HazeProgressive.verticalGradient(
-                                easing = ShadeEasing,
-                                startIntensity = 0f,
-                                endIntensity = 1f,
-                            )
+                            if (progressiveBlur) {
+                                progressive = HazeProgressive.verticalGradient(
+                                    easing = ShadeEasing,
+                                    startIntensity = 0f,
+                                    endIntensity = 1f,
+                                )
+                            } else {
+                                mask = ShadeMask
+                            }
                         }
                     } ?: Modifier,
                 )
@@ -820,6 +827,11 @@ private const val SHADE_ALPHA = 0.3f
  * it starts, steepest in the middle, flat again at full strength.
  */
 private val ShadeEasing = CubicBezierEasing(0.45f, 0f, 0.35f, 1f)
+
+/** The progressive shade's curve as a mask over the full blur, for platforms without [NowPlayingPlatform.progressiveBlur]. */
+private val ShadeMask = Brush.verticalGradient(
+    *Array(9) { i -> (i / 8f).let { t -> t to Color.Black.copy(alpha = ShadeEasing.transform(t)) } },
+)
 
 /**
  * How far in from the page's left edge the portrait controls' rows start, in px, on a page

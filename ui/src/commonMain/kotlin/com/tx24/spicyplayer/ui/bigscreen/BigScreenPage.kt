@@ -965,7 +965,7 @@ fun pageKeyOf(event: KeyEvent): PageKey? {
  * Carries out a playback key ([playbackKeyOf], [playbackCommand]) on [nowPlaying]; true when it
  * did, so the key goes no further. Only key presses count.
  */
-private fun onPlaybackKey(event: KeyEvent, nowPlaying: NowPlaying, capabilities: PlayerCapabilities): Boolean {
+fun onPlaybackKey(event: KeyEvent, nowPlaying: NowPlaying, capabilities: PlayerCapabilities): Boolean {
     if (event.type != KeyEventType.KeyDown) return false
     val key = playbackKeyOf(event.key, event.isShiftPressed, event.isCtrlPressed || event.isAltPressed || event.isMetaPressed)
         ?: return false

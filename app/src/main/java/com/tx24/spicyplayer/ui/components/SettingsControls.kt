@@ -137,9 +137,6 @@ import kotlin.math.roundToInt
 /** What the settings search box holds; blank shows everything. */
 val LocalSettingsQuery = compositionLocalOf { "" }
 
-/** Whether the interface animates (playback buttons, lists, pop-up screens): the setting, and not low performance mode. */
-val LocalUiAnimations = compositionLocalOf { true }
-
 /**
  * Steps the settings aside so the lyrics behind them show while a setting is tried: everything
  * goes but [keep] (the peek button, or a slider's row being dragged, drawn on a [plate]).
