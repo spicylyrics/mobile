@@ -1,6 +1,7 @@
 package com.tx24.spicyplayer.update
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
@@ -25,6 +26,7 @@ internal object UpdateNotification {
     private const val EXTRA_VERSION_CODE = "com.tx24.spicyplayer.update.VERSION_CODE"
 
     /** Posts it, opening [confirm] on a tap. Without permission to notify, the app's own "Install" is the only way on. */
+    @SuppressLint("MissingPermission") // allowed() checks POST_NOTIFICATIONS first
     fun show(context: Context, confirm: Intent) {
         if (!allowed(context)) return
         val manager = NotificationManagerCompat.from(context)
