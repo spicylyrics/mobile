@@ -67,9 +67,9 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
     /** Blends are switched on in Chinese services, just above their donors; built, never asked. */
     val blendDescriptors: List<LyricsSourceDescriptor> = LyricsBlends.ALL.map(LyricsBlendDefinition::descriptor)
 
-    /** Readies every source's tokens; failures are left for the real lookup to report. */
+    /** Readies the tokens of the providers that are asked; failures are left for the real lookup to report. */
     suspend fun warmUp() = coroutineScope {
-        providers.forEach { provider ->
+        warmable(providers, ranking()).forEach { provider ->
             launch { runCatching { provider.warmUp() }.onFailure { if (it is CancellationException) throw it } }
         }
     }
@@ -232,6 +232,10 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
     }
 
     companion object {
+        /** The [providers] worth warming up: those [ranking] asks. One switched off everywhere never fetches. */
+        internal fun warmable(providers: Collection<RemoteLyricsProvider>, ranking: SourceRanking): List<RemoteLyricsProvider> =
+            providers.filter { ranking.asked(it.descriptor.id) }
+
         /**
          * A stored pick's file name. Title + artist only: a queue entry warmed ahead has no album,
          * length or Spotify ID, and must hit the same entry the real load asks for once the song
