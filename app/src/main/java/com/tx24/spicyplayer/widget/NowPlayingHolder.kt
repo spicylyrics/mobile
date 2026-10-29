@@ -41,7 +41,7 @@ import com.tx24.spicyplayer.playback.bestSession
 import com.tx24.spicyplayer.playback.lookupRequest
 import com.tx24.spicyplayer.playback.lyricPositionMs
 import com.tx24.spicyplayer.playback.lyricsKey
-import com.tx24.spicyplayer.playback.overrideKey
+import com.tx24.spicyplayer.playback.savedSpotifyId
 import com.tx24.spicyplayer.playback.sessionSpotifyId
 import com.tx24.spicyplayer.ui.background.CoverColors
 import kotlinx.coroutines.CoroutineScope
@@ -361,7 +361,7 @@ internal object NowPlayingHolder {
         songKey = key
         clearSong(LOOKING)
         val app = context ?: return
-        val manual = metadata.overrideKey()?.let { app.getSharedPreferences("spotify_id_overrides", 0).getString(it, null) }
+        val manual = metadata.savedSpotifyId(app.getSharedPreferences("spotify_id_overrides", 0))
         val request = metadata.lookupRequest(manual ?: metadata.sessionSpotifyId())
         this.request = request
         manualSpotifyId = manual

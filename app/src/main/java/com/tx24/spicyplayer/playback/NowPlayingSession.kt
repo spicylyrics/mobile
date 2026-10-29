@@ -1,5 +1,6 @@
 package com.tx24.spicyplayer.playback
 
+import android.content.SharedPreferences
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSession
@@ -102,13 +103,81 @@ internal fun MediaMetadata?.sessionSpotifyId(): String? = sequenceOf(
     this?.description?.mediaUri?.toString(),
 ).mapNotNull { it.spotifyTrackId() }.firstOrNull()
 
-/** The key a manual Spotify ID is saved under (`spotify_id_overrides`): title, artist and length. */
-internal fun MediaMetadata?.overrideKey(): String? = this?.let {
-    val title = getString(MediaMetadata.METADATA_KEY_TITLE)?.trim()?.lowercase().orEmpty()
-    val artist = (getString(MediaMetadata.METADATA_KEY_ARTIST)
-        ?: getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST))?.trim()?.lowercase().orEmpty()
-    if (title.isBlank() || artist.isBlank()) return null
-    val identity = "$title\u001f$artist\u001f${getLong(MediaMetadata.METADATA_KEY_DURATION)}"
-    MessageDigest.getInstance("SHA-256").digest(identity.toByteArray())
+/*
+ * Manual Spotify IDs (`spotify_id_overrides`) are saved by title + artist, with the song's length
+ * in the value: players often send the length after the title, so it can't be part of the key, but
+ * a recording of another length under the same names doesn't get the ID.
+ */
+
+/** How far a song's length may be from the one its manual Spotify ID was saved with. */
+private const val OVERRIDE_LENGTH_SLACK_MS = 3_000L
+
+/** The key a manual Spotify ID is saved under: title and artist. */
+internal fun overrideKey(title: String, artist: String): String? = overrideHash(title, artist, length = null)
+
+/** The key manual Spotify IDs were saved under before, length included; read so they aren't lost. */
+internal fun legacyOverrideKey(title: String, artist: String, durationMs: Long): String? =
+    overrideHash(title, artist, length = durationMs)
+
+private fun overrideHash(title: String, artist: String, length: Long?): String? {
+    val names = listOf(title, artist).map { it.trim().lowercase() }
+    if (names.any { it.isBlank() }) return null
+    val identity = (names + listOfNotNull(length?.toString())).joinToString("\u001f")
+    return MessageDigest.getInstance("SHA-256").digest(identity.toByteArray())
         .joinToString("") { "%02x".format(it) }
+}
+
+/** What's saved for [id]: the ID, and the song's length when it's known. */
+internal fun overrideValue(id: String, durationMs: Long): String = if (durationMs > 0) "$id\u001f$durationMs" else id
+
+/** A saved manual Spotify ID, and whether it's under the old key (so it's moved). */
+internal data class SavedOverride(val id: String, val legacy: Boolean)
+
+/**
+ * The manual Spotify ID [read] has for a song of [durationMs] (0 when not known yet). One saved
+ * with a length is the song's only while the lengths are close, or either isn't known.
+ */
+internal fun savedOverride(title: String, artist: String, durationMs: Long, read: (String) -> String?): SavedOverride? {
+    overrideKey(title, artist)?.let(read)?.let { value ->
+        val id = value.substringBefore('\u001f')
+        val savedLength = value.substringAfter('\u001f', "").toLongOrNull() ?: 0L
+        val sameSong = savedLength <= 0 || durationMs <= 0 || kotlin.math.abs(savedLength - durationMs) <= OVERRIDE_LENGTH_SLACK_MS
+        if (id.isNotBlank() && sameSong) return SavedOverride(id, legacy = false)
+    }
+    return legacyOverrideKey(title, artist, durationMs)?.let(read)?.let { SavedOverride(it, legacy = true) }
+}
+
+private fun MediaMetadata.overrideNames(): Pair<String, String> =
+    getString(MediaMetadata.METADATA_KEY_TITLE).orEmpty() to
+        (getString(MediaMetadata.METADATA_KEY_ARTIST) ?: getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)).orEmpty()
+
+/** The manual Spotify ID saved in [overrides] for this song; one under the old key is moved to the new. */
+internal fun MediaMetadata?.savedSpotifyId(overrides: SharedPreferences): String? {
+    val metadata = this ?: return null
+    val (title, artist) = metadata.overrideNames()
+    val duration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION)
+    val saved = savedOverride(title, artist, duration) { overrides.getString(it, null) } ?: return null
+    if (saved.legacy) metadata.saveSpotifyId(overrides, saved.id)
+    return saved.id
+}
+
+/** Saves [id] in [overrides] as this song's manual Spotify ID. */
+internal fun MediaMetadata?.saveSpotifyId(overrides: SharedPreferences, id: String) {
+    val metadata = this ?: return
+    val (title, artist) = metadata.overrideNames()
+    val duration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION)
+    val key = overrideKey(title, artist) ?: return
+    val edit = overrides.edit().putString(key, overrideValue(id, duration))
+    legacyOverrideKey(title, artist, duration)?.let(edit::remove)
+    edit.apply()
+}
+
+/** Drops this song's manual Spotify ID from [overrides]. */
+internal fun MediaMetadata?.forgetSpotifyId(overrides: SharedPreferences) {
+    val metadata = this ?: return
+    val (title, artist) = metadata.overrideNames()
+    val key = overrideKey(title, artist) ?: return
+    val edit = overrides.edit().remove(key)
+    legacyOverrideKey(title, artist, metadata.getLong(MediaMetadata.METADATA_KEY_DURATION))?.let(edit::remove)
+    edit.apply()
 }
