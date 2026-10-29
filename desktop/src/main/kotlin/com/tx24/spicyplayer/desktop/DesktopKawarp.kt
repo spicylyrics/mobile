@@ -140,7 +140,11 @@ fun DesktopKawarp(
             builder.uniform("uSaturation", OPTIONS.saturation)
             builder.uniform("uDithering", OPTIONS.dithering)
             builder.uniform("uScale", OPTIONS.scale)
-            drawRect(brush = ShaderBrush(builder.makeShader().asComposeShader()))
+            // A new shader every frame; the drawing keeps its own reference, so ours is closed
+            // now rather than left for a GC to free.
+            val shader = builder.makeShader()
+            drawRect(brush = ShaderBrush(shader.asComposeShader()))
+            shader.close()
         }
     }
 }
