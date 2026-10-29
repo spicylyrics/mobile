@@ -247,12 +247,16 @@ const val WARM_UP_FOR_MS = 2_500L
 object DesktopSwitches {
     val warmUp: Boolean = System.getProperty("spicy.warmUp") != "off"
     val glass: Boolean = System.getProperty("spicy.glass") != "off"
+    /** `spicy.progressiveBlur=on`: the controls' shade as Haze's progressive blur, as on the phone. */
+    val progressiveBlur: Boolean = System.getProperty("spicy.progressiveBlur") == "on"
     /** `spicy.background=off`: a plain dark page instead of the chosen background. */
     val background: Boolean = System.getProperty("spicy.background") != "off"
 }
 
 /** The now-playing services on the desktop: the basic ones, without blur where [DesktopSwitches.glass] is off. */
-val desktopNowPlayingPlatform: NowPlayingPlatform =
-    if (DesktopSwitches.glass) BasicNowPlayingPlatform() else object : BasicNowPlayingPlatform() {
-        override val blursLayers: Boolean get() = false
-    }
+val desktopNowPlayingPlatform: NowPlayingPlatform = object : BasicNowPlayingPlatform() {
+    override val blursLayers: Boolean get() = DesktopSwitches.glass
+    // Skia's own blur faded through a mask: Haze's progressive blur is a looped runtime shader
+    // that Direct3D compiles for seconds on the CPU, the first time the shade shows (a portrait window).
+    override val progressiveBlur: Boolean get() = DesktopSwitches.progressiveBlur
+}
