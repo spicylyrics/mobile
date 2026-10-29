@@ -1524,10 +1524,8 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     fun loadLyrics(spotifyIdInput: String? = null, settle: Boolean = false, force: Boolean = false) {
         val metadata = controller?.metadata ?: return
         val identity = metadata.lyricsKey()
-        val request = lookupRequest(
-            metadata,
-            spotifyIdInput?.spotifyTrackId() ?: manualSpotifyId ?: mutableState.value.detectedSpotifyId,
-        )
+        val manual = spotifyIdInput?.spotifyTrackId() ?: manualSpotifyId
+        val request = lookupRequest(metadata, manual ?: mutableState.value.detectedSpotifyId)
         lookedUp = request
         if (request.title.isBlank() || request.artist.isBlank()) {
             mutableState.value = mutableState.value.copy(lyrics = LyricsNotices.missingMetadata)
@@ -1567,12 +1565,12 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
                 val name = lyricsBackend.descriptors.firstOrNull { it.id == chosen }?.displayName ?: chosen
                 showMessage("$name has no lyrics for this song, so the usual pick is shown.")
             }
-            // The disk cache is keyed on title + artist; a manual Spotify ID asks the sources afresh.
+            // The disk cache is keyed on title + artist, and a manual Spotify ID has entries of its own.
             val freshLookup = known.isEmpty()
-            if (known.isEmpty() && manualSpotifyId == null) {
+            if (known.isEmpty()) {
                 val cached = withContext(Dispatchers.IO) {
-                    if (force) lyricsBackend.forget(request)
-                    lyricsBackend.cachedResolution(request)
+                    if (force) lyricsBackend.forget(request, manual)
+                    lyricsBackend.cachedResolution(request, manual)
                 }
                 if (cached != null) {
                     known.putAll(cached.answers)
@@ -1597,7 +1595,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
                 }
             }
                 .onSuccess { resolution ->
-                    withContext(Dispatchers.IO) { lyricsBackend.store(request, resolution) }
+                    withContext(Dispatchers.IO) { lyricsBackend.store(request, resolution, manual) }
                     publish(resolution, identity, request, final = true)
                     warmAhead()
                 }

@@ -96,6 +96,8 @@ internal object NowPlayingHolder {
 
     private var songKey: String? = null
     private var request: LyricsLookupRequest? = null
+    /** The Spotify ID the user set for the song, if any. */
+    private var manualSpotifyId: String? = null
     private var title = ""
     private var artist = ""
     private var durationMs = 0L
@@ -362,6 +364,7 @@ internal object NowPlayingHolder {
         val manual = metadata.overrideKey()?.let { app.getSharedPreferences("spotify_id_overrides", 0).getString(it, null) }
         val request = metadata.lookupRequest(manual ?: metadata.sessionSpotifyId())
         this.request = request
+        manualSpotifyId = manual
         title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE)
             ?: metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE).orEmpty()
         artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST)
@@ -386,9 +389,10 @@ internal object NowPlayingHolder {
         val key = songKey ?: return
         val lookup = lookup ?: return
         val romanize = wantsRomanization
+        val manual = manualSpotifyId
         lookupJob?.cancel()
         lookupJob = scope?.launch {
-            val result = runCatching { lookup.lookUp(request, romanize) }.getOrElse { error ->
+            val result = runCatching { lookup.lookUp(request, romanize, manual) }.getOrElse { error ->
                 if (error is kotlinx.coroutines.CancellationException) throw error
                 BackgroundLyrics.Result.Failed
             }
