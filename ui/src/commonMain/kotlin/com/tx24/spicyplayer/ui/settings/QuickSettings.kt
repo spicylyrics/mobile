@@ -16,18 +16,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.tx24.spicyplayer.analytics.UsageCounter
-import com.tx24.spicyplayer.analytics.UsageStats
-import com.tx24.spicyplayer.lyrics.LyricsState
-import com.tx24.spicyplayer.playback.ExternalPlaybackViewModel
-import com.tx24.spicyplayer.playback.PlayerUiState
 import com.tx24.spicyplayer.ui.components.LocalUiAnimations
 import com.tx24.spicyplayer.ui.components.SettingRow
 import com.tx24.spicyplayer.ui.components.SettingsSkeleton
 import com.tx24.spicyplayer.ui.components.SpicyModal
 import com.tx24.spicyplayer.ui.components.outlinedCard
 import com.tx24.spicyplayer.ui.components.screenSlide
-import com.tx24.spicyplayer.ui.lyricsmanager.LyricsManagerContent
 import com.tx24.spicyplayer.ui.theme.SpicySpacing
 import dev.chrisbanes.haze.HazeState
 
@@ -40,9 +34,8 @@ import dev.chrisbanes.haze.HazeState
 @Composable
 fun QuickSettingsModal(
     visible: Boolean,
-    state: PlayerUiState,
-    viewModel: ExternalPlaybackViewModel,
-    settings: AppSettings,
+    state: SettingsState,
+    host: SettingsHost,
     backdrop: HazeState?,
     /** The screen it opens on: the queue's and the source's own floating buttons open theirs. */
     startOn: QuickScreen = QuickScreen.Main,
@@ -50,21 +43,18 @@ fun QuickSettingsModal(
 ) {
     var screen by remember { mutableStateOf(QuickScreen.Main) }
     var uploading by remember { mutableStateOf(false) }
-    LaunchedEffect(visible, state.lyrics) { if (visible) viewModel.detectLyricsLanguage() }
+    LaunchedEffect(visible, state.lyrics) { if (visible) host.quickSettingsShown() }
     // Opens on its first screen each time.
     LaunchedEffect(visible) {
         if (visible) {
             screen = startOn
-            if (startOn == QuickScreen.Queue) UsageStats.count(UsageCounter.QUEUE)
+            if (startOn == QuickScreen.Queue) host.quickScreenOpened(QuickScreen.Queue)
             uploading = false
         }
     }
     fun open(target: QuickScreen) {
-        if (target == QuickScreen.Queue) UsageStats.count(UsageCounter.QUEUE)
-        if (target == QuickScreen.LyricsManager) {
-            UsageStats.count(UsageCounter.LYRICS_MANAGER)
-            viewModel.refreshLocalLyrics()
-        }
+        if (target == QuickScreen.LyricsManager && host.openLyricsManagerPage()) return onDismiss()
+        if (target == QuickScreen.Queue || target == QuickScreen.LyricsManager) host.quickScreenOpened(target)
         screen = target
     }
     SpicyModal(
@@ -93,11 +83,11 @@ fun QuickSettingsModal(
         ) { shown ->
             Column(verticalArrangement = Arrangement.spacedBy(SpicySpacing.S3)) {
                 when (shown) {
-                    QuickScreen.Main -> MainScreen(state, viewModel, ::open)
+                    QuickScreen.Main -> MainScreen(state, host, ::open)
                     // Its own height: the list scrolls inside the pop-up's body.
-                    QuickScreen.Queue -> QueueList(state, viewModel, onJumped = onDismiss, modifier = Modifier.height(QUEUE_HEIGHT))
-                    QuickScreen.LyricsManager -> LyricsManagerContent(state, viewModel, settings, uploading, { uploading = it }, onDismiss)
-                    QuickScreen.Source -> SourceList(state, viewModel, onChosen = { screen = QuickScreen.Main }, modifier = Modifier.height(QUEUE_HEIGHT))
+                    QuickScreen.Queue -> host.QueueScreen(onJumped = onDismiss, modifier = Modifier.height(QUEUE_HEIGHT))
+                    QuickScreen.LyricsManager -> host.LyricsManagerScreen(uploading, { uploading = it }, onDismiss)
+                    QuickScreen.Source -> host.SourceScreen(onChosen = { screen = QuickScreen.Main }, modifier = Modifier.height(QUEUE_HEIGHT))
                 }
             }
         }
@@ -105,40 +95,30 @@ fun QuickSettingsModal(
 }
 
 @Composable
-private fun MainScreen(state: PlayerUiState, viewModel: ExternalPlaybackViewModel, open: (QuickScreen) -> Unit) {
+private fun MainScreen(state: SettingsState, host: SettingsHost, open: (QuickScreen) -> Unit) {
     // The screens this opens share one compact card, so the settings tuned right here keep the room.
     Column(Modifier.fillMaxWidth().outlinedCard()) {
-        if (state.queue.isNotEmpty()) {
-            GroupRow(SpicyGlyphs.Queue, "Queue", "${state.queue.size} ${if (state.queue.size == 1) "song" else "songs"}") {
+        if (state.queueSize > 0) {
+            GroupRow(SpicyGlyphs.Queue, "Queue", "${state.queueSize} ${if (state.queueSize == 1) "song" else "songs"}") {
                 open(QuickScreen.Queue)
             }
             GroupDivider()
         }
-        if (state.localLyricsKey != null && state.lyrics !is LyricsState.Idle) {
-            val chosen = state.sourceOverride?.let { id -> state.sourceDescriptors.firstOrNull { it.id == id }?.displayName ?: id }
-            val showing = (state.lyrics as? LyricsState.Ready)?.provider
-            GroupRow(
-                SpicyGlyphs.Source,
-                "Lyrics source",
-                when {
-                    chosen != null -> "$chosen, chosen for this song"
-                    showing != null -> "Automatic, showing $showing"
-                    else -> "Automatic"
-                },
-            ) { open(QuickScreen.Source) }
+        state.sourceSummary?.let { summary ->
+            GroupRow(SpicyGlyphs.Source, "Lyrics source", summary) { open(QuickScreen.Source) }
             GroupDivider()
         }
         GroupRow(SpicyGlyphs.LyricsManager, "Lyrics Manager", "Save or upload lyrics, link a folder") { open(QuickScreen.LyricsManager) }
     }
-    LyricsLanguageRow(state, viewModel)
-    SongDelayRow(state, viewModel)
+    host.LyricsLanguageRow()
+    if (host.songDelay) SongDelayRow(state, host)
     SettingRow(
         label = "Output delay",
         description = "For every song on ${state.outputLabel}. Move it right if the lyrics run ahead of the song.",
         icon = Icons.Rounded.Timer,
         stacked = true,
     ) {
-        DelayControl(state.lyricDelayMs, viewModel::setLyricDelay)
+        DelayControl(state.lyricDelayMs, host::setLyricDelay)
     }
 }
 

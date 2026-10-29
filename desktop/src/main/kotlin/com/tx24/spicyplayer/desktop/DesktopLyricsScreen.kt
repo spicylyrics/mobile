@@ -1,5 +1,9 @@
 package com.tx24.spicyplayer.desktop
 
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.CompositionLocalProvider
+import com.tx24.spicyplayer.ui.settings.QuickSettingsModal
+import com.tx24.spicyplayer.ui.settings.SettingsScreen
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -57,6 +61,8 @@ class DesktopLyricsHost(
     private val onResync: () -> Unit,
     private val openMiniWindow: () -> Unit,
     private val background: @Composable (animate: Boolean, modifier: Modifier) -> Unit,
+    /** The settings pages' desktop side, which settings and quick settings open over the lyrics with. */
+    private val settingsHost: DesktopSettingsHost,
     /** False for a copy of the screen composed out of sight ([WarmOtherLayout]): no pop-ups of its own. */
     private val drawsOverlays: Boolean = true,
 ) : LyricsScreenHost() {
@@ -68,10 +74,6 @@ class DesktopLyricsHost(
     override fun toggleTranslation() {
         lyricsActions.setTranslating(!lyricsActions.options.value.translating)
     }
-
-    // The phone's quick settings sheet comes to the desktop with the settings pages; until then
-    // its button, and the queue and source buttons that open its screens, stay hidden.
-    override val quickSettings: Boolean get() = false
 
     override val pictureInPicture: Boolean get() = true
     override fun enterPip() { openMiniWindow() }
@@ -94,6 +96,30 @@ class DesktopLyricsHost(
     @Composable
     override fun Overlays(context: LyricsScreenContext) {
         if (!drawsOverlays) return
+        // Settings and quick settings over the lyrics, as on the phone. Esc is their back ([DesktopBack]).
+        if (overlays.settings || overlays.quickSettings) CompositionLocalProvider(
+            LocalDensity provides (settingsHost.density ?: LocalDensity.current),
+        ) {
+            val state = settingsHost.rememberState()
+            if (overlays.settings) SettingsScreen(
+                state = state,
+                host = settingsHost,
+                settings = desktopSettings,
+                backdrop = context.backdrop,
+                contentPadding = context.padding,
+                onClosed = { overlays.settings = false },
+                onOpenLyricsManager = overlays::openLyricsManager,
+                onPeekChange = { overlays.settingsPeeking = it },
+            )
+            QuickSettingsModal(
+                visible = overlays.quickSettings,
+                state = state,
+                host = settingsHost,
+                backdrop = context.backdrop,
+                startOn = overlays.quickStart,
+                onDismiss = { overlays.quickSettings = false },
+            )
+        }
         val options by lyricsActions.options.collectAsState()
         options.pendingConsent?.let { request ->
             Popup(
@@ -131,16 +157,18 @@ class DesktopKeys : ScreenKeys {
 }
 
 /**
- * The screen's pop-ups on the desktop: settings and the Lyrics Manager are the window's own pages.
- * Quick settings has no desktop version yet ([DesktopLyricsHost.quickSettings] hides its buttons).
+ * The screen's pop-ups on the desktop: settings and quick settings open over the lyrics as on the
+ * phone ([DesktopLyricsHost.Overlays]); the Lyrics Manager is the window's own page.
  */
 class DesktopOverlays(private val nav: DesktopNav) : LyricsOverlays() {
-    override fun openSettings() = nav.open(Destination.Settings)
     override fun openLyricsManager() = nav.open(Destination.LyricsManager)
     override fun openQuickSettings(start: QuickScreen) {
-        if (start == QuickScreen.LyricsManager) nav.open(Destination.LyricsManager)
+        if (start == QuickScreen.LyricsManager) nav.open(Destination.LyricsManager) else super.openQuickSettings(start)
     }
     override fun openSpotifySearch() = Unit
+
+    /** Settings or quick settings are up, which take the keys from the lyrics behind them. */
+    val open: Boolean get() = settings || quickSettings
 }
 
 /**
