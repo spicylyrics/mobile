@@ -81,6 +81,13 @@ interface NowPlayingPlatform {
 
     /** Whether a layer can be blurred (a render effect). */
     val blursLayers: Boolean
+
+    /**
+     * Whether a blur can grow in strength across an area (Haze's progressive blur). Where it can't
+     * cheaply, the full blur fades in through a mask instead: on Direct3D, the progressive blur's
+     * looped shader takes seconds to compile, and froze the window the first time it showed.
+     */
+    val progressiveBlur: Boolean get() = true
 }
 
 /**
