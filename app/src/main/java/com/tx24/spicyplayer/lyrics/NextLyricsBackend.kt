@@ -37,11 +37,7 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
 
     private val diskCache = File(context.cacheDir, "lyrics")
     private val preferences = context.getSharedPreferences("lyrics_sources", Context.MODE_PRIVATE)
-    private val client = OkHttpClient.Builder()
-        .counted()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
-        .build()
+    private val client = lookupClient()
     private val gson = Gson()
     /** Header values of custom sources: kept out of [preferences], which backups copy. */
     private val customHeaders = context.getSharedPreferences("custom_source_headers", Context.MODE_PRIVATE)
@@ -286,6 +282,17 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
             edit.apply()
         }
 
+        /**
+         * The sources' connections. The read timeout restarts with every byte, so [LOOKUP_CALL_TIMEOUT_S]
+         * caps a whole call: a server trickling its answer can't hold the lookup open.
+         */
+        internal fun lookupClient(): OkHttpClient = OkHttpClient.Builder()
+            .counted()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(12, TimeUnit.SECONDS)
+            .callTimeout(LOOKUP_CALL_TIMEOUT_S, TimeUnit.SECONDS)
+            .build()
+
         /** Every source the app asks, built on [client]. Also used by the live source check test. */
         fun createProviders(
             client: OkHttpClient,
@@ -325,6 +332,8 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
 
         private val ORIGIN = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://[^/?#]*")
 
+        /** The most one request to a source may take, body included. */
+        internal const val LOOKUP_CALL_TIMEOUT_S = 20L
         /** Bump when payload conversion changes, so stale conversions are refetched. */
         private const val CACHE_VERSION = 36
         /** Outcomes that are no answer at all: a later lookup may get one. */

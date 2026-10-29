@@ -16,6 +16,9 @@ object SharedSpotify {
         .counted()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
+        // The read timeout restarts with every byte: this caps a whole call, so a trickling
+        // answer can't hold a lyric lookup's match open.
+        .callTimeout(CALL_TIMEOUT_S, TimeUnit.SECONDS)
         .build()
     private val gson = Gson()
     private val catalog = AnonymousSpotifyCatalogSearch(client, gson)
@@ -37,5 +40,6 @@ object SharedSpotify {
         ).also { canvas = it }
     }
 
+    private const val CALL_TIMEOUT_S = 20L
     private const val CANVAS_TIMEOUT_S = 6L
 }

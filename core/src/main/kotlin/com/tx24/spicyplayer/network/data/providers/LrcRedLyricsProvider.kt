@@ -42,8 +42,11 @@ class LrcRedLyricsProvider @Inject constructor(
         upstreamFamily = "apple_music", releaseChannel = SourceReleaseChannel.EXTENDED,
     )
 
-    // The model takes a few seconds on the recording; longer than a lookup is given.
-    private val syncClient by lazy { client.newBuilder().readTimeout(60, TimeUnit.SECONDS).build() }
+    // The model takes a few seconds on the recording; longer than a lookup is given, the whole
+    // call included (the lookup client's own call deadline is shorter).
+    internal val syncClient by lazy {
+        client.newBuilder().readTimeout(60, TimeUnit.SECONDS).callTimeout(SYNC_CALL_TIMEOUT_S, TimeUnit.SECONDS).build()
+    }
 
     override suspend fun fetch(request: LyricsLookupRequest): ProviderResult = guarded {
         val (_, song) = firstSong(request) ?: return@guarded ProviderResult.Miss
@@ -108,6 +111,7 @@ class LrcRedLyricsProvider @Inject constructor(
 
     companion object {
         private const val BASE = "https://lrc.red"
+        internal const val SYNC_CALL_TIMEOUT_S = 90L
         private val RENAMED_ATTRIBUTE = Regex("""(?<=\s)lrc:(?=[A-Za-z]+=)""")
 
         /**
