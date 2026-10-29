@@ -58,6 +58,25 @@ sourceSets.main {
     resources.srcDir(spicyLyricsKey.map { layout.buildDirectory.dir("generated/key").get() })
 }
 
+// The desktop app runs on Compose Multiplatform 1.13 (and its skiko) while the shared modules and
+// the phone stay on 1.12: 1.13 draws the window synchronously while it's resized on Direct3D
+// (skiko.rendering.windows.direct3DSynchronousLiveResize), where 1.12's async frames stalled for
+// seconds. Its Android artifacts need minSdk 24 and are a beta, so the phone doesn't take it.
+// Compose keeps binary compatibility across minor versions, so :ui and :renderer, compiled
+// against 1.12, run on it. The material icons are published apart, at 1.7.3.
+val desktopComposeVersion = "1.13.0-beta01"
+val desktopSkikoVersion = "0.156.0"
+configurations.all {
+    resolutionStrategy.eachDependency {
+        val group = requested.group
+        when {
+            group == "org.jetbrains.skiko" -> useVersion(desktopSkikoVersion)
+            group.startsWith("org.jetbrains.compose.") && !requested.name.startsWith("material-icons") ->
+                useVersion(desktopComposeVersion)
+        }
+    }
+}
+
 dependencies {
     implementation(project(":core"))
     implementation(project(":renderer"))
@@ -95,6 +114,9 @@ compose.desktop {
     application {
         mainClass = "com.tx24.spicyplayer.desktop.MainKt"
         args += desktopArgs
+        // Direct3D draws each frame on the resize event itself while the window is dragged,
+        // instead of on its render thread (Compose Multiplatform 1.13, see desktopComposeVersion).
+        jvmArgs += "-Dskiko.rendering.windows.direct3DSynchronousLiveResize=true"
 
         nativeDistributions {
             // MSI over EXE: jpackage's EXE is the same MSI behind a bootstrapper, and the MSI on
