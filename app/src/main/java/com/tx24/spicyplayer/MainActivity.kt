@@ -1198,6 +1198,8 @@ private fun LyricsApp(
                 var immersivePicture by remember { mutableStateOf<StagePicture?>(null) }
                 shownPortrait?.let { immersivePicture = it }
                 val immersive = { immersiveShown * expansion }
+                // Fully up, the portrait picture hides the header's cover.
+                val immersiveOpaque by remember { derivedStateOf { immersiveShown * expansion >= 1f } }
                 var failedFollowMotionUrl by remember { mutableStateOf<String?>(null) }
                 val motionScope = rememberCoroutineScope()
                 val stageInfo = NowPlayingInfo(state.title, state.artist, state.album, state.artwork, state.artworkUri, state.trackDirection, hasSession = state.sourcePackage != null)
@@ -1428,7 +1430,7 @@ private fun LyricsApp(
                     panelLeft = { landscapeMetrics.coverLeftPx(panelSide.value) },
                     stage = { stageShown.value },
                     immersive = { if (landscape) 0f else immersive() },
-                    animatedCoverHeld = ambientOpaque,
+                    animatedCoverHeld = ambientOpaque || (!landscape && immersiveOpaque),
                     coverOverlay = if (!controlsOnCover || controlsGone || stageOn) null else {
                         {
                             // No glass blur here: the cover is part of what the glass blurs.
