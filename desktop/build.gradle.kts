@@ -171,3 +171,12 @@ tasks.register<JavaExec>("console") {
 
 /** [version] for macOS, which refuses a major version of 0: 0.y.z becomes 1.y.z, anything else stays. */
 fun macPackageVersion(version: String): String = if (version.startsWith("0.")) "1." + version.removePrefix("0.") else version
+
+// A failing test prints its whole cause chain, so CI's log says why (a native library, say).
+tasks.withType<Test>().configureEach {
+    testLogging {
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showCauses = true
+        showStackTraces = true
+    }
+}
