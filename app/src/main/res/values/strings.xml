@@ -8,4 +8,7 @@
     <string name="widget_play_pause">Play or pause</string>
     <string name="widget_previous">Previous</string>
     <string name="widget_next">Next</string>
+    <string name="update_channel">Updates</string>
+    <string name="update_ready_title">Update downloaded</string>
+    <string name="update_ready_text">Tap to install it</string>
 </resources>

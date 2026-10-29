@@ -47,9 +47,11 @@ import com.tx24.spicyplayer.ui.components.SpicyModalButton
 import com.tx24.spicyplayer.ui.components.SpicyModalGap
 import com.tx24.spicyplayer.ui.components.SpicyModalHeading
 import com.tx24.spicyplayer.ui.components.SpicyModalMessage
+import android.Manifest
 import android.app.KeyguardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Rational
@@ -59,6 +61,8 @@ import android.view.WindowManager
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -1985,8 +1989,18 @@ private fun UpdatePopup(update: UpdateUiState, updater: UpdateViewModel, backdro
         is UpdateStatus.Available -> status.release
         is UpdateStatus.Downloading -> status.release
         is UpdateStatus.Installing -> status.release
+        is UpdateStatus.ReadyToInstall -> status.release
         is UpdateStatus.Failed -> status.release
         else -> null
+    }
+    val context = LocalContext.current
+    // Asked for once an update starts, so a download that finishes out of view can say so; the
+    // update goes ahead whatever the answer.
+    val askToNotify = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { updater.install() }
+    val startUpdate = {
+        val ask = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        if (ask) askToNotify.launch(Manifest.permission.POST_NOTIFICATIONS) else updater.install()
     }
     SpicyModal(
         visible = update.prompt && release != null,
@@ -1998,6 +2012,7 @@ private fun UpdatePopup(update: UpdateUiState, updater: UpdateViewModel, backdro
         SpicyVersionRow(BuildConfig.VERSION_NAME, release.version)
         val status = when (val current = shown) {
             is UpdateStatus.Installing -> "Confirm the install in Android's prompt."
+            is UpdateStatus.ReadyToInstall -> "Downloaded. Tap Install to confirm it in Android's prompt."
             is UpdateStatus.Failed -> current.message
             else -> null
         }
@@ -2005,11 +2020,13 @@ private fun UpdatePopup(update: UpdateUiState, updater: UpdateViewModel, backdro
             ?: SpicyModalNotes(release.notes, status ?: "No notes for this version.".takeIf { release.notes.isEmpty() })
         SpicyModalGap()
         val busy = shown is UpdateStatus.Downloading || shown is UpdateStatus.Installing
+        val ready = shown is UpdateStatus.ReadyToInstall
         SpicyModalActions {
-            if (!busy) SpicyModalButton("Skip this version", updater::skip, style = SpicyButtonStyle.Quiet)
+            if (!busy && !ready) SpicyModalButton("Skip this version", updater::skip, style = SpicyButtonStyle.Quiet)
             SpicyModalButton(if (busy) "Hide" else "Later", updater::later)
-            if (!busy) {
-                SpicyModalButton(if (shown is UpdateStatus.Failed) "Try again" else "Update", updater::install, style = SpicyButtonStyle.Primary)
+            when {
+                ready -> SpicyModalButton("Install", { updater.confirmInstall(context) }, style = SpicyButtonStyle.Primary)
+                !busy -> SpicyModalButton(if (shown is UpdateStatus.Failed) "Try again" else "Update", startUpdate, style = SpicyButtonStyle.Primary)
             }
         }
     }
