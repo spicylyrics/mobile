@@ -247,40 +247,12 @@ const val WARM_UP_FOR_MS = 2_500L
 object DesktopSwitches {
     val warmUp: Boolean = System.getProperty("spicy.warmUp") != "off"
     val glass: Boolean = System.getProperty("spicy.glass") != "off"
-    /** `spicy.resizeGlass=on`: the glass keeps blurring while the window is resized ([LiveResize]). */
-    val resizeGlass: Boolean = System.getProperty("spicy.resizeGlass") == "on"
     /** `spicy.background=off`: a plain dark page instead of the chosen background. */
     val background: Boolean = System.getProperty("spicy.background") != "off"
 }
 
-/**
- * Whether the window is being resized: its size changed within [LIVE_RESIZE_SETTLE_MS]. The glass
- * blurs a recording of the whole page, so on Direct3D every new window size allocates new
- * full-window render targets; a drag allocates them dozens of times a second, and the driver's
- * allocations stalled the frame for seconds. While it's [active] the glass draws its solid fill,
- * and blurs again once the size holds.
- */
-object LiveResize {
-    var active by mutableStateOf(false)
-}
-
-/** How long the window's size has to hold before a resize counts as over. */
-const val LIVE_RESIZE_SETTLE_MS = 200L
-
-/** Marks [LiveResize] while [widthPx] by [heightPx] keeps changing; not for the first size. */
-@Composable
-fun TrackLiveResize(widthPx: Int, heightPx: Int) {
-    val first = remember { widthPx to heightPx }
-    LaunchedEffect(widthPx, heightPx) {
-        if (first == (widthPx to heightPx) && !LiveResize.active) return@LaunchedEffect
-        LiveResize.active = true
-        delay(LIVE_RESIZE_SETTLE_MS)
-        LiveResize.active = false
-    }
-}
-
 /** The now-playing services on the desktop: the basic ones, without blur where [DesktopSwitches.glass] is off. */
-val desktopNowPlayingPlatform: NowPlayingPlatform = object : BasicNowPlayingPlatform() {
-    override val blursLayers: Boolean
-        get() = DesktopSwitches.glass && (DesktopSwitches.resizeGlass || !LiveResize.active)
-}
+val desktopNowPlayingPlatform: NowPlayingPlatform =
+    if (DesktopSwitches.glass) BasicNowPlayingPlatform() else object : BasicNowPlayingPlatform() {
+        override val blursLayers: Boolean get() = false
+    }
