@@ -62,14 +62,14 @@ class TtmlLyricsParserTest {
     @Test fun aByteOrderMarkOrWhitespaceBeforeTheDeclarationIsIgnored() {
         val xml = """<?xml version="1.0" encoding="UTF-8"?>""" +
             doc("""<div><p begin="1s" end="2s"><span begin="1s" end="2s">Hello</span></p></div>""")
-        for (prefix in listOf("﻿", "\n  ", "﻿\r\n")) {
+        for (prefix in listOf("\uFEFF", "\n  ", "\uFEFF\r\n")) {
             assertEquals("Hello", parse(prefix + xml).lines.single().words.single().text)
         }
     }
 
     @Test fun nbspReadsAsANoBreakSpace() {
         val p = """<p begin="1s" end="2s"><span begin="1s" end="2s">Hello&nbsp;there</span></p>"""
-        assertEquals("Hello there", parse(doc("<div>$p</div>")).lines.single().words.single().text)
+        assertEquals("Hello\u00A0there", parse(doc("<div>$p</div>")).lines.single().words.single().text)
     }
 
     @Test fun aSpanEndingBeforeItBeginsRunsToTheNextSpan() {

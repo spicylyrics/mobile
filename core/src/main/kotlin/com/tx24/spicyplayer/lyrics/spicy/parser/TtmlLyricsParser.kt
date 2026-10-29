@@ -54,11 +54,11 @@ object TtmlLyricsParser {
         val parser = XmlPullParserFactory.newInstance().newPullParser()
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         // A byte-order mark or whitespace ahead of the `<?xml?>` declaration is a parse error.
-        val text = input.reader(Charsets.UTF_8).readText().trimStart { it == '﻿' || it.isWhitespace() }
+        val text = input.reader(Charsets.UTF_8).readText().trimStart { it == '\uFEFF' || it.isWhitespace() }
         parser.setInput(StringReader(text))
         // HTML's `&nbsp;` is not an XML entity, but some catalogues write it. A parser that can't
         // take extra entities still reads every document without one.
-        runCatching { parser.defineEntityReplacementText("nbsp", " ") }
+        runCatching { parser.defineEntityReplacementText("nbsp", "\u00A0") }
         val stack = ArrayDeque<Element>()
         var root: Element? = null
         var event = parser.eventType
