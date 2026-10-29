@@ -1433,6 +1433,7 @@ private fun LyricsApp(
                     stage = { stageShown.value },
                     immersive = { if (landscape) 0f else immersive() },
                     animatedCoverHeld = ambientOpaque || (!landscape && immersiveOpaque),
+                    visible = { ambientFade.value < 1f },
                     coverOverlay = if (!controlsOnCover || controlsGone || stageOn) null else {
                         {
                             // No glass blur here: the cover is part of what the glass blurs.

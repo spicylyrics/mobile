@@ -24,6 +24,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -61,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import com.tx24.spicyplayer.lyrics.spicy.canvas.LyricsLayoutCalculator
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -150,6 +152,8 @@ fun CompactNowPlayingHeader(
     immersive: () -> Float = { 0f },
     /** The cover hidden under something opaque: its animated cover holds its frame. */
     animatedCoverHeld: Boolean = false,
+    /** False while the whole header is faded out: its names stop scrolling. */
+    visible: () -> Boolean = { true },
 ) {
     val year = releaseYear?.takeIf { it.position != ReleaseYearPosition.Off }?.let { y ->
         when {
@@ -175,8 +179,14 @@ fun CompactNowPlayingHeader(
     fun stageP() = if (panel != null) stage() else 0f
     val below = belowCover.takeIf { panel != null }
     var belowHeightPx by remember { mutableFloatStateOf(0f) }
+    fun boxAlpha() = if (hidden) p() else 1f
+    // The compact bar's text gives way as the cover grows.
+    fun compactTextAlpha() = 1f - (p() / TEXT_SWAP).coerceIn(0f, 1f)
+    // The panel's text is always there; the compact bar's gives way to it.
+    fun expandedTextAlpha() = (1f - immersive()) *
+        if (panel != null) 1f - stageP() else ((layoutP() - (1f - TEXT_SWAP)) / TEXT_SWAP).coerceIn(0f, 1f)
     with(density) {
-        Box(modifier.fillMaxSize().graphicsLayer { alpha = if (hidden) p() else 1f }) {
+        Box(modifier.fillMaxSize().graphicsLayer { alpha = boxAlpha() }) {
             HeaderArtwork(
                 artwork = artwork,
                 motionUrl = motion.url,
@@ -215,8 +225,9 @@ fun CompactNowPlayingHeader(
                 centered = false,
                 modifier = Modifier
                     .offset { IntOffset(metrics.textStartPx.roundToInt(), metrics.barTopPx.roundToInt()) }
-                    .graphicsLayer { alpha = 1f - (p() / TEXT_SWAP).coerceIn(0f, 1f) }
+                    .graphicsLayer { alpha = compactTextAlpha() }
                     .height(metrics.barHeightPx.toDp()),
+                active = { visible() && compactTextAlpha() > 0f },
             )
             if (below != null) {
                 Box(
@@ -252,13 +263,10 @@ fun CompactNowPlayingHeader(
                                 (artTop() + if (below != null) size + belowHeightPx else size * 1.05f).roundToInt(),
                             )
                         }
-                        // The panel's text is always there; the compact bar's gives way to it.
-                        .graphicsLayer {
-                            alpha = (1f - immersive()) *
-                                if (panel != null) 1f - stageP() else ((layoutP() - (1f - TEXT_SWAP)) / TEXT_SWAP).coerceIn(0f, 1f)
-                        }
+                        .graphicsLayer { alpha = expandedTextAlpha() }
                         .width(expanded.artSizePx.toDp())
                         .height(expanded.textHeightPx.toDp()),
+                    active = { visible() && boxAlpha() > 0f && expandedTextAlpha() > 0f },
                 )
             }
         }
@@ -404,6 +412,8 @@ internal fun HeaderMetadata(
     end: Boolean = false,
     /** Lines them up this way instead of by [centered] and [end]. */
     alignment: Alignment.Horizontal? = null,
+    /** False while they can't be seen: long lines stop scrolling ([MarqueeLine]). */
+    active: () -> Boolean = { true },
 ) {
     var shown by remember { mutableStateOf(ShownMetadata(title, artists, year)) }
     val alpha = remember { Animatable(1f) }
@@ -431,8 +441,8 @@ internal fun HeaderMetadata(
             else -> Alignment.Start
         },
     ) {
-        MarqueeLine(shown.title, titleStyle, Color.White.copy(alpha = 0.95f), titleWidthPx)
-        ArtistsRow(shown.artists, shown.year, artistsStyle, Color.White.copy(alpha = 0.7f), artistsWidthPx)
+        MarqueeLine(shown.title, titleStyle, Color.White.copy(alpha = 0.95f), titleWidthPx, active = active)
+        ArtistsRow(shown.artists, shown.year, artistsStyle, Color.White.copy(alpha = 0.7f), artistsWidthPx, active)
     }
 }
 
@@ -446,9 +456,9 @@ internal data class YearLabel(val text: String, val before: Boolean, val shown: 
  * off by a smaller, fainter middle dot; the artists scroll in the room left beside it.
  */
 @Composable
-private fun ArtistsRow(artists: String, year: YearLabel?, style: TextStyle, color: Color, containerWidthPx: Float) {
+private fun ArtistsRow(artists: String, year: YearLabel?, style: TextStyle, color: Color, containerWidthPx: Float, active: () -> Boolean) {
     if (year == null) {
-        MarqueeLine(artists, style, color, containerWidthPx)
+        MarqueeLine(artists, style, color, containerWidthPx, active = active)
         return
     }
     val measurer = rememberTextMeasurer()
@@ -492,6 +502,7 @@ private fun ArtistsRow(artists: String, year: YearLabel?, style: TextStyle, colo
             padEndPx = if (year.before) HeaderMarquee.spanEndPaddingPx(containerWidthPx) else halfCqw,
             maskStartPx = containerWidthPx * (if (year.before) 0.01f else 0.02f),
             maskEndPx = containerWidthPx * (if (year.before) 0.02f else 0.01f),
+            active = active,
         )
         if (!year.before) yearLabel()
     }
@@ -512,6 +523,8 @@ internal fun MarqueeLine(
     /** How far in from each side the edge fades reach while the text scrolls; null: the usual. */
     maskStartPx: Float? = null,
     maskEndPx: Float? = null,
+    /** False while the line can't be seen: the scroll waits, and comes back where it would be by then. */
+    active: () -> Boolean = { true },
 ) {
     val measurer = rememberTextMeasurer()
     val layout = remember(text, style) { measurer.measure(text, style, maxLines = 1, softWrap = false) }
@@ -520,11 +533,13 @@ internal fun MarqueeLine(
     val overflows = spanWidth > containerWidthPx
 
     var phase by remember(text) { mutableFloatStateOf(0f) }
+    val activeUpdated by rememberUpdatedState(active)
     LaunchedEffect(text, overflows) {
         phase = 0f
         if (!overflows) return@LaunchedEffect
         val start = withFrameMillis { it }
         while (true) {
+            if (!activeUpdated()) snapshotFlow { activeUpdated() }.first { it }
             withFrameMillis { phase = HeaderMarquee.phase(it - start) }
         }
     }

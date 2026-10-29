@@ -272,7 +272,15 @@ class SlidingAlignment(private val bias: () -> Float) : Alignment, Alignment.Hor
  * timeline below.
  */
 @Composable
-fun StageMetadata(info: NowPlayingInfo, sizes: ExpandedHeader, alignment: Alignment.Horizontal, bias: () -> Float, widthPx: Float) {
+fun StageMetadata(
+    info: NowPlayingInfo,
+    sizes: ExpandedHeader,
+    alignment: Alignment.Horizontal,
+    bias: () -> Float,
+    widthPx: Float,
+    /** False while it can't be seen: long lines stop scrolling. */
+    active: () -> Boolean = { true },
+) {
     val title = sizes.dockTitleSizeSp
     val artists = sizes.dockArtistsSizeSp
     HeaderMetadata(
@@ -285,6 +293,7 @@ fun StageMetadata(info: NowPlayingInfo, sizes: ExpandedHeader, alignment: Alignm
         artistsWidthPx = widthPx,
         centered = false,
         alignment = alignment,
+        active = active,
         modifier = Modifier.layout { measurable, constraints ->
             val placeable = measurable.measure(constraints)
             layout(placeable.width, placeable.height) {
