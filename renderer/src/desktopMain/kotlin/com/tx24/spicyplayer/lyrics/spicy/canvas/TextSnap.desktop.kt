@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.asComposeCanvas
 import androidx.compose.ui.graphics.drawscope.CanvasDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -19,7 +20,6 @@ import org.jetbrains.skia.FilterTileMode
 import org.jetbrains.skia.Image
 import org.jetbrains.skia.ImageFilter
 import org.jetbrains.skia.ImageInfo
-import org.jetbrains.skia.Matrix33
 import org.jetbrains.skia.Rect
 import org.jetbrains.skia.SamplingMode
 import org.jetbrains.skia.Surface
@@ -28,7 +28,13 @@ import org.jetbrains.skia.Surface
 internal actual val UnsnapTextDegrees = (0.001 * 180.0 / kotlin.math.PI).toFloat()
 
 internal actual fun DrawScope.drawLyricText(layout: TextLayoutResult, brush: Brush, topLeft: Offset) {
-    if (!drawMask(layout, topLeft) { brush.applyTo(Size(layout.size.width.toFloat(), layout.size.height.toFloat()), it, 1f) }) {
+    val size = Size(layout.size.width.toFloat(), layout.size.height.toFloat())
+    // The wipe's brush is new every frame. A shader of our own, closed once drawn, frees its
+    // native memory now instead of whenever a GC gets round to the brush's.
+    val shader = (brush as? ShaderBrush)?.createShader(size)
+    val drawn = drawMask(layout, topLeft) { if (shader != null) it.shader = shader else brush.applyTo(size, it, 1f) }
+    shader?.close()
+    if (!drawn) {
         drawText(layout, brush = brush, topLeft = topLeft, shadow = Shadow.None)
     }
 }
@@ -144,18 +150,17 @@ private inline fun DrawScope.drawMask(layout: TextLayoutResult, topLeft: Offset,
     paint.color = Color.White
     paint.alpha = 1f
     setUp(paint)
-    // The image sits at the canvas origin and the text a pad in from it; the brush is in text coordinates.
+    // The canvas origin is the text's, so the brush (in text coordinates) needs no shifting, and
+    // the image starts a pad up and left of it.
     val pad = mask.pad.toFloat()
-    val skiaPaint = paint.skiaPaint
-    skiaPaint.shader = skiaPaint.shader?.makeWithLocalMatrix(Matrix33.makeTranslate(pad, pad))
     drawIntoCanvas { canvas ->
         val skia = canvas.skiaCanvas
         val w = mask.image.width.toFloat()
         val h = mask.image.height.toFloat()
         skia.save()
-        skia.translate(topLeft.x - pad, topLeft.y - pad)
+        skia.translate(topLeft.x, topLeft.y)
         // Not strict: the mask's transparent border already keeps the filter inside it.
-        skia.drawImageRect(mask.image, Rect.makeWH(w, h), Rect.makeWH(w, h), SamplingMode.LINEAR, skiaPaint, false)
+        skia.drawImageRect(mask.image, Rect.makeWH(w, h), Rect.makeXYWH(-pad, -pad, w, h), SamplingMode.LINEAR, paint.skiaPaint, false)
         MaskStats.drawn++
         skia.restore()
     }
@@ -183,7 +188,11 @@ internal actual fun DrawScope.drawLyricShadow(layout: TextLayoutResult, shadow: 
 
 // Blur filters by sigma, rounded to a quarter: radii animate, and each new filter is a native object.
 private val blurFilters = object : LinkedHashMap<Int, ImageFilter>(16, 0.75f, true) {
-    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, ImageFilter>) = size > 64
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, ImageFilter>): Boolean {
+        if (size <= 64) return false
+        eldest.value.close()
+        return true
+    }
 }
 
 private fun blurFilter(sigma: Float): ImageFilter {
