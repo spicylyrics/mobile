@@ -1476,8 +1476,10 @@ private fun LyricsApp(
                     },
                 )
                 // The song docked over the portrait Canvas or cover, where the big cover's text was.
-                // The controls' shade is off with the big cover up, so nothing blurs it here.
-                if (!landscape && immersivePicture != null) {
+                // The controls' shade is off with the big cover up, so nothing blurs it here. Only
+                // while it shows: faded out, its timeline and names would run on unseen.
+                val canvasDockShown by remember { derivedStateOf { immersiveShown * expansion * (1f - ambientFade.value) > 0f } }
+                if (!landscape && immersivePicture != null && canvasDockShown) {
                     // In line with the controls' rows, so the song sits over the timeline.
                     val gutter = controlsContentStartPx(pageWidth, density)
                     PortraitCanvasDock(
