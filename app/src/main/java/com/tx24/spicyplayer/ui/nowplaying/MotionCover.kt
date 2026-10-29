@@ -220,8 +220,8 @@ fun MotionCoverVideo(
 /**
  * The shared stream of [url], held while this is composed: one player for every view and sampler
  * of it, looping only while the app is on screen. A stream that fails to play calls [onFailed].
- * [held] stops this one counting as on screen (it's covered), so a loop nobody can see holds its
- * frame instead of decoding.
+ * [held] (covered by something opaque) stops this one keeping it looping, so a loop nobody can
+ * see holds its frame instead of decoding; one that hasn't drawn yet still plays to its first.
  */
 @Composable
 internal fun rememberMotionCoverStream(url: String, onFailed: () -> Unit, held: Boolean = false): MotionCoverStream {
@@ -238,9 +238,8 @@ internal fun rememberMotionCoverStream(url: String, onFailed: () -> Unit, held: 
         stream.player.addListener(listener)
         onDispose { stream.player.removeListener(listener) }
     }
-    DisposableEffect(stream, lifecycle, held) {
+    DisposableEffect(stream, lifecycle) {
         // Only loops while the app is on screen, and not held with the music ([MotionCovers.pausedNow]).
-        if (held) return@DisposableEffect onDispose {}
         var started = false
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
@@ -254,6 +253,11 @@ internal fun rememberMotionCoverStream(url: String, onFailed: () -> Unit, held: 
             lifecycle.removeObserver(observer)
             if (started) stream.onScreen(false)
         }
+    }
+    DisposableEffect(stream, held) {
+        if (!held) return@DisposableEffect onDispose {}
+        stream.cover(true)
+        onDispose { stream.cover(false) }
     }
     return stream
 }

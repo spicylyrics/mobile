@@ -50,17 +50,26 @@ internal class MotionCoverStream(val url: String, val player: ExoPlayer) {
         sync()
     }
 
+    /** How many of those are covered by something opaque: they don't keep it looping. */
+    private var covered = 0
+
+    fun cover(covered: Boolean) {
+        this.covered = (this.covered + if (covered) 1 else -1).coerceAtLeast(0)
+        sync()
+    }
+
     /** Whether the player has drawn a frame yet; until it has, there's nothing to hold. */
     private var drawn = false
 
     /**
-     * Plays while on screen and not held with the music ([MotionCovers.pausedNow]). Held from the
-     * start (the app opened on a paused song), it plays until its first frame is drawn, then holds
-     * that, so the views and the samplers have a picture.
+     * Plays while on screen, uncovered, and not held with the music ([MotionCovers.pausedNow]).
+     * Held from the start (the app opened on a paused song, or it came in covered), it plays until
+     * its first frame is drawn, then holds that, so the views and the samplers have a picture.
      */
     fun sync() {
         if (released) return
-        if (onScreen > 0 && (!drawn || !MotionCovers.pausedNow(url))) player.play() else player.pause()
+        val playing = onScreen > 0 && !drawn || onScreen - covered > 0 && !MotionCovers.pausedNow(url)
+        if (playing) player.play() else player.pause()
     }
     private var released = false
     private val fanOut = VideoFanOut()
