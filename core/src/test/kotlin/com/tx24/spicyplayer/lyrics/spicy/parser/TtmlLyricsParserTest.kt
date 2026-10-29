@@ -59,6 +59,19 @@ class TtmlLyricsParserTest {
         assertEquals(listOf("keep"), parse(doc(body)).lines.map { it.words.single().text })
     }
 
+    @Test fun aByteOrderMarkOrWhitespaceBeforeTheDeclarationIsIgnored() {
+        val xml = """<?xml version="1.0" encoding="UTF-8"?>""" +
+            doc("""<div><p begin="1s" end="2s"><span begin="1s" end="2s">Hello</span></p></div>""")
+        for (prefix in listOf("﻿", "\n  ", "﻿\r\n")) {
+            assertEquals("Hello", parse(prefix + xml).lines.single().words.single().text)
+        }
+    }
+
+    @Test fun nbspReadsAsANoBreakSpace() {
+        val p = """<p begin="1s" end="2s"><span begin="1s" end="2s">Hello&nbsp;there</span></p>"""
+        assertEquals("Hello there", parse(doc("<div>$p</div>")).lines.single().words.single().text)
+    }
+
     @Test fun readsEveryTimeFormat() {
         assertEquals(0.3, TtmlLyricsParser.convertTimeToSeconds("300ms")!!, 1e-9)
         assertEquals(90.0, TtmlLyricsParser.convertTimeToSeconds("1.5m")!!, 1e-9)

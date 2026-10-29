@@ -9,6 +9,7 @@ import com.tx24.spicyplayer.lyrics.spicy.models.Word
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.InputStream
+import java.io.StringReader
 import kotlin.math.abs
 import kotlin.math.pow
 import kotlin.math.roundToLong
@@ -52,7 +53,12 @@ object TtmlLyricsParser {
     private fun readTree(input: InputStream): Element {
         val parser = XmlPullParserFactory.newInstance().newPullParser()
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-        parser.setInput(input.reader(Charsets.UTF_8))
+        // A byte-order mark or whitespace ahead of the `<?xml?>` declaration is a parse error.
+        val text = input.reader(Charsets.UTF_8).readText().trimStart { it == '﻿' || it.isWhitespace() }
+        parser.setInput(StringReader(text))
+        // HTML's `&nbsp;` is not an XML entity, but some catalogues write it. A parser that can't
+        // take extra entities still reads every document without one.
+        runCatching { parser.defineEntityReplacementText("nbsp", " ") }
         val stack = ArrayDeque<Element>()
         var root: Element? = null
         var event = parser.eventType
