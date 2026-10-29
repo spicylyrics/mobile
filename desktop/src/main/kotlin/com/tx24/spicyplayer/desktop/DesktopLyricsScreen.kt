@@ -83,8 +83,6 @@ class DesktopLyricsHost(
     }
 
     override val pictureInPicture: Boolean get() = true
-    // Until the phone's Lyrics Manager is shared.
-    override val lyricsManager: Boolean get() = false
     override fun enterPip() { openMiniWindow() }
 
     @Composable
@@ -175,9 +173,13 @@ class DesktopKeys : ScreenKeys {
     }
 }
 
-/** The screen's pop-ups on the desktop: settings and quick settings open over the lyrics as on the phone ([DesktopLyricsHost.Overlays]). */
+/**
+ * The screen's pop-ups on the desktop: settings and quick settings open over the lyrics as on the
+ * phone ([DesktopLyricsHost.Overlays]), and the Lyrics Manager opens in quick settings.
+ */
 class DesktopOverlays : LyricsOverlays() {
     override fun openSpotifySearch() = Unit
+    override fun openLyricsManager() = openQuickSettings(QuickScreen.LyricsManager)
 
     /** Settings or quick settings are up, which take the keys from the lyrics behind them. */
     val open: Boolean get() = settings || quickSettings

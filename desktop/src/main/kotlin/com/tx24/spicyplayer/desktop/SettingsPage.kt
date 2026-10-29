@@ -19,6 +19,19 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.toComposeImageBitmap
+import com.tx24.spicyplayer.ui.lyricsmanager.AddResult
+import com.tx24.spicyplayer.ui.lyricsmanager.LibraryEntry
+import com.tx24.spicyplayer.ui.lyricsmanager.LyricsManagerActions
+import com.tx24.spicyplayer.ui.lyricsmanager.LyricsManagerContent
+import com.tx24.spicyplayer.ui.lyricsmanager.LyricsManagerState
+import com.tx24.spicyplayer.ui.lyricsmanager.acceptsFile
+import com.tx24.spicyplayer.ui.lyricsmanager.sanitizeFilename
+import kotlinx.coroutines.launch
+import org.jetbrains.skia.Image
 import com.tx24.spicyplayer.network.data.LyricsSourceSettings
 import com.tx24.spicyplayer.network.data.SourceRanking
 import com.tx24.spicyplayer.ui.components.LocalSettingsQuery
@@ -49,15 +62,20 @@ val desktopSettings: CommonAppSettings by lazy {
 /**
  * The settings pages' desktop side: the followed player's delay, the source switches, the font
  * picker and the links. The pages only a phone has (This song, translation, the floating window,
- * Advanced) and its device rows are left out, and so is the Lyrics Manager for now.
+ * Advanced) and its device rows are left out. The Lyrics Manager keeps its songs in [library];
+ * [reloadLyrics] looks the playing song's lyrics up again once they change, and [say] shows a notice.
  */
 class DesktopSettingsHost(
     window: Frame?,
     private val session: MediaSession,
     private val delays: SyncDelays,
     private val sources: DesktopSourceSettings?,
+    private val library: DesktopLyricsLibrary,
+    private val reloadLyrics: () -> Unit = {},
+    private val say: (String) -> Unit = {},
 ) : SettingsHost() {
     private val platform = DesktopPlatformActions(window)
+    private val files = DesktopLyricsFiles(platform, window)
 
     /**
      * The density settings are drawn at: the window's own, times the Interface Scale setting,
@@ -65,6 +83,9 @@ class DesktopSettingsHost(
      * window. Null until the window sets it.
      */
     var density by mutableStateOf<Density?>(null)
+
+    /** Bumped whenever [library] changes, which reads its list again. */
+    private var libraryVersion by mutableIntStateOf(0)
 
     /** What the settings show of the player; [rememberState] keeps it current while they're open. */
     private val state = mutableStateOf(SettingsState())
@@ -99,9 +120,6 @@ class DesktopSettingsHost(
     override val lastTouch: String get() = "the mouse or keys were last used"
     override val aTouch: String get() = "Moving the mouse or pressing a key"
     override val untouched: String get() = "alone"
-
-    // Until the phone's Lyrics Manager is shared.
-    override val lyricsManager: Boolean get() = false
 
     /** What the settings show of the player, read again every half second while they're open. */
     @Composable
@@ -177,6 +195,78 @@ class DesktopSettingsHost(
                 },
                 searchDescription = "Lyrics source provider",
             )
+        }
+    }
+
+    /**
+     * The Lyrics Manager over [library]: its list is read again whenever it opens and after every
+     * change, and uploads are for the song the player is on.
+     */
+    @Composable
+    override fun LyricsManagerScreen(uploading: Boolean, onUploadingChange: (Boolean) -> Unit, onDismiss: () -> Unit) {
+        val scope = rememberCoroutineScope()
+        val entries by produceState(emptyList<LibraryEntry>(), libraryVersion) {
+            value = runCatching { library.entries() }.getOrDefault(emptyList())
+        }
+        // Read for its title, so a new song redraws the screen.
+        val title = state.value.songTitle
+        val track = session.track
+        val currentId = track?.let { library.idOf(it.asLibraryTrack()) }
+        val actions = remember(scope) {
+            object : LyricsManagerActions {
+                override suspend fun cover(id: String): ImageBitmap? =
+                    library.cover(id)?.let { runCatching { Image.makeFromEncoded(it).toComposeImageBitmap() }.getOrNull() }
+
+                override fun export(entry: LibraryEntry) {
+                    scope.launch {
+                        val ttml = library.raw(entry.id) ?: return@launch say("Could not retrieve TTML for this track.")
+                        files.save("${sanitizeFilename(entry.title)}.ttml", ttml) { written ->
+                            if (written == false) say("Could not retrieve TTML for this track.")
+                        }
+                    }
+                }
+
+                override fun remove(id: String) {
+                    scope.launch {
+                        library.remove(id)
+                        libraryVersion++
+                        say("Removed from Local DB.")
+                        if (id == session.track?.let { library.idOf(it.asLibraryTrack()) }) reloadLyrics()
+                    }
+                }
+
+                override fun resetOnce() {
+                    library.clearOnce()
+                    reloadLyrics()
+                }
+
+                override fun pickUpload(save: Boolean, onPicked: (apply: suspend () -> Boolean) -> Unit) {
+                    files.open { name, text -> onPicked { upload(name, text, save) } }
+                }
+            }
+        }
+        LyricsManagerContent(
+            LyricsManagerState(entries, currentId, title.ifEmpty { track?.title.orEmpty() }),
+            actions,
+            desktopSettings,
+            uploading,
+            onUploadingChange,
+            onDismiss,
+        )
+    }
+
+    /** Applies [text], the file [name], to the playing song: true once it's shown. */
+    private suspend fun upload(name: String, text: String, save: Boolean): Boolean {
+        val track = session.track ?: return false.also { say("Nothing is playing.") }
+        if (!acceptsFile(name)) return false.also { say("Only .ttml and .lrc files are supported.") }
+        return when (val result = library.add(track.asLibraryTrack(), text.removePrefix("\uFEFF"), name, save)) {
+            is AddResult.Refused -> false.also { say(result.message) }
+            is AddResult.Added -> {
+                libraryVersion++
+                say(if (result.saved) "Saved to Local DB." else "Applied for this song.")
+                reloadLyrics()
+                true
+            }
         }
     }
 

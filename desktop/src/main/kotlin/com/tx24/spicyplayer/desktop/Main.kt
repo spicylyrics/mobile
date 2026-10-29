@@ -107,6 +107,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.emptyFlow
 import org.jetbrains.skia.Image
 import kotlinx.coroutines.launch
@@ -161,6 +162,8 @@ fun main(args: Array<String>) {
     val sourceSettings = DesktopSourceSettings(DesktopLyrics.defaultStore(), lookup.descriptors, onChange = lookup::useSources)
     lookup.useSources(sourceSettings.policy())
     val screen = MutableStateFlow<Screen>(Screen.Waiting())
+    // Short notices for the lyrics screen's toast, such as the Lyrics Manager's.
+    val toasts = MutableSharedFlow<String>(extraBufferCapacity = 8)
     val playing = MutableStateFlow(false)
     val cover = MutableStateFlow<File?>(null)
     // The playing song's audio analysis, which the background's speed follows.
@@ -331,7 +334,11 @@ fun main(args: Array<String>) {
                     )
                 }
                 val settingsHost = remember(window) {
-                    DesktopSettingsHost(window, session, delays, sourceSettings)
+                    DesktopSettingsHost(
+                        window, session, delays, sourceSettings, lyricsLibrary,
+                        reloadLyrics = { songLyrics.shown.value?.track?.let(songLyrics::load) },
+                        say = { toasts.tryEmit(it) },
+                    )
                 }
                 fun desktopHost(drawsOverlays: Boolean) =
                     DesktopLyricsHost(
@@ -428,7 +435,7 @@ fun main(args: Array<String>) {
                         noticeActions = noticeActions,
                         screenWidthDp = maxWidth.value.toInt(),
                         screenHeightDp = maxHeight.value.toInt(),
-                        messages = remember { emptyFlow<String>() },
+                        messages = toasts,
                         lyricsViewState = mainLyricsView,
                     )
                     // The other orientation's layout, composed once out of sight so the first turn isn't

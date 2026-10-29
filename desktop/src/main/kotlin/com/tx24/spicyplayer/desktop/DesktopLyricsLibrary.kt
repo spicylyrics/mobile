@@ -132,6 +132,7 @@ class DesktopLyricsLibrary(
  */
 class DesktopLyricsFiles(private val platform: PlatformActions, private val parent: Frame?) : LyricsFiles {
     override fun open(onOpened: (name: String, text: String) -> Unit) {
+        DebugControl.takePick()?.let { path -> return File(path).let { onOpened(it.name, it.readText()) } }
         platform.pickFile(emptyList()) { path ->
             val file = path?.let(::File) ?: return@pickFile
             runCatching { file.readText() }.getOrNull()?.let { onOpened(file.name, it) }

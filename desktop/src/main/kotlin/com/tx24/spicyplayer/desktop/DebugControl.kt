@@ -28,11 +28,17 @@ import org.jetbrains.skiko.SkiaLayer
  * - `/click?x=&y=` (`&button=right`), `/move?x=&y=`, `/scroll?x=&y=&n=` (positive is down).
  * - `/key?code=ESCAPE&mods=ctrl,shift`, `/type?text=`: key names are `KeyEvent.VK_*` without the prefix.
  * - `/size?w=&h=`: resizes the window (window points).
+ * - `/pick?file=`: the next file the app asks for is this one, without the file dialog.
  *
  * Coordinates are in the content's points, the same as `/tree` and half a 2× snap.
  */
 object DebugControl {
     private var server: HttpServer? = null
+
+    @Volatile private var nextPick: String? = null
+
+    /** The file `/pick` named, once; null when none is waiting. */
+    fun takePick(): String? = nextPick.also { nextPick = null }
 
     fun startIfAsked(window: Window) {
         val port = System.getProperty("spicy.debugPort")?.toIntOrNull() ?: return
@@ -62,6 +68,7 @@ object DebugControl {
             "/key" -> onEdt { key(window, q["code"] ?: error("missing code"), q["mods"].orEmpty()); ok }
             "/type" -> onEdt { type(window, q["text"].orEmpty()); ok }
             "/size" -> onEdt { window.setSize(int("w"), int("h")); window.validate(); ok }
+            "/pick" -> { nextPick = q["file"] ?: error("missing file"); ok }
             else -> error("unknown path ${exchange.requestURI.path}")
         }
         reply(exchange, 200, body, if (exchange.requestURI.path == "/snap") "image/png" else "text/plain")
