@@ -1334,6 +1334,8 @@ private fun LyricsApp(
                             fontSizeScale = lyricsFontScale,
                             noticeActions = noticeActions,
                             modifier = Modifier.weight(1f),
+                            // Under the fully expanded big cover they're drawn at alpha 0.
+                            visible = { expansion < 1f },
                         )
                     }
                     // Ambient mode: the lyrics sink into the black under the song docked at the bottom,
@@ -2127,6 +2129,8 @@ private fun LyricsPanel(
     translation: TranslationResult? = null,
     translationMode: TranslationMode = TranslationMode.UnderLine,
     romanizationMode: RomanizationMode = RomanizationMode.Replace,
+    /** False while the lyrics are fully hidden: their frame loop rests. */
+    visible: () -> Boolean = { true },
     /** Whether the credits say who translated the lyrics; [romanizationCredit] is already null when they don't. */
     textCredits: Boolean = true,
     romanizationCredit: String? = null,
@@ -2143,6 +2147,7 @@ private fun LyricsPanel(
             romanizationMode = romanizationMode,
             textCredits = textCredits,
             romanizationCredit = romanizationCredit,
+            visible = visible,
         )
         AnimatedVisibility(
             visible = lyrics == LyricsState.Loading,
@@ -2188,6 +2193,7 @@ private fun LyricsPanelContent(
     romanizationMode: RomanizationMode = RomanizationMode.Replace,
     textCredits: Boolean = true,
     romanizationCredit: String? = null,
+    visible: () -> Boolean = { true },
 ) {
     when (lyrics) {
         LyricsState.Idle -> LyricsNotice("Waiting for a song", modifier, bottomPx = noticeBottomPx, compact = noticeActions == null)
@@ -2232,6 +2238,7 @@ private fun LyricsPanelContent(
                 romanizationMode = romanizationMode,
                 translation = presentation,
                 isPlaying = isPlaying,
+                visible = visible,
                 activeLineTopPx = activeLineTopPx,
                 focusAnchorFraction = 0.5f,
                 focusLiftPx = centredLiftPx,
