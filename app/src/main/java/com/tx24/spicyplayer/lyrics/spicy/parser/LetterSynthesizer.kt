@@ -119,7 +119,9 @@ object LetterSynthesizer {
 
     private fun isUnspaced(codePoint: Int) = UNSPACED_RANGES.any { codePoint in it }
 
-    private fun display(word: Word, romanized: Boolean) = if (romanized) (word.romanizedText ?: word.text) else word.text
+    // Romanized text is drawn trimmed (a leading space only marks a word of its own), so its
+    // letters are split over the trimmed text too, one per drawn letter.
+    private fun display(word: Word, romanized: Boolean) = if (romanized) (word.romanizedText ?: word.text).trim() else word.text
 
     // Reference (IsLetterCapable.ts) has no lower length bound — even a single-character
     // held word (e.g. "I", "oh") gets the letter treatment if held long enough.

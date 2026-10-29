@@ -87,6 +87,27 @@ class LetterSynthesizerTest {
         assertEquals("forever", forever.letters.joinToString("") { it.char })
     }
 
+    // A Chinese syllable after the first romanizes with a leading space (it starts a word of its
+    // own); the layout draws the romanization trimmed, so the letters must cover only "hao".
+    private val heldChinese = com.tx24.spicyplayer.lyrics.spicy.models.Line(
+        listOf(Word("你", 0, 300, romanizedText = "ni"), Word("好", 300, 2300, isPartOfWord = true, romanizedText = " hao")), 0,
+    )
+
+    @Test
+    fun `a romanized held syllable splits its letters over the visible text`() {
+        val hao = LetterSynthesizer.apply(listOf(heldChinese), RenderConfig.FULL, romanized = true).single().words.last()
+        assertEquals(true, hao.isLetterGroup)
+        assertEquals(listOf("h", "a", "o"), hao.letters.map { it.char })
+        assertEquals(hao.startMs, hao.letters.first().startMs)
+        assertEquals(hao.endMs, hao.letters.last().endMs)
+    }
+
+    @Test
+    fun `the original text of a romanized syllable is split as written`() {
+        val hao = LetterSynthesizer.apply(listOf(heldChinese), RenderConfig.FULL, romanized = false).single().words.last()
+        assertEquals(listOf("好"), hao.letters.map { it.char })
+    }
+
     private fun mergeRun(vararg parts: Word) = LetterSynthesizer.mergeSyllables(
         parts.toList(), RenderConfig.FULL.copy(syllableMerge = SyllableMerge.Steady), false,
     ).map { it.text }
