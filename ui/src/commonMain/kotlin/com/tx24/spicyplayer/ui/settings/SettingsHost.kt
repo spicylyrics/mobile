@@ -59,6 +59,9 @@ abstract class SettingsHost {
     /** Whether [page] is one of the settings here. */
     open fun hasPage(page: SettingsPage): Boolean = true
 
+    /** In a wide window, settings are one panel with the pages down its side ([FloatingSettings]). */
+    open val floatingPanel: Boolean get() = false
+
     /** The lyrics can shrink into a floating window. */
     open val pictureInPicture: Boolean get() = true
 

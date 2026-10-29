@@ -295,6 +295,8 @@ fun SettingsScreen(
     }
     // Declared after, so it's asked first: back while peeking brings the settings back.
     PlatformBackHandler(enabled = peek.active) { peek.end() }
+    // The floating panel's search is always in view, so back clears it before closing.
+    PlatformBackHandler(enabled = host.floatingPanel && query.isNotEmpty()) { query = "" }
 
     Box(
         Modifier
@@ -383,53 +385,57 @@ fun SettingsScreen(
             val width = constraints.maxWidth.toFloat()
             // How far the page above level [index] has slid in: it moves this one aside.
             fun covered(index: Int): Float = stack.getOrNull(index)?.shift?.value ?: 0f
-            // Every page stays built under the one above it, so going back doesn't wait on rebuilding it.
-            run {
-                Page(
-                    title = "Settings",
-                    onBack = ::close,
-                    contentPadding = contentPadding,
-                    scroll = homeScroll,
-                    ready = homeReady,
-                    skeleton = { HomeSkeleton() },
-                    modifier = Modifier
-                        .graphicsLayer {
-                            val over = covered(0)
-                            translationX = -over * width * HOME_PARALLAX
-                            alpha = 1f - over
-                        }
-                        .focusLayer(current = stack.isEmpty(), ready = homeReady),
-                    header = { SpicySearchBar(query, { query = it }, Modifier.fillMaxWidth().padding(top = SpicySpacing.S4)) },
-                ) {
-                    if (query.isBlank()) {
-                        HomeGroups(state, host, settings, onOpen = ::show)
-                    } else {
-                        SearchResults(query, state, host, settings, onOpenLyricsManager, onOpenSpotifySearch)
-                    }
-                }
-            }
-            stack.forEachIndexed { index, opened ->
-                key(opened.page) {
+            if (host.floatingPanel && maxWidth >= FLOATING_SETTINGS_MIN_WIDTH) {
+                FloatingSettings(state, host, settings, query, { query = it }, contentPadding, ::close, onOpenLyricsManager, onOpenSpotifySearch)
+            } else {
+                // Every page stays built under the one above it, so going back doesn't wait on rebuilding it.
+                run {
                     Page(
-                        title = opened.page.title,
-                        onBack = ::back,
+                        title = "Settings",
+                        onBack = ::close,
                         contentPadding = contentPadding,
-                        scroll = rememberScrollState(),
-                        ready = opened.ready,
-                        skeleton = { PageSkeleton(opened.page) },
+                        scroll = homeScroll,
+                        ready = homeReady,
+                        skeleton = { HomeSkeleton() },
                         modifier = Modifier
                             .graphicsLayer {
-                                val shift = opened.shift.value
-                                val over = covered(index + 1)
-                                translationX = (1f - shift) * width * PAGE_TRAVEL - over * width * HOME_PARALLAX
-                                alpha = shift * (1f - over)
+                                val over = covered(0)
+                                translationX = -over * width * HOME_PARALLAX
+                                alpha = 1f - over
                             }
-                            // Keeps touches from falling through to the page underneath.
-                            .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
-                            .focusLayer(current = index == stack.lastIndex, ready = opened.ready),
-                        header = { Spacer(Modifier.height(SpicySpacing.S2)) },
+                            .focusLayer(current = stack.isEmpty(), ready = homeReady),
+                        header = { SpicySearchBar(query, { query = it }, Modifier.fillMaxWidth().padding(top = SpicySpacing.S4)) },
                     ) {
-                        PageContent(opened.page, state, host, settings, onOpenLyricsManager, onOpenSpotifySearch)
+                        if (query.isBlank()) {
+                            HomeGroups(state, host, settings, onOpen = ::show)
+                        } else {
+                            SearchResults(query, state, host, settings, onOpenLyricsManager, onOpenSpotifySearch)
+                        }
+                    }
+                }
+                stack.forEachIndexed { index, opened ->
+                    key(opened.page) {
+                        Page(
+                            title = opened.page.title,
+                            onBack = ::back,
+                            contentPadding = contentPadding,
+                            scroll = rememberScrollState(),
+                            ready = opened.ready,
+                            skeleton = { PageSkeleton(opened.page) },
+                            modifier = Modifier
+                                .graphicsLayer {
+                                    val shift = opened.shift.value
+                                    val over = covered(index + 1)
+                                    translationX = (1f - shift) * width * PAGE_TRAVEL - over * width * HOME_PARALLAX
+                                    alpha = shift * (1f - over)
+                                }
+                                // Keeps touches from falling through to the page underneath.
+                                .pointerInput(Unit) { awaitPointerEventScope { while (true) awaitPointerEvent() } }
+                                .focusLayer(current = index == stack.lastIndex, ready = opened.ready),
+                            header = { Spacer(Modifier.height(SpicySpacing.S2)) },
+                        ) {
+                            PageContent(opened.page, state, host, settings, onOpenLyricsManager, onOpenSpotifySearch)
+                        }
                     }
                 }
             }
@@ -815,7 +821,7 @@ fun SubPageRow(page: SettingsPage, icon: ImageVector, summary: String) {
 
 /** Every page's rows at once, each hiding unless it matches the search. */
 @Composable
-private fun SearchResults(query: String, state: SettingsState, host: SettingsHost, settings: CommonAppSettings, onOpenLyricsManager: () -> Unit, onOpenSpotifySearch: () -> Unit) {
+internal fun SearchResults(query: String, state: SettingsState, host: SettingsHost, settings: CommonAppSettings, onOpenLyricsManager: () -> Unit, onOpenSpotifySearch: () -> Unit) {
     CompositionLocalProvider(LocalSettingsQuery provides query) {
         EmptyOr(
             content = {

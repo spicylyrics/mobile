@@ -77,6 +77,7 @@ class DesktopSettingsHost(
         else -> true
     }
 
+    override val floatingPanel: Boolean get() = true
     override val phoneDevice: Boolean get() = false
     override val lockScreen: Boolean get() = false
     override val queueAndSource: Boolean get() = false
