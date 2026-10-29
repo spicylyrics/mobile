@@ -12,6 +12,7 @@ import com.tx24.spicyplayer.network.data.RemoteLyricsResolution
 import com.tx24.spicyplayer.network.data.RemoteLyricsSelection
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -55,5 +56,14 @@ class CachedPickTest {
         val pick = NextLyricsBackend.CachedPick(found(ProviderAttempt("amll", ProviderAttemptOutcome.MISS),
             ProviderAttempt("spicy_lyrics", ProviderAttemptOutcome.NEEDS_MATCH)), settled = false)
         assertEquals(mapOf("amll" to ProviderResult.Miss, "apple_music" to ProviderResult.Hit(payload)), pick.answers)
+    }
+
+    @Test fun aManualSpotifyIdIsStoredApartFromTheUsualPick() {
+        val usual = NextLyricsBackend.cacheName("Song", "A")
+        val manual = NextLyricsBackend.cacheName("Song", "A", "4uLU6hMCjMI75M1A2tKUQC")
+        assertNotEquals(usual, manual)
+        assertNotEquals(manual, NextLyricsBackend.cacheName("Song", "A", "4uLU6hMCjMI75M1A2tKUQD"))
+        // Same song, same entry, however the names are cased or spaced.
+        assertEquals(manual, NextLyricsBackend.cacheName(" song ", "a", "4uLU6hMCjMI75M1A2tKUQC"))
     }
 }

@@ -41,7 +41,7 @@ import com.tx24.spicyplayer.playback.bestSession
 import com.tx24.spicyplayer.playback.lookupRequest
 import com.tx24.spicyplayer.playback.lyricPositionMs
 import com.tx24.spicyplayer.playback.lyricsKey
-import com.tx24.spicyplayer.playback.overrideKey
+import com.tx24.spicyplayer.playback.savedSpotifyId
 import com.tx24.spicyplayer.playback.sessionSpotifyId
 import com.tx24.spicyplayer.ui.background.CoverColors
 import kotlinx.coroutines.CoroutineScope
@@ -96,6 +96,8 @@ internal object NowPlayingHolder {
 
     private var songKey: String? = null
     private var request: LyricsLookupRequest? = null
+    /** The Spotify ID the user set for the song, if any. */
+    private var manualSpotifyId: String? = null
     private var title = ""
     private var artist = ""
     private var durationMs = 0L
@@ -349,6 +351,8 @@ internal object NowPlayingHolder {
         val reportedDuration = metadata.getLong(MediaMetadata.METADATA_KEY_DURATION)
         val durationChanged = reportedDuration > 0L && reportedDuration != durationMs
         if (durationChanged) durationMs = reportedDuration
+        // A manual Spotify ID holds while the song's length agrees, so the length coming late can bring or drop one.
+        if (durationChanged && !newSong) recheckSpotifyId(metadata)
         val coverChanged = refreshCover(metadata)
         val wasPlaying = clock.isPlaying
         report(session, newSong)
@@ -359,9 +363,10 @@ internal object NowPlayingHolder {
         songKey = key
         clearSong(LOOKING)
         val app = context ?: return
-        val manual = metadata.overrideKey()?.let { app.getSharedPreferences("spotify_id_overrides", 0).getString(it, null) }
+        val manual = metadata.savedSpotifyId(app.getSharedPreferences("spotify_id_overrides", 0))
         val request = metadata.lookupRequest(manual ?: metadata.sessionSpotifyId())
         this.request = request
+        manualSpotifyId = manual
         title = metadata.getString(MediaMetadata.METADATA_KEY_TITLE)
             ?: metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_TITLE).orEmpty()
         artist = metadata.getString(MediaMetadata.METADATA_KEY_ARTIST)
@@ -381,14 +386,24 @@ internal object NowPlayingHolder {
         if (!appShowing) lookUpSong()
     }
 
+    private fun recheckSpotifyId(metadata: MediaMetadata) {
+        val app = context ?: return
+        val manual = metadata.savedSpotifyId(app.getSharedPreferences("spotify_id_overrides", 0))
+        if (manual == manualSpotifyId) return
+        manualSpotifyId = manual
+        request = metadata.lookupRequest(manual ?: metadata.sessionSpotifyId())
+        if (!appShowing) lookUpSong()
+    }
+
     private fun lookUpSong() {
         val request = request?.takeIf { it.title.isNotBlank() && it.artist.isNotBlank() } ?: return
         val key = songKey ?: return
         val lookup = lookup ?: return
         val romanize = wantsRomanization
+        val manual = manualSpotifyId
         lookupJob?.cancel()
         lookupJob = scope?.launch {
-            val result = runCatching { lookup.lookUp(request, romanize) }.getOrElse { error ->
+            val result = runCatching { lookup.lookUp(request, romanize, manual) }.getOrElse { error ->
                 if (error is kotlinx.coroutines.CancellationException) throw error
                 BackgroundLyrics.Result.Failed
             }

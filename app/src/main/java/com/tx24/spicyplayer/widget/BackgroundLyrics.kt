@@ -39,8 +39,11 @@ internal class BackgroundLyrics(context: Context) {
     /** The backend, with the Spicy Lyrics key it was built for: rebuilt when the key changes. */
     private var backend: Pair<String, NextLyricsBackend>? = null
 
-    /** [romanize]: romanize on the device too (only when a widget shows it: it loads a large dictionary for Japanese). */
-    suspend fun lookUp(request: LyricsLookupRequest, romanize: Boolean): Result = withContext(Dispatchers.IO) {
+    /**
+     * [romanize]: romanize on the device too (only when a widget shows it: it loads a large dictionary for Japanese).
+     * [manualSpotifyId]: the Spotify ID the user set for the song, whose picks are stored apart.
+     */
+    suspend fun lookUp(request: LyricsLookupRequest, romanize: Boolean, manualSpotifyId: String? = null): Result = withContext(Dispatchers.IO) {
         val folder = LyricsFolder(context, File(context.filesDir, "lyrics-folder-index.json"))
         val store = LocalLyricsStore(File(context.filesDir, "local-lyrics"))
         savedLyricsFor(request, store, folder)?.let { return@withContext rendered(it, request, splitBackgroundVocals = true, romanize = romanize) }
@@ -52,13 +55,13 @@ internal class BackgroundLyrics(context: Context) {
                 val found = backend.resolveFrom(request, chosen, known) as? RemoteLyricsResolution.Found
                 if (found?.selection?.source?.id == chosen) return@withContext rendered(found.selection, request, backend.splitBackgroundVocals, romanize)
             }
-        backend.cachedResolution(request)?.takeIf { it.settled }?.let { cached ->
+        backend.cachedResolution(request, manualSpotifyId)?.takeIf { it.settled }?.let { cached ->
             val selection = (cached.resolution as? RemoteLyricsResolution.Found)?.selection ?: return@withContext Result.None
             return@withContext rendered(selection, request, backend.splitBackgroundVocals, romanize)
         }
         delay(gate.waitBeforeNetwork(SystemClock.elapsedRealtime()))
         val resolution = backend.resolve(request, known)
-        backend.store(request, resolution)
+        backend.store(request, resolution, manualSpotifyId)
         val selection = (resolution as? RemoteLyricsResolution.Found)?.selection
             ?: return@withContext if (resolution is RemoteLyricsResolution.NotFound) Result.None else Result.Failed
         rendered(selection, request, backend.splitBackgroundVocals, romanize)

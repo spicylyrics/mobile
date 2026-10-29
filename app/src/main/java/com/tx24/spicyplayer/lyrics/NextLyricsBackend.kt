@@ -37,11 +37,7 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
 
     private val diskCache = File(context.cacheDir, "lyrics")
     private val preferences = context.getSharedPreferences("lyrics_sources", Context.MODE_PRIVATE)
-    private val client = OkHttpClient.Builder()
-        .counted()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(12, TimeUnit.SECONDS)
-        .build()
+    private val client = lookupClient()
     private val gson = Gson()
     /** Header values of custom sources: kept out of [preferences], which backups copy. */
     private val customHeaders = context.getSharedPreferences("custom_source_headers", Context.MODE_PRIVATE)
@@ -112,7 +108,9 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
         val result = lrcRed.requestSync(request)
         if (result is ModelSyncResult.Synced) {
             lrcRed.synced[result.isrc]?.let { lrcRedSyncs.edit().putLong(result.isrc, it).apply() }
-            cacheFile(request).delete()  // the stored pick predates the sync
+            // The stored picks predate the sync.
+            cacheFile(request).delete()
+            request.spotifyTrackId?.let { cacheFile(request, it).delete() }
         }
         return result
     }
@@ -136,9 +134,10 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
      * The last final pick for [request]: kept [CACHE_DAYS] days,
      * "no lyrics" included, errors never. Only reused while the sources, their order, switches and
      * sync types are the ones it was picked under, since others could pick differently.
+     * [manualSpotifyId], a Spotify ID the user set for the song, has picks of its own.
      */
-    fun cachedResolution(request: LyricsLookupRequest): CachedPick? {
-        val stored = runCatching { gson.fromJson(cacheFile(request).readText(), StoredPick::class.java) }.getOrNull()
+    fun cachedResolution(request: LyricsLookupRequest, manualSpotifyId: String? = null): CachedPick? {
+        val stored = runCatching { gson.fromJson(cacheFile(request, manualSpotifyId).readText(), StoredPick::class.java) }.getOrNull()
             ?: return null
         if (stored.version != CACHE_VERSION || stored.expiresAt < System.currentTimeMillis() || stored.order != enabledOrder()) return null
         val attempts = stored.attempts.orEmpty().mapNotNull(StoredAttempt::restore)
@@ -154,7 +153,7 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
         )
     }
 
-    fun store(request: LyricsLookupRequest, resolution: RemoteLyricsResolution) {
+    fun store(request: LyricsLookupRequest, resolution: RemoteLyricsResolution, manualSpotifyId: String? = null) {
         val found = resolution as? RemoteLyricsResolution.Found
         if (found == null && resolution !is RemoteLyricsResolution.NotFound) return
         val stored = StoredPick(
@@ -166,11 +165,11 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
             attempts = resolution.attempts.map(StoredAttempt::of),
             settled = isSettled(request, resolution),
         )
-        runCatching { diskCache.mkdirs(); cacheFile(request).writeText(gson.toJson(stored)) }
+        runCatching { diskCache.mkdirs(); cacheFile(request, manualSpotifyId).writeText(gson.toJson(stored)) }
     }
 
-    fun forget(request: LyricsLookupRequest) {
-        cacheFile(request).delete()
+    fun forget(request: LyricsLookupRequest, manualSpotifyId: String? = null) {
+        cacheFile(request, manualSpotifyId).delete()
         // Genius's recent answers are kept in memory too, for its lyrics, romanization and translation alike.
         geniusPages.clear()
     }
@@ -194,17 +193,8 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
         }
     }
 
-    private fun cacheFile(request: LyricsLookupRequest): File {
-        // Title + artist only: a queue entry warmed ahead has no album, length or Spotify ID, and
-        // must hit the same entry the real load asks for once the song starts.
-        return File(diskCache, cacheKey(request.title, request.artist) + ".json")
-    }
-
-    private fun cacheKey(title: String, artist: String): String {
-        val identity = listOf(title, artist).joinToString("\u001f") { it.trim().lowercase() }
-        return MessageDigest.getInstance("SHA-256").digest(identity.toByteArray())
-            .joinToString("") { "%02x".format(it) }
-    }
+    private fun cacheFile(request: LyricsLookupRequest, manualSpotifyId: String? = null): File =
+        File(diskCache, cacheName(request.title, request.artist, manualSpotifyId))
 
     private data class StoredPick(
         val version: Int,
@@ -242,6 +232,23 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
     }
 
     companion object {
+        /**
+         * A stored pick's file name. Title + artist only: a queue entry warmed ahead has no album,
+         * length or Spotify ID, and must hit the same entry the real load asks for once the song
+         * starts. A [manualSpotifyId] gets an entry of its own, so its pick never stands in for the
+         * song's usual one once the ID is cleared.
+         */
+        internal fun cacheName(title: String, artist: String, manualSpotifyId: String? = null): String =
+            cacheKey(title, artist) + manualSpotifyId?.let { "-" + sha256(it).take(16) }.orEmpty() + ".json"
+
+        private fun sha256(text: String): String =
+            MessageDigest.getInstance("SHA-256").digest(text.toByteArray()).joinToString("") { "%02x".format(it) }
+
+        private fun cacheKey(title: String, artist: String): String {
+            val identity = listOf(title, artist).joinToString("\u001f") { it.trim().lowercase() }
+            return sha256(identity)
+        }
+
         /** Whether every source ranked above the pick (every source, for "no lyrics") really answered. */
         internal fun isSettled(request: LyricsLookupRequest, resolution: RemoteLyricsResolution): Boolean {
             val pick = (resolution as? RemoteLyricsResolution.Found)?.selection?.source?.id
@@ -286,6 +293,17 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
             edit.apply()
         }
 
+        /**
+         * The sources' connections. The read timeout restarts with every byte, so [LOOKUP_CALL_TIMEOUT_S]
+         * caps a whole call: a server trickling its answer can't hold the lookup open.
+         */
+        internal fun lookupClient(): OkHttpClient = OkHttpClient.Builder()
+            .counted()
+            .connectTimeout(8, TimeUnit.SECONDS)
+            .readTimeout(12, TimeUnit.SECONDS)
+            .callTimeout(LOOKUP_CALL_TIMEOUT_S, TimeUnit.SECONDS)
+            .build()
+
         /** Every source the app asks, built on [client]. Also used by the live source check test. */
         fun createProviders(
             client: OkHttpClient,
@@ -325,6 +343,8 @@ internal class NextLyricsBackend(context: Context, clientKey: String) {
 
         private val ORIGIN = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://[^/?#]*")
 
+        /** The most one request to a source may take, body included. */
+        internal const val LOOKUP_CALL_TIMEOUT_S = 20L
         /** Bump when payload conversion changes, so stale conversions are refetched. */
         private const val CACHE_VERSION = 36
         /** Outcomes that are no answer at all: a later lookup may get one. */

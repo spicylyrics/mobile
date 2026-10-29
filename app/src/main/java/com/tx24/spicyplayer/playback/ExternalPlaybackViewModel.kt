@@ -659,6 +659,8 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<RemoteLyricsSelection, RenderedLyrics>) = size > 12
     }
     private var manualSpotifyId: String? = null
+    /** The song length [manualSpotifyId] was last looked up with. */
+    private var overrideCheckedAtMs = 0L
     private var currentTrackIdentity: String? = null
     // Players fill metadata in over several updates (YouTube Music adds length and album after
     // the title), so lyrics follow title + artist only; the clock follows the full identity.
@@ -1317,7 +1319,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
             switchedOffSources = lyricsBackend.switchedOffSources,
         )
         // The playing song's Spotify link may have come or gone: look it up again if so.
-        val restoredId = controller?.metadata.overrideKey()?.let { overrideStore.getString(it, null) }
+        val restoredId = controller?.metadata.savedSpotifyId(overrideStore)
         if (restoredId != manualSpotifyId) {
             if (restoredId != null) overrideSpotifyId(restoredId) else clearSpotifyIdOverride()
         } else {
@@ -1383,7 +1385,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
             return
         }
         manualSpotifyId = id
-        controller?.metadata.overrideKey()?.let { overrideStore.edit().putString(it, id).apply() }
+        controller?.metadata.saveSpotifyId(overrideStore, id)
         mutableState.value = mutableState.value.copy(
             detectedSpotifyId = id,
             manualSpotifyId = id,
@@ -1415,7 +1417,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
 
     fun clearSpotifyIdOverride() {
         manualSpotifyId = null
-        controller?.metadata.overrideKey()?.let { overrideStore.edit().remove(it).apply() }
+        controller?.metadata.forgetSpotifyId(overrideStore)
         lyricsJob?.cancel()
         mutableState.value = mutableState.value.copy(
             detectedSpotifyId = null,
@@ -1524,10 +1526,8 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     fun loadLyrics(spotifyIdInput: String? = null, settle: Boolean = false, force: Boolean = false) {
         val metadata = controller?.metadata ?: return
         val identity = metadata.lyricsKey()
-        val request = lookupRequest(
-            metadata,
-            spotifyIdInput?.spotifyTrackId() ?: manualSpotifyId ?: mutableState.value.detectedSpotifyId,
-        )
+        val manual = spotifyIdInput?.spotifyTrackId() ?: manualSpotifyId
+        val request = lookupRequest(metadata, manual ?: mutableState.value.detectedSpotifyId)
         lookedUp = request
         if (request.title.isBlank() || request.artist.isBlank()) {
             mutableState.value = mutableState.value.copy(lyrics = LyricsNotices.missingMetadata)
@@ -1567,12 +1567,12 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
                 val name = lyricsBackend.descriptors.firstOrNull { it.id == chosen }?.displayName ?: chosen
                 showMessage("$name has no lyrics for this song, so the usual pick is shown.")
             }
-            // The disk cache is keyed on title + artist; a manual Spotify ID asks the sources afresh.
+            // The disk cache is keyed on title + artist, and a manual Spotify ID has entries of its own.
             val freshLookup = known.isEmpty()
-            if (known.isEmpty() && manualSpotifyId == null) {
+            if (known.isEmpty()) {
                 val cached = withContext(Dispatchers.IO) {
-                    if (force) lyricsBackend.forget(request)
-                    lyricsBackend.cachedResolution(request)
+                    if (force) lyricsBackend.forget(request, manual)
+                    lyricsBackend.cachedResolution(request, manual)
                 }
                 if (cached != null) {
                     known.putAll(cached.answers)
@@ -1597,7 +1597,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
                 }
             }
                 .onSuccess { resolution ->
-                    withContext(Dispatchers.IO) { lyricsBackend.store(request, resolution) }
+                    withContext(Dispatchers.IO) { lyricsBackend.store(request, resolution, manual) }
                     publish(resolution, identity, request, final = true)
                     warmAhead()
                 }
@@ -1958,6 +1958,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         }.ifEmpty { if (inBetween) previous.customActions else emptyList() }
         val lyricsKey = metadata.lyricsKey()
         val lyricsChanged = !lyricsKeyTaken || lyricsKey != currentLyricsKey
+        val duration = metadata?.getLong(MediaMetadata.METADATA_KEY_DURATION) ?: 0L
         if (lyricsChanged) {
             lyricsKeyTaken = true
             clearTranslation()
@@ -1965,8 +1966,20 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
             currentLyricsKey = lyricsKey
             shownSelection = null
             temporaryLyrics = null
-            manualSpotifyId = metadata.overrideKey()?.let { overrideStore.getString(it, null) }
+            manualSpotifyId = metadata.savedSpotifyId(overrideStore)
+            overrideCheckedAtMs = duration
             lyricsJob?.cancel()
+        }
+        // Players often send the length after the title: the saved Spotify ID is looked up again
+        // with it, since it's only this recording's while the lengths agree.
+        var overrideChanged = false
+        if (!lyricsChanged && duration != overrideCheckedAtMs) {
+            overrideCheckedAtMs = duration
+            val saved = metadata.savedSpotifyId(overrideStore)
+            if (saved != manualSpotifyId) {
+                manualSpotifyId = saved
+                overrideChanged = true
+            }
         }
         val localKey = if (lyricsChanged) {
             metadata?.let { lookupRequest(it, null) }?.let { LocalLyricsStore.keyOf(it.title, it.artist) }
@@ -1987,7 +2000,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
             // Dropped with the song in the same update, so the last song's canvas never shows on this one.
             canvasUrl = if (lyricsChanged) null else mutableState.value.canvasUrl,
             canvasPending = lyricsChanged || mutableState.value.canvasPending,
-            matchInfo = if (lyricsChanged) {
+            matchInfo = if (lyricsChanged || overrideChanged) {
                 if (manualSpotifyId != null) "Manual Spotify ID"
                 else if (spotifyId != null) "Spotify ID from media session"
                 else "Matching through enabled lyric sources…"
@@ -2040,6 +2053,9 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
             loadExtras()
             loadCanvas()
             loadLyrics(settle = true)
+        } else if (overrideChanged && !lookupDeferred) {
+            restartCanvas()
+            loadLyrics()
         } else if (metadataChanged && metadata != null && !lookupDeferred) {
             rematchWithLength(metadata)
         }
