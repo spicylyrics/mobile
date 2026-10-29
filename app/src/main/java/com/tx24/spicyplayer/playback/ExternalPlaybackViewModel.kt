@@ -77,6 +77,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -87,6 +88,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * While skipping (track changes closer together than this), how long a track must stay current
@@ -110,6 +112,15 @@ private const val FETCH_AHEAD = 3
 
 /** How long after our own skip a track change is still taken to be its result. */
 private const val SKIP_DIRECTION_WINDOW_MS = 3_000L
+
+/** How often the ticker reads the player and the audio output while the screen is up. */
+private const val PERIODIC_CHECK_MS = 2_000L
+/** How often the ticker looks while a seek waits for the player to confirm it. */
+private const val SEEK_CHECK_MS = 100L
+
+/** How long the ticker sleeps: briefly while a seek waits for confirmation, else until the next periodic check. */
+internal fun tickerWaitMs(seekPending: Boolean, sinceCheckMs: Long): Long =
+    if (seekPending) SEEK_CHECK_MS else (PERIODIC_CHECK_MS - sinceCheckMs).coerceIn(SEEK_CHECK_MS, PERIODIC_CHECK_MS)
 private const val SYNC_TAG = "SpicySync"
 private const val TRANSLATE_TAG = "SpicyTranslate"
 
@@ -673,6 +684,8 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     private var pendingCommand: PendingCommand? = null
     private val clock = LyricClock(SystemClock.elapsedRealtime())
     private var lastPeriodicCheckMs = 0L
+    /** Wakes the ticker from a long sleep when a seek is sent, so its confirmation is watched for at once. */
+    private val tickerWake = Channel<Unit>(Channel.CONFLATED)
     /** Whether the lyrics screen is started. The ticker only polls while it is. */
     private val uiStarted = MutableStateFlow(true)
     /** The song changed while the screen was stopped: its lookups wait for the screen to return. */
@@ -896,6 +909,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
             mutableState.value.durationMs.takeIf { it > 0L } ?: Long.MAX_VALUE,
         )
         pendingCommand = PendingCommand.Seek(target, SystemClock.elapsedRealtime(), resync)
+        tickerWake.trySend(Unit)
         clock.seekTo(target, SystemClock.elapsedRealtime())
         mutableState.value = mutableState.value.copy(status = null)
         active.transportControls.seekTo(target)
@@ -2265,13 +2279,13 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     private fun startTicker() = viewModelScope.launch {
         while (isActive) {
             if (!uiStarted.value) {
-                // Nothing is shown: park instead of waking ten times a second. The session's
+                // Nothing is shown: park instead of polling. The session's
                 // callbacks still arrive, and the first pass back runs the periodic check at once.
                 uiStarted.first { it }
                 lastPeriodicCheckMs = 0L
             }
             val now = SystemClock.elapsedRealtime()
-            if (now - lastPeriodicCheckMs >= 2_000L) {
+            if (now - lastPeriodicCheckMs >= PERIODIC_CHECK_MS) {
                 lastPeriodicCheckMs = now
                 refreshOutputRoute()
                 if (pendingCommand !is PendingCommand.Seek) {
@@ -2293,7 +2307,9 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
                     explainLimit(PlayerLimit.Seek)
                 }
             }
-            delay(100L)
+            val seekPending = pendingCommand is PendingCommand.Seek
+            val wait = tickerWaitMs(seekPending, SystemClock.elapsedRealtime() - lastPeriodicCheckMs)
+            withTimeoutOrNull(wait) { tickerWake.receive() }
         }
     }
 
