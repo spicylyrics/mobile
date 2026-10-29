@@ -1669,7 +1669,7 @@ private fun LyricsApp(
                 settings = settings,
                 backdrop = backdrop,
                 contentPadding = padding,
-                onClosed = { showSettings = false; settingsPages = emptyList() },
+                onClosed = { showSettings = false; settingsPages = emptyList(); viewModel.customSourceForm = null },
                 onOpenLyricsManager = { whenUnlocked { showLyricsManager = true } },
                 onOpenSpotifySearch = { whenUnlocked { showSpotifySearch = true } },
                 onPeekChange = { settingsPeeking = it },
