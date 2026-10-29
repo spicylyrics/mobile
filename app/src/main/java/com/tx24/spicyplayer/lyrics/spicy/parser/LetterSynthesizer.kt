@@ -123,7 +123,7 @@ object LetterSynthesizer {
     // letters are split over the trimmed text too, one per drawn letter.
     private fun display(word: Word, romanized: Boolean) = if (romanized) (word.romanizedText ?: word.text).trim() else word.text
 
-    // Reference (IsLetterCapable.ts) has no lower length bound — even a single-character
+    // No lower length bound: even a single-character
     // held word (e.g. "I", "oh") gets the letter treatment if held long enough.
     private fun isLetterCapable(word: Word, config: RenderConfig, romanized: Boolean): Boolean {
         val display = display(word, romanized)
