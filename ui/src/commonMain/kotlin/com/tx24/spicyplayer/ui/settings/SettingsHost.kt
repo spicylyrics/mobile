@@ -78,6 +78,9 @@ abstract class SettingsHost {
     open val aTouch: String get() = "A touch"
     open val untouched: String get() = "untouched"
 
+    /** The window can be drawn bigger or smaller (the Interface scale row). */
+    open val interfaceScale: Boolean get() = false
+
     /** The lyrics can show over the lock screen. */
     open val lockScreen: Boolean get() = true
 

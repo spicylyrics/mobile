@@ -117,6 +117,7 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.MotionPhotosPaused
 import androidx.compose.material.icons.rounded.Album
 import androidx.compose.material.icons.rounded.AspectRatio
+import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material.icons.rounded.Crop
 import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material.icons.rounded.DarkMode
@@ -907,6 +908,22 @@ fun ThemeContent(settings: CommonAppSettings, host: SettingsHost) {
 
 @Composable
 fun DeviceContent(settings: CommonAppSettings, host: SettingsHost) {
+    if (host.interfaceScale) SettingRow(
+        label = "Interface scale",
+        description = "How big everything is drawn. 100% sizes it to the window.",
+        icon = Icons.Rounded.ZoomIn,
+        stacked = true,
+        searchDescription = "Zoom, make the whole screen bigger or smaller.",
+    ) {
+        SpicyBipolarSlider(
+            value = settings.interfaceScale,
+            range = INTERFACE_SCALE_RANGE,
+            step = 5,
+            onValueChange = { settings.interfaceScale = it },
+            default = 100,
+            unit = "%",
+        )
+    }
     if (host.phoneDevice) ToggleRow(
         label = "Smoother motion",
         checked = settings.highRefreshRate,

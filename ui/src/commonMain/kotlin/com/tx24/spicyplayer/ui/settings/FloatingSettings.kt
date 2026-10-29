@@ -294,6 +294,10 @@ private fun pageIcon(page: SettingsPage, host: SettingsHost): ImageVector = when
 /** The panel's titles: 24, bold, set a little tight. */
 private val PANEL_TITLE @Composable get() = SpicyType.Title.copy(fontSize = 24.sp, lineHeight = 1.15.em, letterSpacing = (-0.025).em)
 
+/** How many times its full size the floating panel fits in a window [widthDp] by [heightDp]. */
+fun floatingPanelRoom(widthDp: Float, heightDp: Float): Float =
+    minOf(widthDp * PANEL_WIDTH_SHARE / PANEL_MAX_WIDTH.value, heightDp * PANEL_HEIGHT_SHARE / PANEL_MAX_HEIGHT.value)
+
 private val PANEL_MAX_WIDTH = 940.dp
 private val PANEL_MAX_HEIGHT = 700.dp
 private const val PANEL_WIDTH_SHARE = 0.94f

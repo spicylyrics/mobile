@@ -50,6 +50,7 @@ import com.tx24.spicyplayer.ui.nowplaying.BasicNowPlayingPlatform
 import com.tx24.spicyplayer.ui.nowplaying.NowPlayingPlatform
 import com.tx24.spicyplayer.ui.nowplaying.PlaybackTransport
 import com.tx24.spicyplayer.ui.settings.QuickScreen
+import com.tx24.spicyplayer.ui.settings.floatingPanelRoom
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.MutableStateFlow
 
@@ -201,21 +202,26 @@ class DesktopOverlays : LyricsOverlays() {
 
 /**
  * How much bigger than the system's density the lyrics screen is drawn in a window [widthDp] by
- * [heightDp] (at the system's density): a small window grows until its short side is where a
- * phone's is held sideways ([PHONE_SHORT_SIDE_DP]), up to a large tablet's size
- * ([MAX_AUTO_SCALE]); a bigger window gets more room rather than bigger controls. Then times
- * [percent], the Interface Scale setting, which is the way to go bigger. In 10% steps.
+ * [heightDp] (at the system's density): the window's short side becomes [SHORT_SIDE_DP] dp, so the
+ * screen keeps its proportions at any window size, the way the phone's layout fills a TV. Never
+ * below the system's size. Then times [percent], the Interface Scale setting. In 10% steps.
  */
-fun lyricsScreenScale(widthDp: Float, heightDp: Float, percent: Int): Float {
-    val fit = (minOf(widthDp, heightDp) / PHONE_SHORT_SIDE_DP).coerceIn(1f, MAX_AUTO_SCALE)
-    return ((fit * percent / 100f) * 10f).roundToInt().coerceAtLeast(1) / 10f
-}
+fun lyricsScreenScale(widthDp: Float, heightDp: Float, percent: Int): Float =
+    steps(fitScale(widthDp, heightDp) * percent / 100f)
 
-/** A phone's short side in dp, held sideways. */
-const val PHONE_SHORT_SIDE_DP = 420f
+/**
+ * The same for settings over the lyrics: they grow with the screen, but only as far as their
+ * floating panel still fits the window.
+ */
+fun settingsScale(widthDp: Float, heightDp: Float, percent: Int): Float =
+    steps(minOf(fitScale(widthDp, heightDp), floatingPanelRoom(widthDp, heightDp)).coerceAtLeast(1f) * percent / 100f)
 
-/** The most the window's size alone scales the screen by: about a large tablet's. */
-const val MAX_AUTO_SCALE = 1.5f
+private fun fitScale(widthDp: Float, heightDp: Float) = (minOf(widthDp, heightDp) / SHORT_SIDE_DP).coerceAtLeast(1f)
+
+private fun steps(scale: Float) = (scale * 10f).roundToInt().coerceAtLeast(1) / 10f
+
+/** The short side of the window in the screen's dp: a TV's (960 by 540). */
+const val SHORT_SIDE_DP = 540f
 
 /**
  * How long a new scale waits for the window to stop changing size: every change of scale lays
