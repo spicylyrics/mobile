@@ -94,6 +94,11 @@ class DesktopSettingsHost(
     override val deviceName: String get() = "computer"
     override val aboutSearchTerms: List<String> get() = ABOUT_TERMS
     override val systemName: String get() = "the app"
+    override val upright: String get() = "In a tall window"
+    override val sideways: String get() = "In a wide window"
+    override val lastTouch: String get() = "the mouse or keys were last used"
+    override val aTouch: String get() = "Moving the mouse or pressing a key"
+    override val untouched: String get() = "alone"
 
     // Until the phone's Lyrics Manager is shared.
     override val lyricsManager: Boolean get() = false

@@ -44,7 +44,13 @@ An installed build checks GitHub's releases for a newer `desktop-vX.Y.Z` tag at 
 
 ## Sync delay
 
-Ctrl+D in the lyrics window opens the sync-delay window (`SyncDelayWindow.kt`; `openSyncDelay()` for a menu). It nudges the followed player's offset in 10 or 50 ms steps with the current line in view, or works it out from taps along to the song's beats (`TapSync`, from the Spotify analysis). Positive shows the lyrics earlier. Offsets are saved per player app id in `sync-delay.properties` beside the settings file, as `desktop.offset.<app id>` and move the lyrics at once; `--offset` overrides them for every player while given.
+Ctrl+D opens quick settings over the lyrics, where the Output delay slider nudges the followed player's offset. Offsets are saved per player app id in `sync-delay.properties` beside the settings file, as `desktop.offset.<app id>`, and move the lyrics at once; `--offset` overrides them for every player while given.
+
+## Testing without the mouse
+
+`-Pspicy.debugPort=9300` on `:desktop:run` (or `-Dspicy.debugPort=9300` in an installed app's `.cfg`) starts a loopback HTTP port (`DebugControl.kt`): `/snap` returns the window as a PNG, `/tree` the accessibility tree with each node's bounds, and `/click`, `/move`, `/scroll`, `/key`, `/type` and `/size` drive the window. Controls hide after a while; a `/move` brings them back before a click.
+
+`tools/spotify-cdp.mjs` drives the Spotify desktop client over the Chrome DevTools Protocol (play, pause, next, status). Start Spotify with `--remote-debugging-port=9229 --remote-allow-origins=*` first.
 
 ## Linux
 

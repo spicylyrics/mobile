@@ -69,6 +69,15 @@ abstract class SettingsHost {
     open val deviceName: String get() = "phone"
     open val systemName: String get() = "Android"
 
+    /** How the rows say the screen is held: upright, and on its side. */
+    open val upright: String get() = "With the phone upright"
+    open val sideways: String get() = "With the phone on its side"
+
+    /** What wakes the controls, in the rows' words: "after [lastTouch]", "[aTouch] brings them back", "left [untouched]". */
+    open val lastTouch: String get() = "the last touch"
+    open val aTouch: String get() = "A touch"
+    open val untouched: String get() = "untouched"
+
     /** The lyrics can show over the lock screen. */
     open val lockScreen: Boolean get() = true
 

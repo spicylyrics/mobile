@@ -155,13 +155,23 @@ class DesktopLyricsHost(
     }
 }
 
-/** Key presses in the window, which show the controls as a touch does. */
+/** Key presses and mouse moves in the window, which show the controls as a touch does. */
 class DesktopKeys : ScreenKeys {
     override val presses = MutableStateFlow(0L)
     override var controlsShown: () -> Boolean = { true }
 
     fun press() {
         presses.value = monoMs()
+    }
+
+    /** The mouse moved: counts as a press, at most every [MOVE_EVERY_MS]. */
+    fun moved() {
+        val now = monoMs()
+        if (now - presses.value >= MOVE_EVERY_MS) presses.value = now
+    }
+
+    private companion object {
+        const val MOVE_EVERY_MS = 250L
     }
 }
 

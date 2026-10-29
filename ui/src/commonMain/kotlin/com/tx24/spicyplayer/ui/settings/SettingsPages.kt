@@ -275,7 +275,7 @@ fun LyricsContent(host: SettingsHost, settings: CommonAppSettings) {
     SettingsSection("Text") {
         SettingRow(
             label = "Lyrics size",
-            description = "With the phone upright, against the screen's default.",
+            description = "${host.upright}, against the screen's default.",
             icon = Icons.Rounded.FormatSize,
             stacked = true,
             searchDescription = "Make the lyrics smaller or bigger than the screen's default. Portrait.",
@@ -291,7 +291,7 @@ fun LyricsContent(host: SettingsHost, settings: CommonAppSettings) {
         }
         SettingRow(
             label = "Lyrics size in landscape",
-            description = "With the phone on its side, against the screen's default.",
+            description = "${host.sideways}, against the screen's default.",
             icon = Icons.Rounded.ScreenRotation,
             stacked = true,
             searchDescription = "Make the lyrics smaller or bigger in landscape.",
@@ -805,12 +805,12 @@ fun ControlsContent(settings: CommonAppSettings, host: SettingsHost) {
             label = "Hide controls",
             checked = settings.autoHideControls,
             onCheckedChange = { settings.autoHideControls = it },
-            description = "Fade the controls out a while after the last touch. A touch brings them back.",
+            description = "Fade the controls out a while after ${host.lastTouch}. ${host.aTouch} brings them back.",
             icon = Icons.Rounded.TouchApp,
         )
         SettingRow(
             label = "Hide After",
-            description = "How long the controls stay after the last touch.",
+            description = "How long the controls stay after ${host.lastTouch}.",
             icon = Icons.Rounded.Timer,
             enabled = settings.autoHideControls,
         ) {
@@ -925,13 +925,13 @@ fun DeviceContent(settings: CommonAppSettings, host: SettingsHost) {
         label = "Ambient mode",
         checked = settings.ambientMode,
         onCheckedChange = { settings.ambientMode = it },
-        description = "Left untouched while music plays, dim to the lyrics and the song on black.",
-        searchDescription = "Untouched for 30 seconds while music plays, dim to the lyrics alone on black.",
+        description = "Left ${host.untouched} while music plays, dim to the lyrics and the song on black.",
+        searchDescription = "Left ${host.untouched} for 30 seconds while music plays, dim to the lyrics alone on black.",
         icon = Icons.Rounded.DarkMode,
     )
     SettingRow(
         label = "Dim After",
-        description = "How long ambient mode waits after the last touch.",
+        description = "How long ambient mode waits after ${host.lastTouch}.",
         icon = Icons.Rounded.Timer,
         enabled = settings.ambientMode,
     ) {
@@ -980,7 +980,7 @@ fun DeviceContent(settings: CommonAppSettings, host: SettingsHost) {
                 label = "Low performance mode",
                 checked = settings.lowPerformance,
                 onCheckedChange = { settings.lowPerformance = it },
-                description = "Stills the background and cover and turns off blur and glow, for smoother lyrics on slower phones.",
+                description = "Stills the background and cover and turns off blur and glow, for smoother lyrics on slower ${host.deviceName}s.",
                 icon = Icons.Rounded.Speed,
             )
             ToggleRow(

@@ -34,6 +34,9 @@ import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
@@ -381,7 +384,15 @@ fun main(args: Array<String>) {
                 val readyLyrics = lyricsState as? LyricsState.Ready
                 val translation = translated?.takeIf { readyLyrics != null && it.lyrics === readyLyrics }?.translation
                 val options by songLyrics.options.collectAsState()
-                BoxWithConstraints(Modifier.fillMaxSize()) {
+                // Moving the mouse over the lyrics shows their controls, as a touch does on the phone.
+                BoxWithConstraints(Modifier.fillMaxSize().pointerInput(desktopKeys) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            if (event.type == PointerEventType.Move && !overlays.open) desktopKeys.moved()
+                        }
+                    }
+                }) {
                     // Drawn at the size a phone held sideways would show it, whatever the window's size
                     // and the system's scaling, then sized by the Interface Scale setting.
                     val system = LocalDensity.current
