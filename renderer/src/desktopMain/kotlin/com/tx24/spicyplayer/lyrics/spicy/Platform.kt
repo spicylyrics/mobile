@@ -22,3 +22,8 @@ internal actual val textLayoutContext: CoroutineContext = EmptyCoroutineContext
 internal actual val resizeRelayoutDelayMs: Long = 100L
 
 internal actual val slicesTextLayout: Boolean = true
+
+// A frame up to a tenth of a second late still advances by its real gap.
+internal actual val frameDeltaCapS: Float? = 0.1f
+
+internal actual fun recordFrameDelta(rawS: Float, usedS: Float) = com.tx24.spicyplayer.lyrics.spicy.canvas.FrameStats.record(rawS, usedS)

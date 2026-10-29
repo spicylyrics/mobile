@@ -48,3 +48,14 @@ internal expect val resizeRelayoutDelayMs: Long
  * in the background, they run straight through.
  */
 internal expect val slicesTextLayout: Boolean
+
+/**
+ * The most one frame advances the animation by, in seconds; null for two nominal frame intervals
+ * of the display. The desktop's display can run at 144 Hz or more while frames come at 60, so
+ * two of its intervals would cut every normal frame short and the motion would play slowed
+ * down; there only a real hitch is capped.
+ */
+internal expect val frameDeltaCapS: Float?
+
+/** Notes each frame's real and used time step, for the desktop's `spicy.frameStats`. */
+internal expect fun recordFrameDelta(rawS: Float, usedS: Float)

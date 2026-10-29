@@ -22,3 +22,7 @@ internal actual val textLayoutContext: CoroutineContext = Dispatchers.Default
 internal actual val resizeRelayoutDelayMs: Long = 0L
 
 internal actual val slicesTextLayout: Boolean = false
+
+internal actual val frameDeltaCapS: Float? = null
+
+internal actual fun recordFrameDelta(rawS: Float, usedS: Float) {}

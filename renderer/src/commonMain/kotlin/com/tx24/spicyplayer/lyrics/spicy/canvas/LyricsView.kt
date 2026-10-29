@@ -59,6 +59,8 @@ import com.tx24.spicyplayer.lyrics.spicy.resizeSnapsToLine
 import com.tx24.spicyplayer.lyrics.spicy.textLayoutContext
 import com.tx24.spicyplayer.lyrics.spicy.resizeRelayoutDelayMs
 import com.tx24.spicyplayer.lyrics.spicy.slicesTextLayout
+import com.tx24.spicyplayer.lyrics.spicy.frameDeltaCapS
+import com.tx24.spicyplayer.lyrics.spicy.recordFrameDelta
 import com.tx24.spicyplayer.lyrics.spicy.models.Line
 import com.tx24.spicyplayer.lyrics.spicy.models.LyricsType
 import com.tx24.spicyplayer.lyrics.spicy.models.FooterLine
@@ -404,7 +406,11 @@ fun LyricsView(
                     lastLayouts = currentLayouts
                     val currentTime = currentTimeProvider()
 
-                    val deltaTime = frameDeltaSeconds(frameTimeNanos, lastFrameTimeNanos, frameIntervalS, resumed)
+                    val deltaTime = frameDeltaSeconds(
+                        frameTimeNanos, lastFrameTimeNanos, frameIntervalS, resumed,
+                        capS = frameDeltaCapS ?: (2f * frameIntervalS),
+                    )
+                    if (lastFrameTimeNanos != 0L) recordFrameDelta((frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f, deltaTime)
                     lastFrameTimeNanos = frameTimeNanos
                     resumed = false
 
@@ -910,13 +916,20 @@ internal fun nominalFrameIntervalS(refreshRate: Float?): Float =
     1f / (refreshRate?.takeIf { it >= 1f } ?: 60f)
 
 /**
- * Seconds to advance the animation by for this frame. A late frame advances by at most two
- * nominal intervals, so a stall doesn't leap the springs by the whole gap; the first frame
- * after a rest (or with no previous frame) advances by one interval.
+ * Seconds to advance the animation by for this frame. A late frame advances by at most [capS]
+ * (two nominal intervals unless the platform says otherwise), so a stall doesn't leap the springs
+ * by the whole gap; the first frame after a rest (or with no previous frame) advances by one
+ * interval.
  */
-internal fun frameDeltaSeconds(frameTimeNanos: Long, lastFrameTimeNanos: Long, nominalIntervalS: Float, resumed: Boolean): Float {
+internal fun frameDeltaSeconds(
+    frameTimeNanos: Long,
+    lastFrameTimeNanos: Long,
+    nominalIntervalS: Float,
+    resumed: Boolean,
+    capS: Float = 2f * nominalIntervalS,
+): Float {
     if (resumed || lastFrameTimeNanos == 0L) return nominalIntervalS
-    return ((frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f).coerceIn(0f, 2f * nominalIntervalS)
+    return ((frameTimeNanos - lastFrameTimeNanos) / 1_000_000_000f).coerceIn(0f, capS)
 }
 
 /** The desktop lyric size (its 3.5rem cap), in CSS px. */
