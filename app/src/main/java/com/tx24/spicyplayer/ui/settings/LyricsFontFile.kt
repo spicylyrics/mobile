@@ -32,9 +32,11 @@ object LyricsFontFile {
 
     /** Copies the font at [uri] in, or returns null when it isn't a font Android can read. */
     suspend fun import(context: Context, uri: Uri): Imported? = withContext(Dispatchers.IO) {
-        val displayName = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
-            ?: "Custom font"
+        // A provider can refuse the query outright (a revoked grant, say); the copy below then fails too.
+        val displayName = runCatching {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
+        }.getOrNull() ?: "Custom font"
         val dir = dir(context).apply { mkdirs() }
         val file = File(dir, "lyrics-font-${System.currentTimeMillis()}")
         val copied = runCatching {
