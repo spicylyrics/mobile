@@ -162,14 +162,19 @@ object SpotifyTrackMatcher {
         )
     }
 
+    // Compiled once: normalize runs for every candidate a lookup scores, and Unicode classes are slow to compile.
+    private val marks = Regex("\\p{M}+")
+    private val nonWord = Regex("[^\\p{L}\\p{N}]+")
+    private val spaces = Regex("\\s+")
+
     fun normalize(value: String): String = Normalizer
         .normalize(value, Normalizer.Form.NFKD)
-        .replace(Regex("\\p{M}+"), "")
+        .replace(marks, "")
         .lowercase(Locale.ROOT)
         .replace("&", " and ")
-        .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+        .replace(nonWord, " ")
         .trim()
-        .replace(Regex("\\s+"), " ")
+        .replace(spaces, " ")
 
     private fun similarity(left: String, right: String): Double {
         val normalizedLeft = normalize(left)
