@@ -27,3 +27,6 @@ expect fun Modifier.modalShadow(): Modifier
 /** The height of the window's root, in px: where a menu has to stop. */
 @Composable
 expect fun rootHeightPx(): Int
+
+/** [text] in Unicode's canonical decomposition (NFD): accents split off their letters. */
+expect fun decomposed(text: String): String

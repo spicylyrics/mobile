@@ -1,24 +1,30 @@
 package com.tx24.spicyplayer.desktop
 
-import com.tx24.spicyplayer.ui.settings.CommonAppSettings
 import com.tx24.spicyplayer.ui.settings.InMemorySettingsStore
-import com.tx24.spicyplayer.ui.settings.panel.PanelActions
-import com.tx24.spicyplayer.ui.settings.panel.settingsPanelSections
+import com.tx24.spicyplayer.ui.settings.SettingsPage
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class SettingsPageTest {
-    private val settings = CommonAppSettings(InMemorySettingsStore(), pipButtonByDefault = false, prereleasesByDefault = true)
-    private fun rowIds(actions: PanelActions, hidden: Set<String> = emptySet()) =
-        settingsPanelSections(settings, actions, hiddenRows = hidden).flatMap { it.rows }.map { it.id }
+    private fun host(sources: DesktopSourceSettings? = null) =
+        DesktopSettingsHost(null, MediaSession(null, 0L), SyncDelays(InMemorySettingsStore()), sources, openLyricsManager = {})
 
     @Test
-    fun `the rows the desktop hides are real rows, and gone from its panel`() {
-        val all = rowIds(PanelActions(lyricsManagerButton = true))
-        assertTrue("A hidden id names no row: ${DESKTOP_HIDDEN_ROWS - all.toSet()}", all.containsAll(DESKTOP_HIDDEN_ROWS))
-        val desktop = rowIds(PanelActions(lyricsManagerButton = true), DESKTOP_HIDDEN_ROWS)
-        assertEquals(all.filter { it !in DESKTOP_HIDDEN_ROWS }, desktop)
-        assertTrue("lyricsManagerButton" in desktop)
+    fun `the desktop leaves out the pages only a phone has`() {
+        val pages = SettingsPage.entries.filter(host()::hasPage)
+        assertEquals(
+            listOf(SettingsPage.Lyrics, SettingsPage.ScrollSync, SettingsPage.Background, SettingsPage.NowPlaying, SettingsPage.Controls, SettingsPage.Theme, SettingsPage.Device),
+            pages,
+        )
+    }
+
+    @Test
+    fun `quick settings opens the Lyrics Manager as the window's page`() {
+        var opened = false
+        val host = DesktopSettingsHost(null, MediaSession(null, 0L), SyncDelays(InMemorySettingsStore()), null, openLyricsManager = { opened = true })
+        assert(host.openLyricsManagerPage())
+        assert(opened)
+        assertFalse(host.songDelay)
     }
 }

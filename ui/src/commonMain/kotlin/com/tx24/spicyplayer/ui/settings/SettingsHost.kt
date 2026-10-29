@@ -47,6 +47,12 @@ abstract class SettingsHost {
     /** A quick settings screen was opened (the queue, the Lyrics Manager). */
     open fun quickScreenOpened(screen: QuickScreen) {}
 
+    /**
+     * Opens the Lyrics Manager as a page of its own instead of a screen of quick settings; false
+     * where it's a quick settings screen ([LyricsManagerScreen]).
+     */
+    open fun openLyricsManagerPage(): Boolean = false
+
     /** Quick settings came up for these lyrics. */
     open fun quickSettingsShown() {}
 
@@ -56,11 +62,18 @@ abstract class SettingsHost {
     /** The lyrics can shrink into a floating window. */
     open val pictureInPicture: Boolean get() = true
 
+    /** What the rows call the device ("your phone's font"), and its system ("a font Android can read"). */
+    open val deviceName: String get() = "phone"
+    open val systemName: String get() = "Android"
+
     /** The lyrics can show over the lock screen. */
     open val lockScreen: Boolean get() = true
 
     /** The rows only a phone or tablet has: refresh rate, lock screen, screen on, system bars, rotation. */
     open val phoneDevice: Boolean get() = true
+
+    /** Each song can have a delay of its own, on top of the player's. */
+    open val songDelay: Boolean get() = true
 
     /** The player can share its queue and pick a song's source, so their buttons can be shown. */
     open val queueAndSource: Boolean get() = true

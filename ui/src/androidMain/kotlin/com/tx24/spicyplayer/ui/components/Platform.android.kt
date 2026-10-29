@@ -47,3 +47,5 @@ actual fun Modifier.modalShadow(): Modifier = drawBehind {
 
 @Composable
 actual fun rootHeightPx(): Int = LocalView.current.rootView.height
+
+actual fun decomposed(text: String): String = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD)

@@ -1,5 +1,6 @@
 package com.tx24.spicyplayer.desktop
 
+import com.tx24.spicyplayer.ui.components.DesktopBack
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,7 +29,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPlacement
@@ -264,6 +268,7 @@ fun main(args: Array<String>) {
         val miniLyricsView = remember { LyricsViewState() }
         // `--page` starts on a page instead of the lyrics, for screenshots of it.
         val nav = remember { DesktopNav(startPage(opts["--page"])) }
+        val overlays = remember { DesktopOverlays(nav) }
         // A key on the lyrics shows their controls, as a touch does on the phone.
         val desktopKeys = remember { DesktopKeys() }
         var page by remember { mutableStateOf(BigScreenState(romanized = desktopSettings.romanize).withSavedView(desktopSettings)) }
@@ -288,7 +293,7 @@ fun main(args: Array<String>) {
             icon = remember { BitmapPainter(Image.makeFromEncoded(object {}.javaClass.getResource("/icon.png")!!.readBytes()).toComposeImageBitmap()) },
             onKeyEvent = { event ->
                 if (event.type == KeyEventType.KeyDown && nav.at == Destination.Lyrics) desktopKeys.press()
-                MiniLyrics.onKey(event) || nav.onPageKey(event) ||
+                MiniLyrics.onKey(event) || nav.onPageKey(event) || overlayKey(event, overlays) ||
                     pageKeyOf(event)?.let { page = page.onKey(it, capabilities); true } ?: onPlaybackKey(event, nowPlaying, capabilities)
             },
         ) {
@@ -323,7 +328,16 @@ fun main(args: Array<String>) {
                         report = { session.track?.let { "Track: ${it.title} by ${it.artist}\nPlayer: ${it.app}" }.orEmpty() },
                     )
                 }
-                val overlays = remember { DesktopOverlays(nav) }
+                val settingsHost = remember(window) {
+                    DesktopSettingsHost(window, session, delays, sourceSettings, openLyricsManager = { nav.open(Destination.LyricsManager) })
+                }
+                // Settings open over the lyrics, as on the phone: the shortcut and --page settings land here.
+                LaunchedEffect(nav.at) {
+                    if (nav.at == Destination.Settings) {
+                        nav.back()
+                        overlays.openSettings()
+                    }
+                }
                 fun desktopHost(drawsOverlays: Boolean) =
                     DesktopLyricsHost(
                         transport = nowPlaying,
@@ -366,6 +380,7 @@ fun main(args: Array<String>) {
                                 }
                             }
                         },
+                        settingsHost = settingsHost,
                         drawsOverlays = drawsOverlays,
                     )
                 val host = remember { desktopHost(drawsOverlays = true) }
@@ -434,7 +449,7 @@ fun main(args: Array<String>) {
                     // The lyrics stay composed under a page, so they and the background carry on where they were.
                     when (nav.at) {
                         Destination.Lyrics -> {}
-                        Destination.Settings -> NavPage { SettingsPage(window, sourceSettings, onClose = nav::back) }
+                        Destination.Settings -> {}
                         Destination.LyricsManager -> NavPage { LyricsManagerPage(window, lyricsLibrary, songLyrics, onClose = nav::back) }
                         Destination.SyncDelay -> NavPage {
                             SyncDelayPage(session, delays, analysis, { (screen.value as? Screen.Track)?.lyrics }, onClose = nav::back)
@@ -601,3 +616,13 @@ private fun Lyrics(
 
 /** Between the pinned credits and the bottom of the lyrics. */
 private val PINNED_FOOTER_GAP = 20.dp
+
+/**
+ * While settings or quick settings are over the lyrics, Esc steps back through them ([DesktopBack])
+ * and every other key stops here, so the lyrics' keys don't act behind them.
+ */
+private fun overlayKey(event: KeyEvent, overlays: DesktopOverlays): Boolean {
+    if (!overlays.open) return false
+    if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) DesktopBack.dispatch()
+    return true
+}

@@ -385,7 +385,7 @@ private fun LyricsFontRows(host: SettingsHost, settings: CommonAppSettings) {
     var failed by remember { mutableStateOf(false) }
     val pick = host.rememberLyricsFontPicker { failed = it }
     val hasCustom = settings.customFontFile.isNotBlank()
-    SettingRow(label = "Lyrics Font", description = "Draw the lyrics in their own font, your phone's, or any font file on your phone.", icon = Icons.Rounded.FontDownload) {
+    SettingRow(label = "Lyrics Font", description = "Draw the lyrics in their own font, your ${host.deviceName}'s, or any font file on your ${host.deviceName}.", icon = Icons.Rounded.FontDownload) {
         SpicySelect(
             value = settings.lyricsFont.name,
             options = LyricsFont.entries.map { it.name },
@@ -399,9 +399,9 @@ private fun LyricsFontRows(host: SettingsHost, settings: CommonAppSettings) {
     SettingRow(
         label = "Font File",
         description = when {
-            failed -> "That file isn't a font Android can read. Pick a .ttf or .otf file."
+            failed -> "That file isn't a font ${host.systemName} can read. Pick a .ttf or .otf file."
             hasCustom -> "Using ${settings.customFontName}."
-            else -> "Pick a .ttf or .otf font file from your phone."
+            else -> "Pick a .ttf or .otf font file from your ${host.deviceName}."
         },
         icon = Icons.Rounded.FolderOpen,
     ) {
@@ -792,7 +792,7 @@ fun ControlsContent(settings: CommonAppSettings, host: SettingsHost) {
             description = "Show its own button for the Lyrics Manager. It's always in quick settings and This song.",
             icon = SpicyGlyphs.LyricsManager,
         )
-        ToggleRow(
+        if (host.queueAndSource) ToggleRow(
             label = "Queue button",
             checked = settings.queueButton,
             onCheckedChange = { settings.queueButton = it },
@@ -851,14 +851,14 @@ fun ControlsContent(settings: CommonAppSettings, host: SettingsHost) {
                 description = "Show the button that opens the delays, the Lyrics Manager and the queue without leaving the lyrics.",
                 icon = SpicyGlyphs.QuickSettings,
             )
-            ToggleRow(
+            if (host.phoneDevice) ToggleRow(
                 label = "Rotate button",
                 checked = settings.rotateButton,
                 onCheckedChange = { settings.rotateButton = it },
                 description = "Show the button that turns the lyrics to landscape and back, even with rotation locked.",
                 icon = SpicyGlyphs.Rotate,
             )
-            ToggleRow(
+            if (host.queueAndSource) ToggleRow(
                 label = "Lyrics source button",
                 checked = settings.sourceButton,
                 onCheckedChange = { settings.sourceButton = it },
@@ -907,7 +907,7 @@ fun ThemeContent(settings: CommonAppSettings, host: SettingsHost) {
 
 @Composable
 fun DeviceContent(settings: CommonAppSettings, host: SettingsHost) {
-    ToggleRow(
+    if (host.phoneDevice) ToggleRow(
         label = "Smoother motion",
         checked = settings.highRefreshRate,
         onCheckedChange = { settings.highRefreshRate = it },
@@ -942,7 +942,7 @@ fun DeviceContent(settings: CommonAppSettings, host: SettingsHost) {
             onChange = { settings.ambientDelay = AmbientDelay.valueOf(it) },
         )
     }
-    SubPageCard {
+    if (host.hasPage(SettingsPage.FloatingLyrics)) SubPageCard {
         val supported = host.pictureInPicture
         SubPageRow(
             SettingsPage.FloatingLyrics,
@@ -956,14 +956,14 @@ fun DeviceContent(settings: CommonAppSettings, host: SettingsHost) {
     }
     host.HapticsSection()
     MoreOptions("Keeping the screen on, system bars, low performance mode, interface animations") {
-        ToggleRow(
+        if (host.phoneDevice) ToggleRow(
             label = "Keep the screen on",
             checked = settings.keepScreenOn,
             onCheckedChange = { settings.keepScreenOn = it },
             description = "Stop the screen from turning off while music plays.",
             icon = Icons.Rounded.StayCurrentPortrait,
         )
-        SettingRow(
+        if (host.phoneDevice) SettingRow(
             label = "System bars",
             description = "Whether the status and navigation bars stay on screen over the lyrics.",
             icon = Icons.Rounded.Fullscreen,

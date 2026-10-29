@@ -490,7 +490,7 @@ internal fun matchingOptions(query: String, options: List<String>, labels: List<
 }
 
 private fun foldForSearch(text: String): String =
-    java.text.Normalizer.normalize(text.lowercase(), java.text.Normalizer.Form.NFD).replace(COMBINING_MARKS, "").trim()
+    decomposed(text.lowercase()).replace(COMBINING_MARKS, "").trim()
 
 private val COMBINING_MARKS = Regex("\\p{Mn}+")
 

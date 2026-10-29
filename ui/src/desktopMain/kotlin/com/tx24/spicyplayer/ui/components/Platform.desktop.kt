@@ -81,3 +81,5 @@ actual fun Modifier.modalShadow(): Modifier = drawWithCache {
 
 @Composable
 actual fun rootHeightPx(): Int = LocalWindowInfo.current.containerSize.height
+
+actual fun decomposed(text: String): String = java.text.Normalizer.normalize(text, java.text.Normalizer.Form.NFD)

@@ -53,6 +53,7 @@ fun QuickSettingsModal(
         }
     }
     fun open(target: QuickScreen) {
+        if (target == QuickScreen.LyricsManager && host.openLyricsManagerPage()) return onDismiss()
         if (target == QuickScreen.Queue || target == QuickScreen.LyricsManager) host.quickScreenOpened(target)
         screen = target
     }
@@ -110,7 +111,7 @@ private fun MainScreen(state: SettingsState, host: SettingsHost, open: (QuickScr
         GroupRow(SpicyGlyphs.LyricsManager, "Lyrics Manager", "Save or upload lyrics, link a folder") { open(QuickScreen.LyricsManager) }
     }
     host.LyricsLanguageRow()
-    SongDelayRow(state, host)
+    if (host.songDelay) SongDelayRow(state, host)
     SettingRow(
         label = "Output delay",
         description = "For every song on ${state.outputLabel}. Move it right if the lyrics run ahead of the song.",
