@@ -122,10 +122,28 @@ class LyricsWidget : AppWidgetProvider() {
             val minHeight = read(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT)
             val maxHeight = read(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT)
             val (screenWidth, screenHeight) = screenDp(context)
-            val (width, height) = if (screenWidth > screenHeight) (maxWidth ?: minWidth) to (minHeight ?: maxHeight)
+            val (reportedWidth, reportedHeight) = if (screenWidth > screenHeight) (maxWidth ?: minWidth) to (minHeight ?: maxHeight)
             else (minWidth ?: maxWidth) to (maxHeight ?: minHeight)
+            val (width, height) = if (homePackage(context) == ONE_UI_HOME) {
+                WidgetFit.launcherDp(reportedWidth, reportedHeight, context.resources.displayMetrics.densityDpi, stableDpi())
+            } else reportedWidth to reportedHeight
             return WidgetFit.reportedDp(width, height, screenWidth, screenHeight, context.resources.displayMetrics.density)
         }
+
+        private const val ONE_UI_HOME = "com.sec.android.app.launcher"
+        private var home: String? = null
+
+        /** The home screen app's package, looked up once a process: widgets redraw every second. */
+        private fun homePackage(context: Context): String =
+            home ?: (runCatching {
+                context.packageManager.resolveActivity(
+                    Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME),
+                    android.content.pm.PackageManager.MATCH_DEFAULT_ONLY,
+                )?.activityInfo?.packageName
+            }.getOrNull() ?: "unknown").also { home = it }
+
+        private fun stableDpi() =
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) android.util.DisplayMetrics.DENSITY_DEVICE_STABLE else 0
 
         /**
          * The phone's screen in dp as it's turned now. Not the app's configuration: in the
@@ -148,11 +166,10 @@ class LyricsWidget : AppWidgetProvider() {
         fun sizeLines(context: Context): List<String> {
             val manager = AppWidgetManager.getInstance(context)
             val (screenWidth, screenHeight) = screenDp(context)
-            val stable = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) android.util.DisplayMetrics.DENSITY_DEVICE_STABLE else 0
             val real = realSize(context)?.let { "${it.x}x${it.y} px" } ?: "unknown"
             val config = context.resources.configuration
             val header = "Screen ${screenWidth}x$screenHeight dp (display $real, app ${config.screenWidthDp}x${config.screenHeightDp} dp), " +
-                "density ${context.resources.displayMetrics.densityDpi} dpi (device $stable)"
+                "density ${context.resources.displayMetrics.densityDpi} dpi (device ${stableDpi()}), home ${homePackage(context)}"
             return listOf(header) + ids(context).map { id ->
                 val options = manager.getAppWidgetOptions(id)
                 fun read(key: String) = options.getInt(key)

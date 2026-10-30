@@ -59,6 +59,24 @@ class WidgetFitTest {
     }
 
     @Test
+    fun `a launcher working at the default density is taken back to the app's dp`() {
+        // A Galaxy Tab S9 FE+ in landscape at a smaller display size: 1593x415 reported, ~1154x311 on screen.
+        val landscape = WidgetFit.launcherDp(1593, 415, 252, 340)
+        assertEquals(1181 to 308, landscape)
+        assertEquals(landscape, WidgetFit.reportedDp(landscape.first, landscape.second, 1625, 1015, 1.575f))
+        // In portrait the reported width passed the screen and was read as pixels; corrected, it no longer is.
+        val portrait = WidgetFit.launcherDp(1100, 594, 252, 340)
+        assertEquals(portrait, WidgetFit.reportedDp(portrait.first, portrait.second, 1015, 1625, 1.575f))
+    }
+
+    @Test
+    fun `a launcher size at the default density or without one is left alone`() {
+        assertEquals(380 to 190, WidgetFit.launcherDp(380, 190, 420, 420))
+        assertEquals(380 to 190, WidgetFit.launcherDp(380, 190, 420, 0))
+        assertEquals(null to 190, WidgetFit.launcherDp(null, 141, 420, 312))
+    }
+
+    @Test
     fun `an empty display size falls back to the app's screen`() {
         assertEquals(411 to 891, WidgetFit.screenDp(0 to 0, 411 to 891))
         assertEquals(411 to 891, WidgetFit.screenDp(411 to 891, 300 to 200))

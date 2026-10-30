@@ -1,6 +1,7 @@
 package com.tx24.spicyplayer.widget
 
 import kotlin.math.floor
+import kotlin.math.roundToInt
 
 /**
  * What of a widget's [WidgetSettings] fits its height, so a short widget drops its extras instead
@@ -51,6 +52,17 @@ internal data class WidgetFit(val settings: WidgetSettings, val currentLines: In
             val tooBig = (widthDp ?: 0) > screenWidthDp + SCREEN_SLACK_DP || (heightDp ?: 0) > screenHeightDp + SCREEN_SLACK_DP
             if (!tooBig || density <= 1f) return widthDp to heightDp
             return widthDp?.let { (it / density).toInt() } to heightDp?.let { (it / density).toInt() }
+        }
+
+        /**
+         * A size from a launcher that works in dp at the display's default [stableDpi] while the app
+         * runs at [densityDpi] (the user changed the display size): taken back to the app's dp.
+         * One UI Home does this; it reports a widget a third too big at a smaller display size.
+         */
+        fun launcherDp(widthDp: Int?, heightDp: Int?, densityDpi: Int, stableDpi: Int): Pair<Int?, Int?> {
+            if (densityDpi <= 0 || stableDpi <= 0 || densityDpi == stableDpi) return widthDp to heightDp
+            val ratio = densityDpi.toFloat() / stableDpi
+            return widthDp?.let { (it * ratio).roundToInt() } to heightDp?.let { (it * ratio).roundToInt() }
         }
 
         /**
