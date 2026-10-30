@@ -1,6 +1,13 @@
 package com.tx24.spicyplayer.ui.background
 
 import android.graphics.Bitmap
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
+import androidx.compose.ui.draw.BlurredEdgeTreatment
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.unit.dp
+import com.tx24.spicyplayer.ui.nowplaying.MotionCoverVideo
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -29,6 +36,38 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
+
+/**
+ * The Canvas background at [blur] percent: at 100 the cheap [CanvasAmbient]; below it the video
+ * itself, filling the page, dimmed and saturated towards the ambient's grade and blurred on the GPU
+ * (Android 12 and later; older phones show it sharp), down to the plain video at 0.
+ */
+@Composable
+fun CanvasBackdrop(url: String, blur: Int, onFailed: () -> Unit, modifier: Modifier = Modifier, held: Boolean = false) {
+    if (blur >= 100) {
+        CanvasAmbient(url, onFailed, modifier, held)
+        return
+    }
+    val share = blur.coerceIn(0, 100) / 100f
+    val paint = remember(share) {
+        val saturation = 1f + (AmbientImage.SATURATE - 1f) * share
+        val grade = ColorMatrix().apply { setSaturation(saturation) }
+        grade.postConcat(ColorMatrix().apply { setScale(AmbientImage.BRIGHTNESS, AmbientImage.BRIGHTNESS, AmbientImage.BRIGHTNESS, 1f) })
+        Paint().apply { colorFilter = ColorMatrixColorFilter(grade) }
+    }
+    MotionCoverVideo(
+        url = url,
+        visible = true,
+        onFailed = onFailed,
+        modifier = modifier.blur((VIDEO_MAX_BLUR_DP * share).dp, BlurredEdgeTreatment.Rectangle),
+        layerPaint = paint,
+        cropFromTop = 0.5f,
+        held = held,
+    )
+}
+
+/** The video's blur just under 100%, about the ambient's on a phone. */
+private const val VIDEO_MAX_BLUR_DP = 24f
 
 /**
  * The page's backdrop while the cover stage shows a Spotify Canvas: the canvas itself, drawn into

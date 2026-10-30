@@ -659,6 +659,23 @@ internal fun BackgroundContent(settings: AppSettings, viewModel: ExternalPlaybac
         icon = Icons.Rounded.VideoLibrary,
         enabled = !settings.lowPerformance,
     )
+    if (settings.canvasBackground && !settings.lowPerformance) {
+        SettingRow(
+            label = "Canvas Blur",
+            description = "How soft the Canvas is. Below 100% the video itself plays behind the lyrics.",
+            icon = Icons.Rounded.BlurOn,
+            stacked = true,
+        ) {
+            SpicyBipolarSlider(
+                value = settings.canvasBlur,
+                range = 0..100,
+                step = 1,
+                onValueChange = { settings.canvasBlur = it },
+                default = 100,
+                unit = "%",
+            )
+        }
+    }
     MoreOptions("Refined background, still background, moving with the music") {
         ToggleRow(
             label = "Refined Background",

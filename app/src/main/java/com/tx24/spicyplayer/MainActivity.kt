@@ -210,7 +210,7 @@ import com.tx24.spicyplayer.ui.nowplaying.PortraitCoverStage
 import com.tx24.spicyplayer.ui.nowplaying.MotionCovers
 import com.tx24.spicyplayer.ui.controls.controlsContentStartPx
 import com.tx24.spicyplayer.ui.nowplaying.PortraitCanvasDock
-import com.tx24.spicyplayer.ui.background.CanvasAmbient
+import com.tx24.spicyplayer.ui.background.CanvasBackdrop
 import com.tx24.spicyplayer.ui.nowplaying.TrackDirection
 import androidx.compose.animation.core.spring
 import com.tx24.spicyplayer.ui.settings.AppSettings
@@ -1231,8 +1231,10 @@ private fun LyricsApp(
                         motionCoverHeld = ambientOpaque,
                     )
                     ambientUrl?.takeIf { ambientShown > 0f }?.let { url ->
-                        CanvasAmbient(
+                        CanvasBackdrop(
                             url = url,
+                            // Behind the stage, which shows the video itself, it stays the soft glow.
+                            blur = if (stageAmbientUrl != null) 100 else settings.canvasBlur,
                             onFailed = { viewModel.canvasFailed(url) },
                             modifier = Modifier.fillMaxSize().graphicsLayer { alpha = ambientShown },
                             held = ambientOpaque,
@@ -1800,7 +1802,7 @@ private fun PipLyrics(
         var shownCanvasUrl by remember { mutableStateOf<String?>(null) }
         canvasUrl?.let { shownCanvasUrl = it }
         shownCanvasUrl?.takeIf { canvasShown > 0f }?.let { url ->
-            CanvasAmbient(url, onFailed = { viewModel.canvasFailed(url) }, modifier = Modifier.fillMaxSize().graphicsLayer { alpha = canvasShown })
+            CanvasBackdrop(url, settings.canvasBlur, onFailed = { viewModel.canvasFailed(url) }, modifier = Modifier.fillMaxSize().graphicsLayer { alpha = canvasShown })
         }
         val songCard = !settings.pipShowLyrics ||
             (state.lyrics is LyricsState.Error && settings.pipWithoutLyrics == PipWithoutLyrics.SongCard)
