@@ -134,11 +134,15 @@ private fun Badge(text: String, color: Color) {
 /** "29 Oct 2026 · 1 new · 3 changed · 16 fixed". */
 private fun summary(release: AppRelease): String {
     val date = release.date?.let { runCatching { LocalDate.parse(it).format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)) }.getOrNull() }
-    val counts = listOf(ReleaseNotes.Kind.New to "new", ReleaseNotes.Kind.Changed to "changed", ReleaseNotes.Kind.Fixed to "fixed")
-        .mapNotNull { (kind, word) ->
-            release.notes.sections.filter { it.kind == kind }.sumOf { it.entries.size }.takeIf { it > 0 }?.let { "$it $word" }
-        }
-    return (listOfNotNull(date) + counts).joinToString(" · ")
+    return listOfNotNull(date, changeCounts(release.notes).takeIf { it.isNotEmpty() }).joinToString(" · ")
 }
+
+/** "1 new · 3 changed · 16 fixed", leaving out kinds with none. */
+internal fun changeCounts(notes: ReleaseNotes): String =
+    listOf(ReleaseNotes.Kind.New to "new", ReleaseNotes.Kind.Changed to "changed", ReleaseNotes.Kind.Fixed to "fixed")
+        .mapNotNull { (kind, word) ->
+            notes.sections.filter { it.kind == kind }.sumOf { it.entries.size }.takeIf { it > 0 }?.let { "$it $word" }
+        }
+        .joinToString(" · ")
 
 private const val RELEASES_PAGE = "https://github.com/spicylyrics/mobile/releases"

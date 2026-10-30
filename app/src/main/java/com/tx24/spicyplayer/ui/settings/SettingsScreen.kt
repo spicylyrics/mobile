@@ -1,5 +1,12 @@
 package com.tx24.spicyplayer.ui.settings
 
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import androidx.compose.material.icons.rounded.History
+import com.tx24.spicyplayer.update.ChangelogState
+import com.tx24.spicyplayer.update.Releases
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import kotlin.math.roundToInt
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
@@ -838,38 +845,62 @@ private fun AboutCard(state: PlayerUiState, updater: UpdateViewModel, settings: 
     val context = LocalContext.current
     val update by updater.state.collectAsState()
     val openPage = LocalOpenSettingsPage.current
-    LaunchedEffect(Unit) { updater.checkQuietly(settings.includePrereleases) }
+    LaunchedEffect(Unit) {
+        updater.checkQuietly(settings.includePrereleases)
+        updater.loadChangelog()
+    }
+    val changelog by updater.changelog.collectAsState()
     // Found or hidden as one card; inside it, everything shows.
     Searchable("About", "Version", "GitHub", "Star", "Spicy Lyrics Mobile", "Spicy Player", "Updates", "Check for updates", "Feedback", "Bug", "Report", "Feature", "Suggest", "Discord", "Changelog", "What's new", "Release notes") {
         CompositionLocalProvider(LocalSettingsQuery provides "") {
-            Column(
-                Modifier.fillMaxWidth().outlinedCard().padding(SpicySpacing.S4),
-                verticalArrangement = Arrangement.spacedBy(SpicySpacing.S3),
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.fillMaxWidth().outlinedCard()) {
+                // The app as the launcher shows it: its icon, name and version.
+                Row(
+                    Modifier.padding(SpicySpacing.S4),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(SpicySpacing.S3),
+                ) {
+                    Image(
+                        painterResource(settings.appIcon.cover),
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(SpicyRadii.Md)),
+                    )
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         Text("Spicy Lyrics Mobile", style = SpicyType.Headline)
                         Text(versionLine(update.status, updater.enabled), style = SpicyType.Footnote.copy(color = SpicyColors.TextSecondary))
                     }
                     if (updater.enabled) UpdateButton(update.status, onUpdate = updater::show) { updater.check(settings.includePrereleases) }
                 }
-                // Every release's notes, on a page of their own.
-                SpicyButton("Changelog", { openPage(SettingsPage.Changelog) }, Modifier.fillMaxWidth())
-                Row(horizontalArrangement = Arrangement.spacedBy(SpicySpacing.S2)) {
-                    FooterLink("Star on GitHub", Modifier.weight(1f)) { openUrl(context, PROJECT_URL) }
-                    FooterLink("Discord", Modifier.weight(1f), DISCORD_BLURPLE) { openUrl(context, DISCORD_URL) }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(SpicySpacing.S2)) {
-                    // Fills in the form's version and debug info; the reporter sees both before sending.
-                    FooterLink("Report a bug", Modifier.weight(1f), BUG_PINK) {
-                        val debug = Uri.encode(debugReport(context, state).take(MAX_PREFILLED_DEBUG))
-                        openUrl(context, "$PROJECT_URL/issues/new?template=bug_report.yml&version=${Uri.encode(BuildConfig.VERSION_NAME)}&debug=$debug")
+                GroupDivider()
+                // Stays in the app, so a chevron like the pages above, where the links below leave it.
+                GroupRow(Icons.Rounded.History, SettingsPage.Changelog.title, changelogSummary(changelog)) { openPage(SettingsPage.Changelog) }
+                GroupDivider()
+                Column(Modifier.padding(SpicySpacing.S4), verticalArrangement = Arrangement.spacedBy(SpicySpacing.S2)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(SpicySpacing.S2)) {
+                        FooterLink("Star on GitHub", Modifier.weight(1f)) { openUrl(context, PROJECT_URL) }
+                        FooterLink("Discord", Modifier.weight(1f), DISCORD_BLURPLE) { openUrl(context, DISCORD_URL) }
                     }
-                    FooterLink("Suggest a feature", Modifier.weight(1f)) { openUrl(context, "$PROJECT_URL/issues/new?template=feature_request.yml") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(SpicySpacing.S2)) {
+                        // Fills in the form's version and debug info; the reporter sees both before sending.
+                        FooterLink("Report a bug", Modifier.weight(1f), BUG_PINK) {
+                            val debug = Uri.encode(debugReport(context, state).take(MAX_PREFILLED_DEBUG))
+                            openUrl(context, "$PROJECT_URL/issues/new?template=bug_report.yml&version=${Uri.encode(BuildConfig.VERSION_NAME)}&debug=$debug")
+                        }
+                        FooterLink("Suggest a feature", Modifier.weight(1f)) { openUrl(context, "$PROJECT_URL/issues/new?template=feature_request.yml") }
+                    }
                 }
             }
         }
     }
+}
+
+/** "What's new in v0.16.1: 3 changed · 11 fixed", once the changelog has this version. */
+private fun changelogSummary(state: ChangelogState): String {
+    val release = (state as? ChangelogState.Loaded)?.releases
+        ?.firstOrNull { Releases.compareVersions(it.version, BuildConfig.VERSION_NAME) == 0 }
+        ?: return "Every release's notes"
+    val counts = changeCounts(release.notes)
+    return if (counts.isEmpty()) "What's new in v${release.version}" else "What's new in v${release.version}: $counts"
 }
 
 @Composable
