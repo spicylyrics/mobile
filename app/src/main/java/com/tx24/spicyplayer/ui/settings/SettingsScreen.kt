@@ -157,7 +157,12 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
 /** A page of settings; one with a [parent] opens from a group card on that page instead of the first page. */
-internal enum class SettingsPage(val title: String, val parent: SettingsPage? = null) {
+internal enum class SettingsPage(
+    val title: String,
+    val parent: SettingsPage? = null,
+    /** False keeps the page out of search: its content isn't settings (the changelog). */
+    val searchable: Boolean = true,
+) {
     ThisSong("This song"),
     Lyrics("Lyrics"),
     Translation("Romanization & Translation"),
@@ -170,6 +175,8 @@ internal enum class SettingsPage(val title: String, val parent: SettingsPage? = 
     Device("Device"),
     FloatingLyrics("Floating lyrics", parent = Device),
     Advanced("Advanced"),
+    /** Opened from the About card. */
+    Changelog("Changelog", searchable = false),
     ;
 
     /** "Device › Floating lyrics": the title with every page above it, for search results. */
@@ -545,6 +552,7 @@ private fun PageContent(
         SettingsPage.Device -> DeviceContent(settings)
         SettingsPage.FloatingLyrics -> FloatingLyricsContent(settings)
         SettingsPage.Advanced -> AdvancedContent(state, viewModel, updater, settings)
+        SettingsPage.Changelog -> ChangelogContent(updater)
     }
 }
 
@@ -634,6 +642,7 @@ private fun PageSkeleton(page: SettingsPage) {
         SettingsPage.Device -> SettingsSkeleton(rows = 9)
         SettingsPage.FloatingLyrics -> SettingsSkeleton(rows = 7)
         SettingsPage.Advanced -> SettingsSkeleton(rows = 10)
+        SettingsPage.Changelog -> SettingsSkeleton(rows = 6, cards = true)
     }
 }
 
@@ -828,9 +837,10 @@ internal fun SubPageRow(page: SettingsPage, icon: ImageVector, summary: String) 
 private fun AboutCard(state: PlayerUiState, updater: UpdateViewModel, settings: AppSettings) {
     val context = LocalContext.current
     val update by updater.state.collectAsState()
+    val openPage = LocalOpenSettingsPage.current
     LaunchedEffect(Unit) { updater.checkQuietly(settings.includePrereleases) }
     // Found or hidden as one card; inside it, everything shows.
-    Searchable("About", "Version", "GitHub", "Star", "Spicy Lyrics Mobile", "Spicy Player", "Updates", "Check for updates", "Feedback", "Bug", "Report", "Feature", "Suggest", "Discord") {
+    Searchable("About", "Version", "GitHub", "Star", "Spicy Lyrics Mobile", "Spicy Player", "Updates", "Check for updates", "Feedback", "Bug", "Report", "Feature", "Suggest", "Discord", "Changelog", "What's new", "Release notes") {
         CompositionLocalProvider(LocalSettingsQuery provides "") {
             Column(
                 Modifier.fillMaxWidth().outlinedCard().padding(SpicySpacing.S4),
@@ -843,6 +853,8 @@ private fun AboutCard(state: PlayerUiState, updater: UpdateViewModel, settings: 
                     }
                     if (updater.enabled) UpdateButton(update.status, onUpdate = updater::show) { updater.check(settings.includePrereleases) }
                 }
+                // Every release's notes, on a page of their own.
+                SpicyButton("Changelog", { openPage(SettingsPage.Changelog) }, Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(SpicySpacing.S2)) {
                     FooterLink("Star on GitHub", Modifier.weight(1f)) { openUrl(context, PROJECT_URL) }
                     FooterLink("Discord", Modifier.weight(1f), DISCORD_BLURPLE) { openUrl(context, DISCORD_URL) }
@@ -914,7 +926,7 @@ private fun SearchResults(query: String, state: PlayerUiState, viewModel: Extern
         EmptyOr(
             content = {
                 Column(Modifier.fillMaxWidth()) {
-                    SettingsPage.entries.forEach { page ->
+                    SettingsPage.entries.filter { it.searchable }.forEach { page ->
                         SettingsSection(page.path) { PageContent(page, state, viewModel, updater, settings, onOpenLyricsManager, onOpenSpotifySearch) }
                     }
                     AboutCardSpacer(state, updater, settings)
@@ -933,7 +945,7 @@ private fun SearchResults(query: String, state: PlayerUiState, viewModel: Extern
 
 @Composable
 private fun AboutCardSpacer(state: PlayerUiState, updater: UpdateViewModel, settings: AppSettings) {
-    Searchable("About", "Version", "GitHub", "Star", "Spicy Lyrics Mobile", "Spicy Player", "Updates", "Check for updates", "Feedback", "Bug", "Report", "Feature", "Suggest", "Discord") { Spacer(Modifier.height(SpicySpacing.S4)) }
+    Searchable("About", "Version", "GitHub", "Star", "Spicy Lyrics Mobile", "Spicy Player", "Updates", "Check for updates", "Feedback", "Bug", "Report", "Feature", "Suggest", "Discord", "Changelog", "What's new", "Release notes") { Spacer(Modifier.height(SpicySpacing.S4)) }
     AboutCard(state, updater, settings)
 }
 
