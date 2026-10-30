@@ -1,5 +1,6 @@
 package com.tx24.spicyplayer.ui.settings
 
+import com.tx24.spicyplayer.ui.components.SettingsPeek
 import com.tx24.spicyplayer.ui.components.SpicyGlyphs
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -70,10 +71,13 @@ fun QuickSettingsModal(
         }
         screen = target
     }
+    // Dragging a slider here clears the pop-up away to show the lyrics, as in Settings.
+    val peek = remember { SettingsPeek(allowRows = { settings.peekWhileAdjusting }) }
     SpicyModal(
         visible = visible,
         onDismissRequest = onDismiss,
         backdrop = backdrop,
+        peek = peek,
         title = when (screen) {
             QuickScreen.Main -> "Quick settings"
             QuickScreen.Queue -> "Queue"
@@ -96,7 +100,7 @@ fun QuickSettingsModal(
         ) { shown ->
             Column(verticalArrangement = Arrangement.spacedBy(SpicySpacing.S3)) {
                 when (shown) {
-                    QuickScreen.Main -> MainScreen(state, viewModel, ::open)
+                    QuickScreen.Main -> MainScreen(state, viewModel, settings.quickDelays, ::open)
                     // Its own height: the list scrolls inside the pop-up's body.
                     QuickScreen.Queue -> QueueList(state, viewModel, onJumped = onDismiss, modifier = Modifier.height(QUEUE_HEIGHT))
                     QuickScreen.LyricsManager -> LyricsManagerContent(state, viewModel, settings, uploading, { uploading = it }, onDismiss)
@@ -108,7 +112,7 @@ fun QuickSettingsModal(
 }
 
 @Composable
-private fun MainScreen(state: PlayerUiState, viewModel: ExternalPlaybackViewModel, open: (QuickScreen) -> Unit) {
+private fun MainScreen(state: PlayerUiState, viewModel: ExternalPlaybackViewModel, delays: Set<DelayKind>, open: (QuickScreen) -> Unit) {
     // The screens this opens share one compact card, so the settings tuned right here keep the room.
     Column(Modifier.fillMaxWidth().outlinedCard()) {
         if (state.queue.isNotEmpty()) {
@@ -134,9 +138,10 @@ private fun MainScreen(state: PlayerUiState, viewModel: ExternalPlaybackViewMode
         GroupRow(SpicyGlyphs.LyricsManager, "Lyrics Manager", "Save or upload lyrics, link a folder") { open(QuickScreen.LyricsManager) }
     }
     LyricsLanguageRow(state, viewModel)
-    SongDelayRow(state, viewModel)
-    PlayerDelayRow(state, viewModel)
-    SettingRow(
+    // Only the delays picked in Scroll & Sync, so the pop-up stays short.
+    if (DelayKind.Song in delays) SongDelayRow(state, viewModel)
+    if (DelayKind.Player in delays) PlayerDelayRow(state, viewModel)
+    if (DelayKind.Output in delays) SettingRow(
         label = "Output delay",
         description = "For every song on ${state.outputLabel}. Move it right if the lyrics run ahead of the song.",
         icon = Icons.Rounded.Timer,

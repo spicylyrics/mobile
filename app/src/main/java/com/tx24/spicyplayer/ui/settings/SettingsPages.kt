@@ -530,7 +530,21 @@ internal fun ScrollSyncContent(state: PlayerUiState, viewModel: ExternalPlayback
         DelayControl(state.lyricDelayMs, viewModel::setLyricDelay)
     }
     PlayerDelayRow(state, viewModel)
+    SongDelayRow(state, viewModel)
     DelayCalibrationRow(state, viewModel)
+    SettingRow(
+        label = "Delays in Quick Settings",
+        description = "Which delays the quick settings pop-up shows.",
+        icon = Icons.Rounded.Tune,
+    ) {
+        SpicyMultiSelect(
+            selected = settings.quickDelays.mapTo(mutableSetOf()) { it.name },
+            options = DelayKind.entries.map { it.name },
+            labels = DelayKind.entries.map { it.label },
+            none = "None",
+            onChange = { picked -> settings.quickDelays = DelayKind.entries.filter { it.name in picked }.toSet() },
+        )
+    }
     SettingsSection("Scrolling") {
         ToggleRow(
             label = "Early Scroll",

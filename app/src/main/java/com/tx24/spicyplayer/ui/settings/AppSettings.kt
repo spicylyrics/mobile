@@ -195,6 +195,10 @@ class AppSettings(private val prefs: SharedPreferences) {
     var pipDock by boolean("pipDock", true)
     /** The floating window's line being sung sits at its top instead of its middle, with no lines above it. */
     var pipLineAtTop by boolean("pipLineAtTop", false)
+    /** Which delays quick settings shows; the song's and the output's by default, as before the player's. */
+    var quickDelays by setting("quickDelays", String::class, {
+        read { prefs.getString("quickDelays", null) }?.let(DelayKind::parse) ?: setOf(DelayKind.Song, DelayKind.Output)
+    }) { prefs.edit().putString("quickDelays", DelayKind.store(it)).apply() }
     /** A small cover beside the title in a square or tall window's song bar. */
     var pipDockCover by boolean("pipDockCover", true)
     /** What the floating window shows for a song without lyrics. */
@@ -399,3 +403,18 @@ enum class LyricsSize(val percent: Int, val label: String) {
 
 /** How far the lyrics' size goes either way, in percent of the default. */
 val LYRICS_SIZE_RANGE = 60..250
+
+/** The lyric delays, in the order quick settings lists them. */
+enum class DelayKind(val label: String) {
+    Song("Song"),
+    Player("Player"),
+    Output("Output");
+
+    companion object {
+        /** Stored as names joined by commas; an unknown name is dropped. */
+        fun parse(stored: String): Set<DelayKind> =
+            stored.split(',').mapNotNull { name -> entries.firstOrNull { it.name == name.trim() } }.toSet()
+
+        fun store(kinds: Set<DelayKind>): String = entries.filter { it in kinds }.joinToString(",") { it.name }
+    }
+}
