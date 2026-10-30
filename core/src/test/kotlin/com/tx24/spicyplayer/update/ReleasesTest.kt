@@ -25,7 +25,10 @@ class ReleasesTest {
         assertEquals("0.3.0", newest.version)
         assertEquals("https://example.com/spicy-player-v0.3.0.apk", newest.apkUrl)
         assertEquals("https://example.com/spicy-player-v0.3.0.apk.sha256", newest.sha256Url)
-        assertEquals(listOf("Faster lyrics", "Fixed the timeline"), newest.notes)
+        assertEquals(
+            listOf(ReleaseNotes.Entry(null, "Faster lyrics"), ReleaseNotes.Entry("Fixed", "the timeline")),
+            newest.notes.sections.single().entries,
+        )
     }
 
     @Test

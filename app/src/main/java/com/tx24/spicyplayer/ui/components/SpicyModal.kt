@@ -62,6 +62,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import com.tx24.spicyplayer.update.ReleaseNotes
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
@@ -470,25 +471,21 @@ fun SpicyVersionRow(from: String?, to: String?) {
 }
 
 /**
- * `.uc-patch-notes`: a bulleted list in secondary text, or [status] (loading, failed, nothing
- * new) in its place.
+ * `.uc-patch-notes`: the release's notes ([ReleaseNotesView]), or [status] (loading, failed,
+ * nothing new) in their place. A long release scrolls on its own, at most [NOTES_MAX_HEIGHT]
+ * tall, so the buttons under it stay in reach.
  */
 @Composable
-fun SpicyModalNotes(notes: List<String>, status: String? = null) {
-    val text = SpicyType.Body.copy(color = SpicyColors.TextSecondary, lineHeight = 1.5.em)
-    if (status != null || notes.isEmpty()) {
-        Text(status ?: "", style = text)
+fun SpicyModalNotes(notes: ReleaseNotes, status: String? = null) {
+    if (status != null || notes.isEmpty) {
+        Text(status ?: "", style = SpicyType.Body.copy(color = SpicyColors.TextSecondary, lineHeight = 1.5.em))
         return
     }
-    Column(verticalArrangement = Arrangement.spacedBy(SpicySpacing.S2)) {
-        notes.forEach { note ->
-            Row {
-                Text("•", style = text, modifier = Modifier.width(20.dp).padding(start = 6.dp))
-                Text(note, style = text, modifier = Modifier.weight(1f))
-            }
-        }
-    }
+    val scroll = rememberScrollState()
+    ReleaseNotesView(notes, Modifier.heightIn(max = NOTES_MAX_HEIGHT).scrollHints(scroll).verticalScroll(scroll))
 }
+
+private val NOTES_MAX_HEIGHT = 320.dp
 
 /** The update card's buttons: `.btn-primary`, `.btn-secondary`, `.btn-quiet`. */
 enum class SpicyButtonStyle { Primary, Secondary, Quiet }
