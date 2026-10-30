@@ -1,5 +1,7 @@
 package com.tx24.spicyplayer.ui.components
 
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -205,6 +207,9 @@ fun SpicyModal(
         BackHandler(enabled = visible && peek.active) { peek.end() }
     }
     var plateOrigin by remember { mutableStateOf(Offset.Zero) }
+    // The plate's contents without its glass, for the dragged row: drawn from the whole plate, the
+    // glass would cover the dark plate it sits on while peeking.
+    val contentLayer = rememberGraphicsLayer()
 
     // Set by the plate when a touch lands on it. Marking rather than consuming: drags inside the
     // plate (a text field's scroll, say) give up on a touch that something else consumed.
@@ -258,7 +263,8 @@ fun SpicyModal(
                 .drawWithContent {
                     val amount = peekAmount
                     if (amount <= 0f) return@drawWithContent drawContent()
-                    if (amount < 1f) fadedLayer(1f - amount) { drawContent() }
+                    // Even fully faded, so the contents are recorded for the row below.
+                    fadedLayer(1f - amount) { drawContent() }
                     val keep = peek?.keep?.translate(-plateOrigin) ?: return@drawWithContent
                     val inset = SpicySpacing.S1.toPx()
                     drawRoundRect(
@@ -267,7 +273,7 @@ fun SpicyModal(
                         Size(keep.width + 2 * inset, keep.height + 2 * inset),
                         CornerRadius(SpicyRadii.Md.toPx()),
                     )
-                    clipRect(keep.left, keep.top, keep.right, keep.bottom) { fadedLayer(amount) { this@drawWithContent.drawContent() } }
+                    clipRect(keep.left, keep.top, keep.right, keep.bottom) { fadedLayer(amount) { drawLayer(contentLayer) } }
                 }
                 .modalShadow()
                 .clip(shape)
@@ -291,6 +297,11 @@ fun SpicyModal(
                     top = brand?.ink?.copy(alpha = 0.22f) ?: Color.White.copy(alpha = 0.08f),
                     ring = brand?.ink?.copy(alpha = 0.16f) ?: palette.HairlineStrong,
                 )
+                .drawWithContent {
+                    if (peekAmount <= 0f) return@drawWithContent drawContent()
+                    contentLayer.record { this@drawWithContent.drawContent() }
+                    drawLayer(contentLayer)
+                }
                 // Touches on the plate stay on the plate, and so do a remote's arrows.
                 .pointerInput(Unit) { awaitPointerEventScope { while (true) { awaitPointerEvent(); touchOnPlate[0] = true } } }
                 .focusLayer(current = visible, ready = settled),
