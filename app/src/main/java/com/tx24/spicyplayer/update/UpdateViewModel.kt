@@ -36,6 +36,15 @@ sealed interface UpdateStatus {
     data class Failed(val message: String, val release: AppRelease? = null) : UpdateStatus
 }
 
+/** The changelog page's list of releases, fetched once a run. */
+sealed interface ChangelogState {
+    data object Idle : ChangelogState
+    data object Loading : ChangelogState
+    /** Newest first. */
+    data class Loaded(val releases: List<AppRelease>) : ChangelogState
+    data object Failed : ChangelogState
+}
+
 data class UpdateUiState(
     val status: UpdateStatus = UpdateStatus.Idle,
     /** The update pop-up is up. A check from settings answers in place instead. */
@@ -53,6 +62,8 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
     private val mutableState = MutableStateFlow(UpdateUiState())
     val state: StateFlow<UpdateUiState> = mutableState.asStateFlow()
     private var job: Job? = null
+    private val mutableChangelog = MutableStateFlow<ChangelogState>(ChangelogState.Idle)
+    val changelog: StateFlow<ChangelogState> = mutableChangelog.asStateFlow()
 
     val enabled: Boolean get() = !BuildConfig.DEBUG
 
@@ -116,6 +127,24 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
                 !prompt || !manual && prefs.getString(KEY_SKIPPED, null) == newest.tag -> UpdateUiState(UpdateStatus.Available(newest))
                 else -> UpdateUiState(UpdateStatus.Available(newest), prompt = true)
             }
+        }
+    }
+
+    /**
+     * Every release for the changelog, once a run (GitHub allows few unsigned requests an hour).
+     * Debug builds too: reading notes installs nothing.
+     */
+    fun loadChangelog() {
+        val now = mutableChangelog.value
+        if (now is ChangelogState.Loading || now is ChangelogState.Loaded) return
+        mutableChangelog.value = ChangelogState.Loading
+        viewModelScope.launch {
+            mutableChangelog.value = runCatching {
+                withContext(Dispatchers.IO) { fetch(CHANGELOG_URL).use { Releases.parse(it.body.string()) } }
+            }.fold(
+                onSuccess = { releases -> ChangelogState.Loaded(releases.sortedWith { a, b -> Releases.compareVersions(b.version, a.version) }) },
+                onFailure = { error -> Log.w(TAG, "Changelog failed", error); ChangelogState.Failed },
+            )
         }
     }
 
@@ -247,6 +276,7 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
     private companion object {
         const val TAG = "SpicyUpdate"
         const val RELEASES_URL = "https://api.github.com/repos/spicylyrics/mobile/releases?per_page=20"
+        const val CHANGELOG_URL = "https://api.github.com/repos/spicylyrics/mobile/releases?per_page=100"
         const val KEY_LAST_CHECK = "lastCheckMs"
         const val KEY_SKIPPED = "skippedTag"
         const val AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000L

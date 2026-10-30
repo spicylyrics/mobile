@@ -2039,7 +2039,7 @@ private fun UpdatePopup(update: UpdateUiState, updater: UpdateViewModel, backdro
             else -> null
         }
         (shown as? UpdateStatus.Downloading)?.let { DownloadProgress(it.progress) }
-            ?: SpicyModalNotes(release.notes, status ?: "No notes for this version.".takeIf { release.notes.isEmpty() })
+            ?: SpicyModalNotes(release.notes, status ?: "No notes for this version.".takeIf { release.notes.isEmpty })
         SpicyModalGap()
         val busy = shown is UpdateStatus.Downloading || shown is UpdateStatus.Installing
         val ready = shown is UpdateStatus.ReadyToInstall

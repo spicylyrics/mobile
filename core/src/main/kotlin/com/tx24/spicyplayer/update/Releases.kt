@@ -10,7 +10,9 @@ data class AppRelease(
     /** The tag without its leading "v", e.g. "0.2.0". */
     val version: String,
     val name: String,
-    val notes: List<String>,
+    val notes: ReleaseNotes,
+    /** When it was published, as "2026-10-29"; null when GitHub doesn't say. */
+    val date: String?,
     val prerelease: Boolean,
     val apkUrl: String,
     val apkSizeBytes: Long,
@@ -39,7 +41,8 @@ object Releases {
                 tag = tag,
                 version = tag.removePrefix("v"),
                 name = release.string("name")?.takeIf { it.isNotBlank() } ?: tag,
-                notes = notes(release.string("body").orEmpty()),
+                notes = ReleaseNotes.parse(release.string("body").orEmpty()),
+                date = release.string("published_at")?.take(10),
                 prerelease = release.bool("prerelease"),
                 apkUrl = apk.string("browser_download_url") ?: return@mapNotNull null,
                 apkSizeBytes = apk.get("size")?.takeIf { it.isJsonPrimitive }?.asLong ?: 0L,
@@ -75,14 +78,6 @@ object Releases {
         }
     }
 
-    /** The bullet points of a release body, without GitHub's generated "Full Changelog" link. */
-    fun notes(body: String): List<String> = body.lines()
-        .map(String::trim)
-        .filter { it.startsWith("- ") || it.startsWith("* ") }
-        .map { it.drop(2).trim().replace("**", "") }
-        .filter { it.isNotEmpty() && !it.contains("Full Changelog") }
-        .take(MAX_NOTES)
-
     private fun split(version: String): Pair<List<Int>, String?> {
         val clean = version.trim().removePrefix("v").removeSuffix("-debug")
         val core = clean.substringBefore('-')
@@ -109,6 +104,5 @@ object Releases {
     private fun JsonObject.string(key: String): String? = get(key)?.takeIf { it.isJsonPrimitive }?.asString
     private fun JsonObject.bool(key: String): Boolean = get(key)?.takeIf { it.isJsonPrimitive }?.asBoolean == true
 
-    private const val MAX_NOTES = 8
     private val APK_PREFIXES = listOf("spicy-lyrics-mobile-", "spicy-player-")
 }
