@@ -1500,6 +1500,8 @@ private fun LyricsApp(
                         bottomPx = gutter,
                         // Ambient mode docks the song itself, below; this one goes with the cover.
                         alpha = { immersive() * (1f - ambientFade.value) },
+                        // Clear of a shown navigation bar, as the controls are.
+                        modifier = Modifier.padding(bottom = belowTop.calculateBottomPadding()),
                     )
                 }
                 // Ambient mode: the song and its timeline docked at the bottom, as over the Canvas.
@@ -1515,6 +1517,7 @@ private fun LyricsApp(
                         gutterPx = gutter,
                         bottomPx = gutter,
                         alpha = { ambientFade.value },
+                        modifier = Modifier.padding(bottom = belowTop.calculateBottomPadding()),
                     )
                 }
                 // The header sits in what the glass and the shade blur, so the shade blurs it
