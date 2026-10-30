@@ -94,7 +94,10 @@ private fun TapPad(state: PlayerUiState, viewModel: ExternalPlaybackViewModel, o
         delay(BEATS_WAIT_MS)
         value = true
     }
-    val estimate = beats?.let { TapCalibration.estimate(taps, it, state.lyricDelayMs) }
+    // Taps measure all the lag between the player and the sound; the output's share is what's left
+    // after the player's own delay.
+    val estimate = beats?.let { TapCalibration.estimate(taps, it, state.lyricDelayMs + state.playerDelayMs) }
+        ?.let { it.copy(delayMs = it.delayMs - state.playerDelayMs) }
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val flash = remember { Animatable(0f) }

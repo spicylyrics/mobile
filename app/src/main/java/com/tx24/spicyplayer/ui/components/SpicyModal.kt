@@ -1,5 +1,13 @@
 package com.tx24.spicyplayer.ui.components
 
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.graphics.StrokeCap
 
 import androidx.compose.animation.core.animateDpAsState
@@ -147,6 +155,11 @@ fun SpicyModal(
     onBack: (() -> Unit)? = null,
     /** Its colours; a branded one makes the plate the brand's ramp, with the mark in its corner. */
     palette: SpicyPalette = LocalPopupPalette.current,
+    /**
+     * Lets a slider being dragged clear the pop-up away, all but its own row, to show the lyrics
+     * behind it as in Settings ([SettingsPeek]); null keeps the pop-up up.
+     */
+    peek: SettingsPeek? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val open = remember { Animatable(0f) }
@@ -184,6 +197,19 @@ fun SpicyModal(
     if (onDismissRequest != null) BackHandler(enabled = visible) { onDismissRequest() }
     // Declared after, so it's asked first.
     if (onBack != null) BackHandler(enabled = visible) { onBack() }
+    val peekAmount by animateFloatAsState(
+        if (peek?.active == true) 1f else 0f,
+        if (animate) tween(PEEK_MS, easing = SpicyMotion.Standard) else snap(),
+        label = "modalPeek",
+    )
+    if (peek != null) {
+        LaunchedEffect(visible) { if (!visible) peek.end() }
+        BackHandler(enabled = visible && peek.active) { peek.end() }
+    }
+    var plateOrigin by remember { mutableStateOf(Offset.Zero) }
+    // The plate's contents without its glass, for the dragged row: drawn from the whole plate, the
+    // glass would cover the dark plate it sits on while peeking.
+    val contentLayer = rememberGraphicsLayer()
 
     // Set by the plate when a touch lands on it. Marking rather than consuming: drags inside the
     // plate (a text field's scroll, say) give up on a touch that something else consumed.
@@ -192,7 +218,7 @@ fun SpicyModal(
         modifier
             .fillMaxSize()
             // The dim: rgba(0,0,0,.45) (.55 behind a branded plate), fading with the modal.
-            .drawBehind { drawRect(Color.Black.copy(alpha = (if (brand != null) BRAND_OVERLAY_ALPHA else OVERLAY_ALPHA) * open.value)) }
+            .drawBehind { drawRect(Color.Black.copy(alpha = (if (brand != null) BRAND_OVERLAY_ALPHA else OVERLAY_ALPHA) * open.value * (1f - peekAmount))) }
             // Takes every touch, so nothing reaches the page; a tap outside the plate dismisses.
             // The plate sees its touches first and marks them, which is how this tells them apart.
             .pointerInput(onDismissRequest) {
@@ -231,6 +257,24 @@ fun SpicyModal(
                     scaleY = scale
                     alpha = open.value
                 }
+                .onGloballyPositioned { plateOrigin = it.positionInRoot() }
+                // Peeking draws the plate faded out, and the dragged slider's row alone at full
+                // strength, on a plate of its own.
+                .drawWithContent {
+                    val amount = peekAmount
+                    if (amount <= 0f) return@drawWithContent drawContent()
+                    // Even fully faded, so the contents are recorded for the row below.
+                    fadedLayer(1f - amount) { drawContent() }
+                    val keep = peek?.keep?.translate(-plateOrigin) ?: return@drawWithContent
+                    val inset = SpicySpacing.S1.toPx()
+                    drawRoundRect(
+                        PEEK_PLATE.copy(alpha = PEEK_PLATE.alpha * amount),
+                        keep.topLeft - Offset(inset, inset),
+                        Size(keep.width + 2 * inset, keep.height + 2 * inset),
+                        CornerRadius(SpicyRadii.Md.toPx()),
+                    )
+                    clipRect(keep.left, keep.top, keep.right, keep.bottom) { fadedLayer(amount) { drawLayer(contentLayer) } }
+                }
                 .modalShadow()
                 .clip(shape)
                 .then(
@@ -253,11 +297,16 @@ fun SpicyModal(
                     top = brand?.ink?.copy(alpha = 0.22f) ?: Color.White.copy(alpha = 0.08f),
                     ring = brand?.ink?.copy(alpha = 0.16f) ?: palette.HairlineStrong,
                 )
+                .drawWithContent {
+                    if (peekAmount <= 0f) return@drawWithContent drawContent()
+                    contentLayer.record { this@drawWithContent.drawContent() }
+                    drawLayer(contentLayer)
+                }
                 // Touches on the plate stay on the plate, and so do a remote's arrows.
                 .pointerInput(Unit) { awaitPointerEventScope { while (true) { awaitPointerEvent(); touchOnPlate[0] = true } } }
                 .focusLayer(current = visible, ready = settled),
         ) {
-          CompositionLocalProvider(LocalSpicyPalette provides palette) {
+          CompositionLocalProvider(LocalSpicyPalette provides palette, LocalSettingsPeek provides (peek ?: LocalSettingsPeek.current)) {
             if (title != null) ModalHeader(title, onDismissRequest, onBack, animate)
             if (fillBody) {
                 Column(Modifier.weight(1f).graphicsLayer { alpha = bodyFade.value }, content = body)
@@ -599,3 +648,15 @@ private const val MARK_TURN_MS = 700
 private const val CLOSED_SCALE = 0.96f
 private val PLATE_WIDTH = 420.dp
 private val TAP_MIN = 40.dp
+
+/** Draws [block] at [alpha] as one layer, so overlapping parts don't show through each other. */
+private inline fun DrawScope.fadedLayer(alpha: Float, block: () -> Unit) {
+    drawContext.canvas.saveLayer(Rect(Offset.Zero, size), Paint().apply { this.alpha = alpha })
+    block()
+    drawContext.canvas.restore()
+}
+
+/** How long the pop-up takes to clear away for a peek, and to come back. */
+private const val PEEK_MS = 250
+/** The plate a dragged slider's row sits on while the rest of the pop-up is cleared away. */
+private val PEEK_PLATE = Color(0xE0141414)
