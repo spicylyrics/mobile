@@ -145,6 +145,8 @@ class AppSettings(private val prefs: SharedPreferences) {
     }) { prefs.edit().putString("stageArts", StageArt.store(it)).apply() }
     /** Where the song has a Spotify Canvas, the background is that Canvas, blurred, over [backgroundType]. */
     var canvasBackground by boolean("canvasBackground", false)
+    /** How blurred the Canvas background is, in percent: 100 is the soft glow, 0 the video itself. */
+    var canvasBlur by int("canvasBlur", 100, 0..100)
     /**
      * Portrait, while the big cover is open: what takes its place. A Canvas fills the screen; the
      * animated or still cover spreads edge to edge and melts into the background. A song gets the
