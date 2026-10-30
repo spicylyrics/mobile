@@ -6,7 +6,7 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.key
@@ -68,7 +68,15 @@ fun CanvasBackdrop(url: String, blur: Int, onFailed: () -> Unit, modifier: Modif
     var covered by remember { mutableStateOf(url) }
     val latestUrl by rememberUpdatedState(url)
     val scope = rememberCoroutineScope()
-    Box(modifier.blur((VIDEO_MAX_BLUR_DP * share).dp, BlurredEdgeTreatment.Rectangle)) {
+    var pageWidth by remember { mutableStateOf(0) }
+    // Towards 100% it softens and zooms like the glow, so the last step to it is barely a change.
+    val radius = with(LocalDensity.current) { (glowBlurRadiusPx(pageWidth) * share).toDp() }
+    Box(modifier.onSizeChanged { pageWidth = it.width }.blur(radius, BlurredEdgeTreatment.Rectangle)) {
+      Box(Modifier.fillMaxSize().graphicsLayer {
+          val zoom = 1f + (AmbientImage.OVERSCAN - 1f) * share
+          scaleX = zoom
+          scaleY = zoom
+      }) {
         for (shown in listOf(covered, url).distinct()) key(shown) {
             MotionCoverVideo(
                 url = shown,
@@ -86,11 +94,21 @@ fun CanvasBackdrop(url: String, blur: Int, onFailed: () -> Unit, modifier: Modif
                 held = held,
             )
         }
+      }
     }
 }
 
-/** The video's blur just under 100%, about the ambient's on a phone. */
-private const val VIDEO_MAX_BLUR_DP = 24f
+/**
+ * The GPU blur radius that softens a page [pageWidthPx] wide as much as the glow does: three box
+ * passes of [AmbientImage.BLUR_RADIUS] in an image [AMBIENT_WIDTH] wide make a Gaussian of
+ * sqrt(3((2r+1)² - 1)/12) of its pixels, stretched over the page; Android's blur takes a radius,
+ * which it reads as a sigma of 0.57735 × radius + 0.5.
+ */
+internal fun glowBlurRadiusPx(pageWidthPx: Int): Float {
+    val span = AmbientImage.BLUR_RADIUS * 2 + 1
+    val sigma = kotlin.math.sqrt(3f * (span * span - 1) / 12f) * pageWidthPx / AMBIENT_WIDTH
+    return ((sigma - 0.5f) / 0.57735f).coerceAtLeast(0f)
+}
 
 /**
  * The page's backdrop while the cover stage shows a Spotify Canvas: the canvas itself, drawn into
