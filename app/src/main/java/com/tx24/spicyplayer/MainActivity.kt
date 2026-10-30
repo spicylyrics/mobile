@@ -1233,8 +1233,10 @@ private fun LyricsApp(
                     ambientUrl?.takeIf { ambientShown > 0f }?.let { url ->
                         CanvasBackdrop(
                             url = url,
-                            // Behind the stage, which shows the video itself, it stays the soft glow.
-                            blur = if (stageAmbientUrl != null) 100 else settings.canvasBlur,
+                            // Behind the stage or the big cover it keeps the Canvas background's
+                            // blur: switching kinds there would show what's beneath while the other
+                            // draws its first frame. Without that background it's the soft glow.
+                            blur = if (settings.canvasBackground) settings.canvasBlur else 100,
                             onFailed = { viewModel.canvasFailed(url) },
                             modifier = Modifier.fillMaxSize().graphicsLayer { alpha = ambientShown },
                             held = ambientOpaque,

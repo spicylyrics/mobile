@@ -277,7 +277,7 @@ internal fun leadArtist(artists: String): String =
     artists.split(", ").first().split(Regex("\\s+(?:feat\\.?|ft\\.?|featuring)\\s+", RegexOption.IGNORE_CASE))
         .first().trim()
 
-private const val FADE_MS = 600
+internal const val FADE_MS = 600
 
 /** The size, at [aspect] (width over height), that just covers a [width]×[height] box. */
 internal fun coverSize(width: Int, height: Int, aspect: Float): Pair<Int, Int> {

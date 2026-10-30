@@ -7,7 +7,15 @@ import android.graphics.Paint
 import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.key
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import com.tx24.spicyplayer.ui.nowplaying.FADE_MS
 import com.tx24.spicyplayer.ui.nowplaying.MotionCoverVideo
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -40,7 +48,8 @@ import kotlinx.coroutines.withContext
 /**
  * The Canvas background at [blur] percent: at 100 the cheap [CanvasAmbient]; below it the video
  * itself, filling the page, dimmed and saturated towards the ambient's grade and blurred on the GPU
- * (Android 12 and later; older phones show it sharp), down to the plain video at 0.
+ * (Android 12 and later; older phones show it sharp), down to the plain video at 0. A new song's
+ * video fades in over the last one's, which stays until it's covered.
  */
 @Composable
 fun CanvasBackdrop(url: String, blur: Int, onFailed: () -> Unit, modifier: Modifier = Modifier, held: Boolean = false) {
@@ -55,15 +64,29 @@ fun CanvasBackdrop(url: String, blur: Int, onFailed: () -> Unit, modifier: Modif
         grade.postConcat(ColorMatrix().apply { setScale(AmbientImage.BRIGHTNESS, AmbientImage.BRIGHTNESS, AmbientImage.BRIGHTNESS, 1f) })
         Paint().apply { colorFilter = ColorMatrixColorFilter(grade) }
     }
-    MotionCoverVideo(
-        url = url,
-        visible = true,
-        onFailed = onFailed,
-        modifier = modifier.blur((VIDEO_MAX_BLUR_DP * share).dp, BlurredEdgeTreatment.Rectangle),
-        layerPaint = paint,
-        cropFromTop = 0.5f,
-        held = held,
-    )
+    // The video fully up; while [url] differs, it's still loading over this one.
+    var covered by remember { mutableStateOf(url) }
+    val latestUrl by rememberUpdatedState(url)
+    val scope = rememberCoroutineScope()
+    Box(modifier.blur((VIDEO_MAX_BLUR_DP * share).dp, BlurredEdgeTreatment.Rectangle)) {
+        for (shown in listOf(covered, url).distinct()) key(shown) {
+            MotionCoverVideo(
+                url = shown,
+                visible = true,
+                onFailed = onFailed,
+                modifier = Modifier.fillMaxSize(),
+                layerPaint = paint,
+                cropFromTop = 0.5f,
+                onFirstFrame = {
+                    if (shown != covered) scope.launch {
+                        delay(FADE_MS.toLong())
+                        if (shown == latestUrl) covered = shown
+                    }
+                },
+                held = held,
+            )
+        }
+    }
 }
 
 /** The video's blur just under 100%, about the ambient's on a phone. */
