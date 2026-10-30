@@ -24,6 +24,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.material.icons.rounded.VerticalAlignTop
 import androidx.compose.material.icons.rounded.DragIndicator
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -1204,6 +1205,14 @@ internal fun FloatingLyricsContent(settings: AppSettings) {
             enabled = supported && settings.pipShowLyrics,
         )
     }
+    ToggleRow(
+        label = "Current line at the top",
+        checked = settings.pipLineAtTop,
+        onCheckedChange = { settings.pipLineAtTop = it },
+        description = "Keep the line being sung at the top of the window, so more of what's next fits.",
+        icon = Icons.Rounded.VerticalAlignTop,
+        enabled = supported && settings.pipShowLyrics,
+    )
     ToggleRow(
         label = "Song bar",
         checked = settings.pipDock,

@@ -647,7 +647,7 @@ private fun PageSkeleton(page: SettingsPage) {
         SettingsPage.Theme -> SettingsSkeleton(rows = 4)
         SettingsPage.Sources -> SettingsSkeleton(rows = 8, cards = true)
         SettingsPage.Device -> SettingsSkeleton(rows = 9)
-        SettingsPage.FloatingLyrics -> SettingsSkeleton(rows = 7)
+        SettingsPage.FloatingLyrics -> SettingsSkeleton(rows = 8)
         SettingsPage.Advanced -> SettingsSkeleton(rows = 10)
         SettingsPage.Changelog -> SettingsSkeleton(rows = 6, cards = true)
     }

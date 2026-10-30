@@ -1829,7 +1829,8 @@ private fun PipLyrics(
             onSeek = {},
             romanize = romanize,
             isPlaying = state.isPlaying,
-            activeLineTopPx = null,
+            // At the top: just under the window's edge fade, so the lines above scroll out of it.
+            activeLineTopPx = if (settings.pipLineAtTop) with(LocalDensity.current) { PIP_LINE_TOP.toPx() } else null,
             centredLiftPx = 0f,
             noticeBottomPx = { 0f },
             viewState = viewState,
@@ -1873,6 +1874,9 @@ private fun setPreferredRefreshRate(window: Window, hz: Float?) {
 private class CoverTouchArea {
     var contains: ((Offset) -> Boolean)? = null
 }
+
+/** The floating window's line being sung, with Current line at the top: past the 16dp edge fade. */
+private val PIP_LINE_TOP = 14.dp
 
 /** Pinned credits' distance above the controls or the screen's edge (20px + 1.25rem). */
 private val PINNED_FOOTER_GAP = 20.dp

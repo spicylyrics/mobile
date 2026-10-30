@@ -193,6 +193,8 @@ class AppSettings(private val prefs: SharedPreferences) {
     var pipShowLyrics by boolean("pipShowLyrics", true)
     /** The song bar (title, artist, timeline) along the bottom of a square or tall window. */
     var pipDock by boolean("pipDock", true)
+    /** The floating window's line being sung sits at its top instead of its middle, with no lines above it. */
+    var pipLineAtTop by boolean("pipLineAtTop", false)
     /** A small cover beside the title in a square or tall window's song bar. */
     var pipDockCover by boolean("pipDockCover", true)
     /** What the floating window shows for a song without lyrics. */
