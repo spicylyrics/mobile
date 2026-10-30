@@ -583,7 +583,7 @@ fun LyricsView(
                             if (trailNow != now) trailNow = now
                         } else if (appleMusicUpdated) {
                             targetIndex?.let { scrollTrail.reference = it }
-                            scrollTrail.record(frameTimeNanos, scrollManager.animScrollY)
+                            scrollTrail.record(frameTimeNanos, scrollManager.animScrollY, dynamicYOffsets)
                             val behind = !scrollManager.hideLineBlur && scrollTrail.catchingUp(frameTimeNanos)
                             val now = if (behind) frameTimeNanos else 0L
                             if (trailNow != now) trailNow = now
@@ -695,6 +695,10 @@ fun LyricsView(
             fun scrollOffsetFor(index: Int) = if (config.isRefreshedSimple) viewScrollOffset + ripple.offset(index)
                 else if (trailTime == 0L) viewScrollOffset
                 else centerY + scrollTrail.at(trailTime - scrollTrail.delayNanos(index))
+            // A late line takes its shift from the same moment as its scroll: a fold above the active
+            // line and the scroll making up for it then reach it together, not the fold first.
+            fun dynamicYFor(index: Int, now: Float) = if (config.isRefreshedSimple || trailTime == 0L) now
+                else scrollTrail.shiftAt(trailTime - scrollTrail.delayNanos(index), index, now)
 
             fun DrawScope.drawLine(drawn: DrawnLine) {
                 val layout = lineLayouts[drawn.index]
@@ -729,7 +733,7 @@ fun LyricsView(
             lineLayouts.forEachIndexed { lineIdx, layout ->
                 val scrollOffset = scrollOffsetFor(lineIdx)
                 val lineAnim = animStates.getOrNull(lineIdx) ?: return@forEachIndexed
-                val dynamicY = dynamicYOffsets.getOrElse(lineIdx) { layout.yOffset }
+                val dynamicY = dynamicYFor(lineIdx, dynamicYOffsets.getOrElse(lineIdx) { layout.yOffset })
 
                 // Optimization: Don't draw invisible lines.
                 if (lineAnim.opacity <= 0.01f) return@forEachIndexed
