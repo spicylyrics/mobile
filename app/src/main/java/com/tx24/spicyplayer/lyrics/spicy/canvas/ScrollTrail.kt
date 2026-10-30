@@ -22,18 +22,39 @@ internal class ScrollTrail {
     private var count = 0
     private var head = 0
 
-    /** Which way the view last moved: -1 as the lyrics go up (forward), 1 as they come back down. */
+    /**
+     * Which way the view is going: -1 as the lyrics go up (forward), 1 as they come back down. Set
+     * by the line scrolled to when it changes; a scroll to a later line can still back up for a
+     * moment (making up for a background vocal folding above it), and flipping the delays to the
+     * lines above then would snap the late lines below to the view and back.
+     */
     var direction = -1
         private set
 
     /** The line the moves are measured from: the one scrolled to. */
     var reference = 0
+        set(value) {
+            if (value != field) {
+                direction = if (value > field) -1 else 1
+                referenceChanged = true
+            }
+            field = value
+        }
+    private var referenceChanged = false
+    /** When the line scrolled to last changed; until the scroll there has settled, it sets the direction. */
+    private var referenceChangedNanos: Long? = null
 
     fun record(timeNanos: Long, y: Float, lineShifts: FloatArray) {
+        if (referenceChanged) {
+            referenceChanged = false
+            referenceChangedNanos = timeNanos
+        }
         if (count > 0) {
             val previous = (head - 1 + CAPACITY) % CAPACITY
             val last = positions[previous]
-            if (abs(y - last) > 0.01f) direction = if (y < last) -1 else 1
+            // A move of the view's own (a drag) says which way once the scroll to a line has settled.
+            val settled = referenceChangedNanos?.let { timeNanos - it > SETTLE_NANOS } ?: true
+            if (settled && abs(y - last) > 0.01f) direction = if (y < last) -1 else 1
             if (shifts[previous] !== lineShifts) shiftsChangedNanos = timeNanos
         }
         times[head] = timeNanos
@@ -48,6 +69,7 @@ internal class ScrollTrail {
         head = 0
         shifts.fill(null)
         shiftsChangedNanos = null
+        referenceChangedNanos = null
     }
 
     /** Where the view was at [timeNanos], between the frames recorded around it. */
@@ -94,5 +116,7 @@ internal class ScrollTrail {
         /** Enough frames for the longest delay at 120 fps. */
         const val CAPACITY = 64
         val MAX_DELAY_NANOS = (AppleMusicMotion.STAGGER_STEPS * AppleMusicMotion.STAGGER_S * 1e9f).toLong()
+        /** Longer than a scroll to the next line takes, with the last late line behind it. */
+        const val SETTLE_NANOS = 1_500_000_000L
     }
 }

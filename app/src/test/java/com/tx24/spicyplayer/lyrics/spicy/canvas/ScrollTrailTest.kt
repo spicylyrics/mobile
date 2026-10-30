@@ -41,6 +41,42 @@ class ScrollTrailTest {
     }
 
     @Test
+    fun `a scroll to a later line that backs up for a moment keeps the lines below late`() {
+        val trail = ScrollTrail()
+        trail.reference = 2
+        repeat(10) { trail.record(it * frame, -100f, floatArrayOf()) }
+        // On to line 3: the view goes up, then comes back down a little as a fold above is made up for.
+        trail.reference = 3
+        trail.record(10 * frame, -130f, floatArrayOf())
+        trail.record(11 * frame, -120f, floatArrayOf())
+        assertEquals(-1, trail.direction)
+        assertTrue(trail.delayNanos(5) > 0)
+        assertEquals(0L, trail.delayNanos(1))
+    }
+
+    @Test
+    fun `a drag after the scroll has settled sets the direction`() {
+        val trail = ScrollTrail()
+        trail.reference = 3
+        trail.record(0L, -100f, floatArrayOf())
+        val later = 2_000_000_000L
+        trail.record(later, -100f, floatArrayOf())
+        trail.record(later + frame, -80f, floatArrayOf())
+        assertEquals(1, trail.direction)
+    }
+
+    @Test
+    fun `going back to an earlier line makes the lines above late`() {
+        val trail = ScrollTrail()
+        trail.reference = 5
+        trail.record(0L, -500f, floatArrayOf())
+        trail.reference = 2
+        trail.record(frame, -480f, floatArrayOf())
+        assertEquals(1, trail.direction)
+        assertTrue(trail.delayNanos(0) > 0)
+    }
+
+    @Test
     fun `a line no frame knows keeps its current shift`() {
         val trail = ScrollTrail()
         trail.record(0L, 0f, floatArrayOf(0f))
