@@ -178,6 +178,10 @@ data class PlayerUiState(
     val lyricDelayMs: Int = 0,
     /** This song's own delay, on top of [lyricDelayMs] ([SongDelays]). */
     val songDelayMs: Int = 0,
+    /** The player app's own delay, on top of [lyricDelayMs] ([PlayerDelays]). */
+    val playerDelayMs: Int = 0,
+    /** The player app's name, for its delay; its package when the name can't be read. */
+    val playerLabel: String? = null,
     val trackDirection: TrackDirection = TrackDirection.Forward,
     val customActions: List<SessionCustomAction> = emptyList(),
     val clockDriftMs: Long? = null,
@@ -296,6 +300,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     private val sourceOverrides = application.getSharedPreferences("source_overrides", 0)
     private val outputProfiles = AudioOutputProfiles(application)
     private val songDelays = SongDelays(application)
+    private val playerDelays = PlayerDelays(application)
     private val translationStore = TranslationSettingsStore(application)
     // The song's language comes from the provider's answer, kept in the translation cache.
     private val translationCache = DiskTranslationCache(File(application.cacheDir, "translations"))
@@ -976,9 +981,18 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
 
     fun adjustSongDelay(deltaMs: Int) = setSongDelay(mutableState.value.songDelayMs + deltaMs)
 
+    /** Sets the player app's own delay; does nothing while no player is known. */
+    fun setPlayerDelay(delayMs: Int) {
+        val player = mutableState.value.sourcePackage ?: return
+        val newDelay = clampDelay(delayMs)
+        playerDelays.save(player, newDelay)
+        SyncTrace.add(SystemClock.elapsedRealtime(), "player delay: $newDelay")
+        mutableState.value = mutableState.value.copy(playerDelayMs = newDelay)
+    }
+
     /** Not held at the song's length like [currentPositionMs]: a line can run to the end or past it. */
     fun currentLyricPositionMs(): Long = mutableState.value.let {
-        lyricPositionMs(clock.positionAt(SystemClock.elapsedRealtime()), it.lyricDelayMs, it.songDelayMs)
+        lyricPositionMs(clock.positionAt(SystemClock.elapsedRealtime()), it.lyricDelayMs, it.songDelayMs, it.playerDelayMs)
     }
 
     /** Checks [input] and uses it as the person's own key; blank goes back to the built-in one. */
@@ -2006,9 +2020,12 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         val localKey = if (lyricsChanged) {
             metadata?.let { lookupRequest(it, null) }?.let { LocalLyricsStore.keyOf(it.title, it.artist) }
         } else mutableState.value.localLyricsKey
+        val playerChanged = active.packageName != mutableState.value.sourcePackage
         mutableState.value = mutableState.value.copy(
             accessGranted = true,
             sourcePackage = active.packageName,
+            playerDelayMs = if (playerChanged) playerDelays.delayMs(active.packageName) else mutableState.value.playerDelayMs,
+            playerLabel = if (playerChanged) getApplication<Application>().appLabel(active.packageName) else mutableState.value.playerLabel,
             title = metadata?.getString(MediaMetadata.METADATA_KEY_TITLE) ?: "Unknown track",
             artist = metadata?.getString(MediaMetadata.METADATA_KEY_ARTIST)
                 ?: metadata?.getString(MediaMetadata.METADATA_KEY_ALBUM_ARTIST)
@@ -2464,3 +2481,9 @@ internal fun String?.spotifyTrackId(): String? {
     }
     return candidate.takeIf { it.length == 22 && it.all(Char::isLetterOrDigit) }
 }
+
+
+/** [packageName]'s name as the launcher shows it, or the package itself when it can't be read. */
+private fun android.content.Context.appLabel(packageName: String): String = runCatching {
+    packageManager.getApplicationLabel(packageManager.getApplicationInfo(packageName, 0)).toString()
+}.getOrNull()?.takeIf { it.isNotBlank() } ?: packageName

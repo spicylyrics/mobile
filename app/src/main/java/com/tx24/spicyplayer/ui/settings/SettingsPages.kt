@@ -529,6 +529,7 @@ internal fun ScrollSyncContent(state: PlayerUiState, viewModel: ExternalPlayback
     ) {
         DelayControl(state.lyricDelayMs, viewModel::setLyricDelay)
     }
+    PlayerDelayRow(state, viewModel)
     DelayCalibrationRow(state, viewModel)
     SettingsSection("Scrolling") {
         ToggleRow(
@@ -1903,6 +1904,21 @@ internal fun SongDelayRow(state: PlayerUiState, viewModel: ExternalPlaybackViewM
         stacked = true,
     ) {
         DelayControl(state.songDelayMs, viewModel::setSongDelay, enabled = state.localLyricsKey != null)
+    }
+}
+
+/** The player app's own delay, added to the output's. */
+@Composable
+internal fun PlayerDelayRow(state: PlayerUiState, viewModel: ExternalPlaybackViewModel) {
+    val player = state.playerLabel
+    SettingRow(
+        label = "Player delay",
+        description = if (player == null) "Play something to give its app its own delay."
+            else "For every song from $player, added to the delay for ${state.outputLabel}.",
+        icon = Icons.Rounded.Apps,
+        stacked = true,
+    ) {
+        DelayControl(state.playerDelayMs, viewModel::setPlayerDelay, enabled = state.sourcePackage != null)
     }
 }
 

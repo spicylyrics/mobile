@@ -40,6 +40,7 @@ import com.tx24.spicyplayer.playback.AudioOutputProfiles
 import com.tx24.spicyplayer.playback.LyricClock
 import com.tx24.spicyplayer.playback.SessionAccessService
 import com.tx24.spicyplayer.playback.SessionStickiness
+import com.tx24.spicyplayer.playback.PlayerDelays
 import com.tx24.spicyplayer.playback.SongDelays
 import com.tx24.spicyplayer.playback.bestSession
 import com.tx24.spicyplayer.playback.lookupRequest
@@ -89,6 +90,7 @@ internal object NowPlayingHolder {
     private var lookup: BackgroundLyrics? = null
     private var outputProfiles: AudioOutputProfiles? = null
     private var songDelays: SongDelays? = null
+    private var playerDelays: PlayerDelays? = null
     private var sessionManager: MediaSessionManager? = null
     private var controller: MediaController? = null
     private val observedSessions = HashMap<MediaSession.Token, MediaController>()
@@ -228,6 +230,7 @@ internal object NowPlayingHolder {
         lookup = BackgroundLyrics(app)
         outputProfiles = AudioOutputProfiles(app)
         songDelays = SongDelays(app)
+        playerDelays = PlayerDelays(app)
         visibility.screenOn = app.getSystemService(PowerManager::class.java)?.isInteractive ?: true
         val screen = IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_SCREEN_OFF) }
         ContextCompat.registerReceiver(app, screenReceiver, screen, ContextCompat.RECEIVER_NOT_EXPORTED)
@@ -573,7 +576,8 @@ internal object NowPlayingHolder {
         val now = SystemClock.elapsedRealtime()
         val outputDelay = outputProfiles?.let { it.delayMs(it.currentRoute()) } ?: 0
         val songDelay = songDelays?.delayMs(request?.let { LocalLyricsStore.keyOf(it.title, it.artist) }) ?: 0
-        return lyricPositionMs(clock.positionAt(now), outputDelay, songDelay)
+        val playerDelay = playerDelays?.delayMs(controller?.packageName) ?: 0
+        return lyricPositionMs(clock.positionAt(now), outputDelay, songDelay, playerDelay)
     }
 
     /**

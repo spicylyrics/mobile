@@ -135,6 +135,7 @@ private fun MainScreen(state: PlayerUiState, viewModel: ExternalPlaybackViewMode
     }
     LyricsLanguageRow(state, viewModel)
     SongDelayRow(state, viewModel)
+    PlayerDelayRow(state, viewModel)
     SettingRow(
         label = "Output delay",
         description = "For every song on ${state.outputLabel}. Move it right if the lyrics run ahead of the song.",

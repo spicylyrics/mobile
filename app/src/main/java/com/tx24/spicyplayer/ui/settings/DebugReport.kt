@@ -42,7 +42,7 @@ internal fun debugReport(context: Context, state: PlayerUiState): String {
         sessionLines(state).forEach { (label, value) ->
             appendLine("$label: $value" + if (label == "Player" && playerVersion != null) " $playerVersion" else "")
         }
-        appendLine("Delays: output ${state.lyricDelayMs.signed()} ms, this song ${state.songDelayMs.signed()} ms")
+        appendLine("Delays: output ${state.lyricDelayMs.signed()} ms, ${state.playerLabel ?: "player"} ${state.playerDelayMs.signed()} ms, this song ${state.songDelayMs.signed()} ms")
         appendLine("Lyrics: ${songSummary(state)}")
         lyricsLines(state)?.forEach { (label, value) -> appendLine("$label: $value") }
         textLines(context, state).forEach { (label, value) -> appendLine("$label: $value") }
