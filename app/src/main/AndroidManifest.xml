@@ -48,16 +48,7 @@
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"
             android:supportsPictureInPicture="true"
-            android:exported="true">
-            <!--
-                Poweramp's lyrics link: lets it open the app as its 3rd party lyrics app. The song
-                comes from the media session as always, so the intent's track is not read.
-            -->
-            <intent-filter>
-                <action android:name="com.maxmpz.audioplayer.ACTION_LYRICS_LINK" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
+            android:exported="true" />
 
         <!--
             The launcher icons, one enabled at a time (Settings → Theme → App icon). The default
