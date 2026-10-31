@@ -1662,7 +1662,7 @@ internal fun AdvancedContent(state: PlayerUiState, viewModel: ExternalPlaybackVi
     }
     SettingRow(
         label = "Clear Stored Lyrics Cache",
-        description = "Delete lyrics that have been cached for up to 3 days.",
+        description = "Delete every cached lyric and translation, then reload the current song.",
         icon = Icons.Rounded.DeleteForever,
     ) {
         SpicyButton("Clear Cache", onClick = viewModel::clearStoredLyricsCache)

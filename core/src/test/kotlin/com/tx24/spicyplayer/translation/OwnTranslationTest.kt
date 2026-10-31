@@ -144,4 +144,28 @@ class OwnTranslationTest {
         assertEquals(listOf("Hello"), detecting.ownTranslations(document(null, "Hola" to "Hello"), english))
         assertNull(detecting.ownResult(document(null, "Hola" to "Hello"), german, "es"))
     }
+
+    @Test fun `own lines win over a kept machine answer`() = runBlocking {
+        val song = document("en", "Hola" to "Hello", "Adiós" to null)
+        val engine = TranslationEngine({ null }, NoCache(), pause = {})
+        val key = engine.key(song, english, "es")
+        // Kept before the lyrics' own translations were used.
+        val stored = TranslationResult(key, listOf("machine:Hola", "machine:Adiós"), "es")
+        val kept = object : TranslationCache {
+            override fun read(key: TranslationKey, lineCount: Int) = stored
+            override fun write(result: TranslationResult) {}
+        }
+        val result = TranslationEngine({ null }, kept, pause = {}).translate(song, english, "es", Machine())
+        result as TranslationOutcome.Translated
+        assertEquals(listOf("Hello", "machine:Adiós"), result.result.texts)
+        assertEquals(listOf(TranslationOrigin.Lyrics, TranslationOrigin.Google), result.result.origins)
+    }
+
+    @Test fun `undeclared own translations are detected even when the song's language isn't`() {
+        // The API's TranslatedText says no language, and the app never guesses the song's.
+        val engine = TranslationEngine({ null }, NoCache(), pause = {}, ownDetector = { text -> if (text == "Hello") "en" else null })
+        val song = document(null, "Hola" to "Hello")
+        assertNull(engine.language(song, null))
+        assertEquals(listOf("Hello"), engine.ownResult(song, english, null)?.texts)
+    }
 }

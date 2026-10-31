@@ -123,6 +123,12 @@ class TranslationEngine(
     /** Waits between requests and before a retry; tests pass one that doesn't. */
     private val pause: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
     private val now: () -> Long = System::currentTimeMillis,
+    /**
+     * Detects the language of the lyrics' own translations when they don't say. Separate from
+     * [detector], whose answer is sent to translators as the source: this one only decides
+     * whether the lyrics' translations are in the target language.
+     */
+    private val ownDetector: SongLanguageDetector = detector,
 ) {
     /** Until when each provider is left alone after it asked to be (wall clock). */
     private val restsUntil = java.util.concurrent.ConcurrentHashMap<TranslationProvider, Long>()
@@ -143,7 +149,7 @@ class TranslationEngine(
         if (document.lines.none { it.own != null }) return null
         val language = document.ownLanguage ?: synchronized(languages) {
             val key = "own:" + document.hash
-            if (!languages.containsKey(key)) languages[key] = languageCode(detector.detect(document.ownText))
+            if (!languages.containsKey(key)) languages[key] = languageCode(ownDetector.detect(document.ownText))
             languages[key]
         }
         if (language != languageCode(preferences.targetLanguage)) return null
@@ -190,7 +196,13 @@ class TranslationEngine(
         ownResult(document, preferences, source)?.let { return@coroutineScope TranslationOutcome.Translated(it) }
         require(translator.provider == preferences.provider)
         val key = key(document, preferences, source)
-        cache.read(key, document.lines.size)?.let { cached ->
+        cache.read(key, document.lines.size)?.let { stored ->
+            // The lyrics' own lines win over a kept answer too, which may predate them being used.
+            val cached = ownTranslations(document, preferences)?.let { own ->
+                fun mine(i: Int) = own[i]?.takeIf(String::isNotBlank)
+                stored.copy(texts = stored.texts.mapIndexed { i, text -> mine(i) ?: text },
+                    origins = stored.origins.mapIndexed { i, origin -> if (mine(i) != null) TranslationOrigin.Lyrics else origin })
+            } ?: stored
             val shown = cached.without(preferences.excludedLanguages)
             trace("from cache: ${shown.lineSources()}")
             return@coroutineScope if (shown.texts.all { it == null }) TranslationOutcome.Skipped(cached.detectedLanguage)

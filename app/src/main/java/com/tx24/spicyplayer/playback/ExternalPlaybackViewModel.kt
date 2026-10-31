@@ -302,9 +302,11 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     private val songDelays = SongDelays(application)
     private val playerDelays = PlayerDelays(application)
     private val translationStore = TranslationSettingsStore(application)
-    // The song's language comes from the provider's answer, kept in the translation cache.
+    // The song's language comes from the provider's answer, kept in the translation cache. The
+    // phone only tells which language the lyrics' own translations are in, when they don't say.
     private val translationCache = DiskTranslationCache(File(application.cacheDir, "translations"))
-    private val translationEngine = TranslationEngine(SongLanguageDetector { null }, translationCache)
+    private val languageGuesser = SystemLanguageDetector(application)
+    private val translationEngine = TranslationEngine(SongLanguageDetector { null }, translationCache, ownDetector = languageGuesser)
     private val translationSession = TranslationSession()
     // An AI service sends nothing until the whole answer is written, so the read timeout (10 s
     // by default) can't be shorter than the call's.
@@ -313,7 +315,6 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         .followRedirects(false).followSslRedirects(false).build()
     private var translationJob: Job? = null
     private var translatedDocument: String? = null
-    private val languageGuesser = SystemLanguageDetector(application)
     private var guessedDocument: String? = null
     private var pendingTranslationAction: String? = null
     /** The rest a provider's limit was last announced for, so it's said once. */
@@ -1034,12 +1035,26 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
         mutableMessages.tryEmit("Lyrics for the current song have been removed from all caches.")
     }
 
-    /** Deletes every stored pick. The lyrics on screen stay: they are held in memory. */
+    /**
+     * Deletes every stored pick and translation, and what this session still holds of them, then
+     * asks the sources again for the playing song.
+     */
     fun clearStoredLyricsCache() {
         val backend = lyricsBackend
-        viewModelScope.launch(Dispatchers.IO) {
-            backend.clearCache()
-            translationCache.clear()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                backend.clearCache()
+                translationCache.clear()
+            }
+            lookupCache.clear()
+            synchronized(renderedCache) { renderedCache.clear() }
+            synchronized(humanCache) { humanCache.clear() }
+            synchronized(guesses) { guesses.clear() }
+            clearTranslation()
+            currentRequest()?.let { request ->
+                forgetShown(request)
+                loadLyrics(force = true)
+            }
             mutableMessages.tryEmit("The lyrics and translation caches have been cleared.")
         }
     }
@@ -1047,6 +1062,7 @@ class ExternalPlaybackViewModel(application: Application) : AndroidViewModel(app
     /** Drops this song's lyrics from memory only, so they are read back from the cache or asked for again. */
     fun clearCurrentSongFromMemory() {
         val request = currentRequest() ?: return noTrack()
+        clearTranslation()
         forgetShown(request)
         loadLyrics()
         mutableMessages.tryEmit("Lyrics for the current song have been removed from memory.")
