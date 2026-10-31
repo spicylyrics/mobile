@@ -116,6 +116,7 @@ import androidx.compose.material.icons.rounded.BlurOn
 import androidx.compose.material.icons.rounded.Flare
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Wallpaper
+import androidx.compose.material.icons.rounded.Palette
 import androidx.compose.material.icons.rounded.VideoLibrary
 import androidx.compose.material.icons.rounded.Panorama
 import androidx.compose.material.icons.rounded.AutoAwesome
@@ -603,12 +604,49 @@ internal fun ScrollSyncContent(state: PlayerUiState, viewModel: ExternalPlayback
     }
 }
 
+/** Dark presets that keep the white lyrics readable, black first. */
+private val PresetBackgroundColors = listOf("#000000", "#121212", "#0B1426", "#1E0E24", "#0D1F17", "#2A0B12", "#2B2118")
+
+/** Swatches for the presets, and a hex field for any other colour; [onPick] gets `#RRGGBB`. */
+@Composable
+private fun CustomColorPicker(value: String, onPick: (String) -> Unit) {
+    val haptics = LocalHapticFeedback.current
+    val current = parseHexColor(value)
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            for (preset in PresetBackgroundColors) {
+                val argb = parseHexColor(preset)!!
+                val selected = argb == current
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(Color(argb))
+                        .border(if (selected) 2.dp else 1.dp, if (selected) Color.White else SpicyColors.Hairline, CircleShape)
+                        .clickable(role = Role.RadioButton) {
+                            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                            onPick(preset)
+                        },
+                )
+            }
+        }
+        // Only a whole colour is kept, so a half-typed one doesn't flash the background.
+        SpicyTextField(
+            value = value,
+            onValueChange = { text -> parseHexColor(text)?.let { onPick("#" + text.trim().removePrefix("#").uppercase()) } },
+            placeholder = "#000000",
+            leading = { Box(Modifier.size(18.dp).clip(CircleShape).background(Color(current ?: 0xFF000000.toInt())).border(1.dp, SpicyColors.Hairline, CircleShape)) },
+        )
+    }
+}
+
 @Composable
 internal fun BackgroundContent(settings: AppSettings, viewModel: ExternalPlaybackViewModel) {
     val type = settings.backgroundType
     SettingRow(
         label = "Background Type",
-        description = "Choose the dynamic, legacy, static image, or color background.",
+        description = "Choose the dynamic, legacy, static image, cover color, or a color of your own.",
+        searchDescription = "Choose the dynamic, legacy, static image, or color background.",
         icon = Icons.Rounded.Wallpaper,
     ) {
         SpicySelect(
@@ -618,8 +656,18 @@ internal fun BackgroundContent(settings: AppSettings, viewModel: ExternalPlaybac
             onChange = { settings.backgroundType = BackgroundType.valueOf(it) },
         )
     }
+    if (type == BackgroundType.Custom) {
+        SettingRow(
+            label = "Background Color",
+            description = "Pick one, or type a hex color like #1A1A2E. Black suits AMOLED screens.",
+            icon = Icons.Rounded.Palette,
+            stacked = true,
+        ) {
+            CustomColorPicker(settings.backgroundColor) { settings.backgroundColor = it }
+        }
+    }
     // Each background keeps its own blur: they're measured differently and start from different looks.
-    if (type != BackgroundType.Color) {
+    if (type != BackgroundType.Color && type != BackgroundType.Custom) {
         SettingRow(
             label = "Background Blur",
             description = if (type.image) "Soften the static background image." else "How soft the moving cover is.",

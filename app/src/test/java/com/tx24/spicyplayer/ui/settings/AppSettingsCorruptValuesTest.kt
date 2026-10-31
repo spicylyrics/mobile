@@ -18,6 +18,17 @@ class AppSettingsCorruptValuesTest {
         assertEquals(setOf(StageArt.Canvas), AppSettings(Prefs(mapOf("stageArts" to "Canvas"))).stageArt)
     }
 
+    @Test fun aCustomBackgroundColorReadsOnlyAsAWholeHexColor() {
+        assertEquals(0xFF1A1A2E.toInt(), parseHexColor("#1a1a2e"))
+        assertEquals(0xFF000000.toInt(), parseHexColor(" 000000 "))
+        assertEquals(null, parseHexColor("#abc"))
+        assertEquals(null, parseHexColor("#12345G"))
+        assertEquals(null, parseHexColor("#FF000000"))
+        // Anything unreadable stored shows black.
+        assertEquals(0xFF000000.toInt(), AppSettings(Prefs(mapOf("backgroundColor" to "teal"))).backgroundColorArgb)
+        assertEquals(0xFF0B1426.toInt(), AppSettings(Prefs(mapOf("backgroundColor" to "#0B1426"))).backgroundColorArgb)
+    }
+
     @Test fun theOldCoverStageSwitchBecomesThePickedArt() {
         assertEquals(StageArt.COVER_STAGE_ON, AppSettings(Prefs(mapOf("coverStage" to true))).stageArt)
         assertEquals(StageArt.DEFAULT, AppSettings(Prefs(mapOf("coverStage" to "yes"))).stageArt)

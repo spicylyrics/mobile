@@ -114,6 +114,11 @@ class AppSettings(private val prefs: SharedPreferences) {
     /** The Legacy background's blur, in dp. */
     var legacyBackgroundBlur by int("legacyBackgroundBlur", LEGACY_BLUR_DP, 0..MAX_BACKGROUND_BLUR)
 
+    /** [BackgroundType.Custom]'s colour, as `#RRGGBB`. */
+    var backgroundColor by string("backgroundColor", "#000000")
+    /** [backgroundColor] as an opaque ARGB colour, black if it doesn't read. */
+    val backgroundColorArgb: Int get() = parseHexColor(backgroundColor) ?: 0xFF000000.toInt()
+
     /** The blur [SpicySessionBackground] takes for [type]: percent for Default, dp for the rest. */
     fun backgroundBlurFor(type: BackgroundType): Int = when (type) {
         BackgroundType.Default -> dynamicBackgroundBlur
@@ -326,13 +331,22 @@ enum class BackgroundType(val label: String) {
     Auto("Auto"),
     ArtistHeader("Artist Header"),
     CoverArt("Cover Art"),
-    Color("Color");
+    Color("Color"),
+    /** One colour of the user's choosing, [AppSettings.backgroundColor]. */
+    Custom("Custom Color");
 
     /** A still picture, which the blur setting softens. */
     val image get() = this == Auto || this == ArtistHeader || this == CoverArt
     val usesArtistHeader get() = this == Auto || this == ArtistHeader
     /** Moves on its own (and can be held still). */
     val moving get() = this == Default || this == Legacy
+}
+
+/** `RRGGBB`, with or without a leading `#`, as an opaque ARGB colour; null for anything else. */
+fun parseHexColor(text: String): Int? {
+    val hex = text.trim().removePrefix("#")
+    if (hex.length != 6 || !hex.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) return null
+    return (0xFF000000 or hex.toLong(16)).toInt()
 }
 
 /** The strongest [AppSettings.backgroundBlur]. */

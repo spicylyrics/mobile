@@ -2,6 +2,7 @@ package com.tx24.spicyplayer.ui.background
 
 import android.graphics.Bitmap
 import android.os.Build
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -49,7 +50,7 @@ fun SpicySessionBackground(
     animate: Boolean = true,
     /**
      * How blurred: for [BackgroundType.Default] a strength in percent (60 is the reference's),
-     * for the others in dp. [BackgroundType.Color] has nothing to blur.
+     * for the others in dp. [BackgroundType.Color] and [BackgroundType.Custom] have nothing to blur.
      */
     blurDp: Int = 0,
     artistHeaderUrl: String? = null,
@@ -67,12 +68,14 @@ fun SpicySessionBackground(
     /** Default only: the animated cover the moving background follows while it plays. */
     followMotionUrl: String? = null,
     onFollowMotionFailed: () -> Unit = {},
+    /** [BackgroundType.Custom]'s colour. */
+    customColor: Color = Color.Black,
 ) {
     @Composable
     fun background(type: BackgroundType, modifier: Modifier, retired: Boolean) = BackgroundOfType(
         artwork, artworkUri, isPlaying, modifier, type, animate && !retired, blurDp, artistHeaderUrl,
         artistHeaderPending, speed, motionCoverUrl, onMotionCoverFailed, hasSession, refined, retired,
-        followMotionUrl, onFollowMotionFailed, motionCoverHeld,
+        followMotionUrl, onFollowMotionFailed, motionCoverHeld, customColor,
     )
     if (!refined) {
         background(type, modifier, retired = false)
@@ -115,6 +118,8 @@ private class TypeLayer(val type: BackgroundType, shown: Boolean) {
 /** A type change fades in over `900ms cubic-bezier(0.45, 0, 0.25, 1)`, like a refined picture. */
 private val TypeFadeEasing = CubicBezierEasing(0.45f, 0f, 0.25f, 1f)
 private const val TYPE_FADE_MS = 900
+/** A newly picked custom colour fades in, like a type change. */
+private const val CUSTOM_COLOR_MS = TYPE_FADE_MS
 
 /** One type's renderer. [retired] (on its way out) takes nothing new and holds still. */
 @Composable
@@ -137,6 +142,7 @@ private fun BackgroundOfType(
     followMotionUrl: String?,
     onFollowMotionFailed: () -> Unit,
     motionCoverHeld: Boolean,
+    customColor: Color,
 ) {
     when (type) {
         BackgroundType.Default, BackgroundType.Legacy -> {
@@ -181,6 +187,10 @@ private fun BackgroundOfType(
                 )
                 if (motionCoverUrl != null) MotionImageBackground(motionCoverUrl, blurDp, onMotionCoverFailed, refined = refined, held = motionCoverHeld)
             }
+        }
+        BackgroundType.Custom -> {
+            val shown by animateColorAsState(customColor, tween(CUSTOM_COLOR_MS), label = "customColor")
+            Box(modifier.background(shown))
         }
         BackgroundType.Auto, BackgroundType.ArtistHeader -> {
             val cover = rememberSessionArtwork(artwork, artworkUri, maxDimension = STILL_COVER_PX, hasSession = hasSession)

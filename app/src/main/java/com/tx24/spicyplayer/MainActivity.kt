@@ -1229,6 +1229,7 @@ private fun LyricsApp(
                             motionScope.launch { forgetMotionCover(context, backgroundMotionQuery) }
                         },
                         motionCoverHeld = ambientOpaque,
+                        customColor = Color(settings.backgroundColorArgb),
                     )
                     ambientUrl?.takeIf { ambientShown > 0f }?.let { url ->
                         CanvasBackdrop(
@@ -1803,6 +1804,7 @@ private fun PipLyrics(
             artistHeaderUrl = state.artistHeaderUrl,
             artistHeaderPending = state.artistHeaderPending,
             refined = settings.refinedBackground,
+            customColor = Color(settings.backgroundColorArgb),
         )
         var shownCanvasUrl by remember { mutableStateOf<String?>(null) }
         canvasUrl?.let { shownCanvasUrl = it }
