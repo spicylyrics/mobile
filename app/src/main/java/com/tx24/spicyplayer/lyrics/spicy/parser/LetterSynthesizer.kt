@@ -55,6 +55,7 @@ object LetterSynthesizer {
                 isLetterGroup = false,
                 letters = emptyList(),
                 romanizedText = if (run.any { it.romanizedText != null }) run.joinToString("") { it.romanizedText ?: it.text } else null,
+                syllables = run,
             )
             if (config.syllableMerge == SyllableMerge.Held && !isLetterCapable(merged, config, romanized)) run else listOf(merged)
         }
@@ -159,17 +160,53 @@ object LetterSynthesizer {
         }
         val windowStart = word.startMs - subStartMs
         val windowEnd = (word.endMs - subEndMs).coerceAtLeast(windowStart + 1L)
-        val span = (windowEnd - windowStart).toFloat() / len
 
         // Every character — including punctuation — is split into its own timed letter and
         // animated identically; punctuation isn't excluded.
-        val letters = graphemes.mapIndexed { i, grapheme ->
-            Letter(
-                char = grapheme,
-                startMs = windowStart + (i * span).toLong(),
-                endMs = windowStart + ((i + 1) * span).toLong(),
-            )
-        }
+        val letters = bySyllable(word, graphemes, windowStart, windowEnd, config, romanized)
+            ?: evenly(graphemes, windowStart, windowEnd)
         return word.copy(startMs = windowStart, endMs = windowEnd, isLetterGroup = true, letters = letters)
+    }
+
+    private fun evenly(graphemes: List<String>, from: Long, to: Long): List<Letter> {
+        val span = (to - from).toFloat() / graphemes.size
+        return graphemes.mapIndexed { i, grapheme ->
+            Letter(char = grapheme, startMs = from + (i * span).toLong(), endMs = from + ((i + 1) * span).toLong())
+        }
+    }
+
+    /**
+     * A merged word's letters, each syllable's spread over that syllable's own time, so a long
+     * "per" and a quick "fect" keep their pace inside one word. Each syllable runs until the next
+     * starts. Null with [RenderConfig.syllablePace] off, when the word wasn't merged, or when its
+     * syllables don't split into the same letters.
+     */
+    private fun bySyllable(word: Word, graphemes: List<String>, windowStart: Long, windowEnd: Long, config: RenderConfig, romanized: Boolean): List<Letter>? {
+        if (!config.syllablePace) return null
+        val parts = word.syllables.takeIf { it.size > 1 } ?: return null
+        // The displayed text is the parts joined; romanized, it's drawn trimmed at both ends.
+        val texts = parts.mapIndexed { i, part ->
+            val text = if (romanized) part.romanizedText ?: part.text else part.text
+            when {
+                !romanized -> text
+                i == 0 -> text.trimStart()
+                i == parts.lastIndex -> text.trimEnd()
+                else -> text
+            }
+        }
+        val counts = texts.map { GraphemeSegmenter.segment(it).size }
+        if (counts.sum() != graphemes.size) return null
+        // The window may be trimmed or shifted from the word's own times: syllables keep their
+        // share of it, so a trim doesn't all come off the last one.
+        val scale = (windowEnd - windowStart).toDouble() / (word.endMs - word.startMs).coerceAtLeast(1L)
+        fun placed(ms: Long) = windowStart + ((ms - word.startMs) * scale).toLong()
+        val letters = ArrayList<Letter>(graphemes.size)
+        var cursor = windowStart
+        parts.forEachIndexed { i, _ ->
+            val end = if (i == parts.lastIndex) windowEnd else placed(parts[i + 1].startMs).coerceIn(cursor, windowEnd)
+            if (counts[i] > 0) letters += evenly(graphemes.subList(letters.size, letters.size + counts[i]), cursor, end)
+            cursor = end
+        }
+        return letters
     }
 }

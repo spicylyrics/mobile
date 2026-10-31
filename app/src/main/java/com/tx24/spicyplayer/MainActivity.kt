@@ -775,6 +775,7 @@ private fun LyricsApp(
         backgroundPop = settings.backgroundPop && !appleMusicStyle,
         keepOverlappingLines = settings.keepOverlappingLines,
         syllableMerge = settings.syllableMerge,
+        syllablePace = settings.syllablePace,
         distanceBlurEnabled = settings.distanceBlur && !lowPerformance,
         glowEnabled = settings.glow && !lowPerformance,
         scroll = ScrollConfig(

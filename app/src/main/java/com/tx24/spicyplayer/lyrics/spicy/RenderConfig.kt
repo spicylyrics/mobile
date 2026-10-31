@@ -67,6 +67,8 @@ data class RenderConfig(
         else -> Int.MAX_VALUE
     },
     val syllableMerge: SyllableMerge = SyllableMerge.Off,
+    /** A merged held word's letters keep each syllable's own pace instead of an even one. */
+    val syllablePace: Boolean = false,
     /**
      * Multiplies how far sung words and letters grow (their scale away from 1) and lift
      * (their y offset). 1 is the desktop amount.

@@ -24,6 +24,11 @@ data class Word(
     val romanizedText: String? = null,
     /** Reserved for a future translation feature; not yet displayed. */
     val translatedText: String? = null,
+    /**
+     * The syllables a merged word was joined from, in order; empty for a word that never was
+     * split. A held word's letters keep each syllable's own pace from these.
+     */
+    val syllables: List<Word> = emptyList(),
 ) {
     /** The duration of the word in milliseconds, guaranteed to be at least 1ms. */
     val duration: Long

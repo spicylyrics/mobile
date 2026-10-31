@@ -84,6 +84,8 @@ class AppSettings(private val prefs: SharedPreferences) {
     var backgroundPop by boolean("backgroundPop", false)
     var keepOverlappingLines by boolean("keepOverlappingLines", true)
     var syllableMerge by enum("syllableMerge", SyllableMerge.Off)
+    /** A merged held word's letters keep each syllable's own pace. */
+    var syllablePace by boolean("syllablePace", false)
 
     var scrollLeadEnabled by boolean("scrollLeadEnabled", false)
     var scrollLeadMs by int("scrollLeadMs", 250, 0..800)

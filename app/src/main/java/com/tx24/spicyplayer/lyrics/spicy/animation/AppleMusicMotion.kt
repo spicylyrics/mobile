@@ -69,7 +69,8 @@ object AppleMusicMotion {
     /**
      * One letter of a held word at [t]: the letters swell, push apart from the middle and glow
      * one after another, each bobbing up a little on top of the word's own rise. A line's last
-     * word does it harder and longer. [index] is the letter's place among [count].
+     * word does it harder and longer. [index] is the letter's place among [count]; [at] is how far
+     * into the word it's sung (0..1), evenly [index] / [count] unless its syllables set their own pace.
      */
     fun emphasisLetter(
         t: Double,
@@ -79,6 +80,7 @@ object AppleMusicMotion {
         count: Int,
         lastWord: Boolean,
         background: Boolean,
+        at: Double = index.toDouble() / count.coerceAtLeast(1),
     ): LetterPose {
         val n = count.coerceAtLeast(1)
         var du = maxOf(1000.0, (wordEndMs - wordStartMs).toDouble())
@@ -93,8 +95,8 @@ object AppleMusicMotion {
         amount = minOf(1.2, amount) * EMPHASIS_STRENGTH * (if (background) BACKGROUND_EMPHASIS else 1f)
         blur = minOf(0.8, blur)
 
-        // Each letter starts a 2.5th of the word's length over the letter count after the one before.
-        val start = wordStartMs + du / 2.5 / n * index
+        // The letters start over the first 2.5th of the word's length, each as far in as it's sung.
+        val start = wordStartMs + du / 2.5 * at
         // Swell, spread and glow over the word's length, rising and falling back.
         val grow = emphasisEasing(((t - start) / du).coerceIn(0.0, 1.0).toFloat())
         // The bob: up and back down over 1.4 times that, starting 400ms ahead.

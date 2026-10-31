@@ -683,15 +683,19 @@ class LyricsAnimator(
         if (word.isLetterGroup && word.letters.isNotEmpty()) {
             val count = word.letters.size
             val last = index == line.words.lastIndex
+            val span = (word.endMs - word.startMs).coerceAtLeast(1L).toDouble()
+            // The fill crosses each letter in its own time, so a merged word keeps its syllables' pace.
+            val filled = word.letters.sumOf { progress(t, it.startMs, it.endMs).toDouble() }.toFloat() / count
             return WordAnimState(
                 scale = 1f, yOffset = -lift, glow = 0f,
-                gradientPosition = progress * 100f,
+                gradientPosition = filled * 100f,
                 state = state,
                 isLetterGroup = true,
                 letterStates = List(count) { i ->
-                    val pose = AppleMusicMotion.emphasisLetter(t, word.startMs, word.endMs, i, count, last, line.isBackground)
+                    val pose = AppleMusicMotion.emphasisLetter(t, word.startMs, word.endMs, i, count, last, line.isBackground,
+                        at = (word.letters[i].startMs - word.startMs) / span)
                     LetterAnimState(
-                        gradientPosition = progress * 100f,
+                        gradientPosition = filled * 100f,
                         scale = pose.scale,
                         yOffset = pose.yOffset - lift,
                         glow = pose.glow,

@@ -87,6 +87,30 @@ class LetterSynthesizerTest {
         assertEquals("forever", forever.letters.joinToString("") { it.char })
     }
 
+    @Test
+    fun `a merged held word's letters keep each syllable's pace`() {
+        val perfect = com.tx24.spicyplayer.lyrics.spicy.models.Line(
+            listOf(Word("per", 0, 1500), Word("fect", 1500, 1800, isPartOfWord = true)), 0,
+        )
+        val apple = RenderConfig.FULL.copy(syllableMerge = SyllableMerge.Full, syllablePace = true, appleMusic = true)
+        val word = LetterSynthesizer.apply(listOf(perfect), apple, romanized = false).single().words.single()
+        assertEquals("perfect", word.letters.joinToString("") { it.char })
+        // "per" takes 1.5s over 3 letters, "fect" 0.3s over 4.
+        assertEquals(listOf(0L, 500L, 1000L, 1500L, 1575L, 1650L, 1725L), word.letters.map { it.startMs })
+        assertEquals(1800L, word.letters.last().endMs)
+
+        // A trimmed window is shared out, not taken off the last syllable.
+        val paced = RenderConfig.FULL.copy(syllableMerge = SyllableMerge.Full, syllablePace = true)
+        val trimmed = LetterSynthesizer.apply(listOf(perfect), paced, romanized = false).single().words.single()
+        val fect = trimmed.letters.drop(3)
+        assertEquals(trimmed.endMs, fect.last().endMs)
+        assertEquals(true, fect.last().endMs - fect.first().startMs > 200L)
+
+        // Off, the letters share the word evenly, as before.
+        val even = LetterSynthesizer.apply(listOf(perfect), apple.copy(syllablePace = false), romanized = false).single().words.single()
+        assertEquals(listOf(0L, 257L, 514L, 771L, 1028L, 1285L, 1542L), even.letters.map { it.startMs })
+    }
+
     // A Chinese syllable after the first romanizes with a leading space (it starts a word of its
     // own); the layout draws the romanization trimmed, so the letters must cover only "hao".
     private val heldChinese = com.tx24.spicyplayer.lyrics.spicy.models.Line(

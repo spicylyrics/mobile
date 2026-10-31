@@ -412,6 +412,14 @@ internal fun LyricsContent(state: PlayerUiState, viewModel: ExternalPlaybackView
             )
         }
         ToggleRow(
+            label = "Keep Syllable Pace",
+            checked = settings.syllablePace,
+            onCheckedChange = { settings.syllablePace = it },
+            description = "A merged held word's letters follow each syllable's timing, slow on a long syllable and quick on a short one.",
+            icon = Icons.Rounded.Speed,
+            enabled = settings.syllableMerge != SyllableMerge.Off,
+        )
+        ToggleRow(
             label = "Duet Line Padding",
             checked = settings.duetLinePadding,
             onCheckedChange = { settings.duetLinePadding = it },

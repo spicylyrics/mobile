@@ -86,6 +86,7 @@ fun configSnapshot(settings: AppSettings): Map<String, Any> = with(settings) {
         "pinned_footer" to pinnedFooter.name,
         "profiles_in_browser" to profilesInBrowser,
         "syllable_merge" to syllableMerge.name,
+        "syllable_pace" to syllablePace,
         "scroll_lead" to scrollLeadEnabled,
         "scroll_lead_ms" to scrollLeadMs,
         "seek_fade_compensation" to seekFadeCompensation,
