@@ -280,13 +280,15 @@ fun StageMetadata(
     widthPx: Float,
     /** False while it can't be seen: long lines stop scrolling. */
     active: () -> Boolean = { true },
+    /** Beside the artists, as in the header. */
+    releaseYear: ReleaseYear? = null,
 ) {
     val title = sizes.dockTitleSizeSp
     val artists = sizes.dockArtistsSizeSp
     HeaderMetadata(
         title = info.title,
         artists = info.artists,
-        year = null,
+        year = releaseYear?.label(),
         titleStyle = headerTextStyle(FontWeight.Bold, title, title * 1.2f),
         artistsStyle = headerTextStyle(FontWeight.Normal, artists, artists * 1.35f),
         titleWidthPx = widthPx,

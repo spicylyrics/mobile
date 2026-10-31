@@ -71,6 +71,7 @@ fun PortraitCanvasDock(
     bottomPx: Float,
     alpha: () -> Float,
     modifier: Modifier = Modifier,
+    releaseYear: ReleaseYear? = null,
 ) {
     val density = LocalDensity.current
     Box(modifier.fillMaxSize()) {
@@ -82,7 +83,7 @@ fun PortraitCanvasDock(
                 .width(with(density) { widthPx.toDp() })
                 .graphicsLayer { this.alpha = (1f - controlsShown()) * alpha() },
         ) {
-            StageMetadata(info, sizes, Alignment.Start, bias = { -1f }, widthPx = widthPx, active = { (1f - controlsShown()) * alpha() > 0f })
+            StageMetadata(info, sizes, Alignment.Start, bias = { -1f }, widthPx = widthPx, active = { (1f - controlsShown()) * alpha() > 0f }, releaseYear = releaseYear)
             // No spacer: the bar's touch height already stands it 11dp clear of the artists, as on the stage.
             DockTimeline(controls)
         }
@@ -94,7 +95,7 @@ fun PortraitCanvasDock(
                 .padding(start = with(density) { gutterPx.toDp() }, bottom = with(density) { controlsHeightPx.toDp() })
                 .graphicsLayer { this.alpha = controlsShown() * alpha() },
         ) {
-            StageMetadata(info, sizes, Alignment.Start, bias = { -1f }, widthPx = widthPx, active = { controlsShown() * alpha() > 0f })
+            StageMetadata(info, sizes, Alignment.Start, bias = { -1f }, widthPx = widthPx, active = { controlsShown() * alpha() > 0f }, releaseYear = releaseYear)
         }
     }
 }

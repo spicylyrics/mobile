@@ -199,6 +199,7 @@ import com.tx24.spicyplayer.ui.nowplaying.forgetMotionCover
 import com.tx24.spicyplayer.ui.nowplaying.rememberMotionCoverUrl
 import com.tx24.spicyplayer.ui.nowplaying.rememberMotionCover
 import com.tx24.spicyplayer.ui.nowplaying.ReleaseYear
+import com.tx24.spicyplayer.ui.nowplaying.besideArtists
 import com.tx24.spicyplayer.ui.settings.BackgroundType
 import com.tx24.spicyplayer.ui.settings.ReleaseYearPosition
 import com.tx24.spicyplayer.playback.TrackExtrasWanted
@@ -1204,6 +1205,7 @@ private fun LyricsApp(
                 var failedFollowMotionUrl by remember { mutableStateOf<String?>(null) }
                 val motionScope = rememberCoroutineScope()
                 val stageInfo = NowPlayingInfo(state.title, state.artist, state.album, state.artwork, state.artworkUri, state.trackDirection, hasSession = state.sourcePackage != null)
+                val releaseYear = ReleaseYear(state.releaseYear, state.releaseYearPending, settings.releaseYearPosition)
                 // Everything the glass controls blur.
                 Box(Modifier.fillMaxSize().then(backdrop?.let { Modifier.hazeSource(it) } ?: Modifier)) {
                     SpicySessionBackground(
@@ -1409,7 +1411,8 @@ private fun LyricsApp(
                                 metadata = {
                                     val gutter = landscapeMetrics.coverSizePx * 0.04f
                                     val alignment = remember(stageRight) { SlidingAlignment(stageAlign) }
-                                    StageMetadata(stageInfo, landscapeMetrics.panel, alignment, stageAlign, landscapeMetrics.coverSizePx - gutter * 2f)
+                                    StageMetadata(stageInfo, landscapeMetrics.panel, alignment, stageAlign, landscapeMetrics.coverSizePx - gutter * 2f,
+                                        releaseYear = releaseYear)
                                 },
                             )
                         }
@@ -1422,7 +1425,7 @@ private fun LyricsApp(
                 }
                 CompactNowPlayingHeader(
                     info = NowPlayingInfo(state.title, state.artist, state.album, state.artwork, state.artworkUri, state.trackDirection, hasSession = state.sourcePackage != null),
-                    releaseYear = ReleaseYear(state.releaseYear, state.releaseYearPending, settings.releaseYearPosition),
+                    releaseYear = releaseYear,
                     metrics = headerMetrics,
                     modifier = Modifier.padding(belowTop).graphicsLayer { alpha = 1f - ambientFade.value },
                     expansion = { expansion },
@@ -1504,6 +1507,7 @@ private fun LyricsApp(
                         alpha = { immersive() * (1f - ambientFade.value) },
                         // Clear of a shown navigation bar, as the controls are.
                         modifier = Modifier.padding(bottom = belowTop.calculateBottomPadding()),
+                        releaseYear = releaseYear,
                     )
                 }
                 // Ambient mode: the song and its timeline docked at the bottom, as over the Canvas.
@@ -1520,6 +1524,7 @@ private fun LyricsApp(
                         bottomPx = gutter,
                         alpha = { ambientFade.value },
                         modifier = Modifier.padding(bottom = belowTop.calculateBottomPadding()),
+                        releaseYear = releaseYear,
                     )
                 }
                 // The header sits in what the glass and the shade blur, so the shade blurs it
@@ -1814,8 +1819,9 @@ private fun PipLyrics(
         }
         val songCard = !settings.pipShowLyrics ||
             (state.lyrics is LyricsState.Error && settings.pipWithoutLyrics == PipWithoutLyrics.SongCard)
+        val pipYear = ReleaseYear(state.releaseYear, state.releaseYearPending, settings.releaseYearPosition)
         if (songCard) {
-            PipSongCard(state.title, state.artist, state.artwork, state.artworkUri, hasSession = state.sourcePackage != null)
+            PipSongCard(state.title, pipYear.besideArtists(state.artist), state.artwork, state.artworkUri, hasSession = state.sourcePackage != null)
             return@BoxWithConstraints
         }
         // Square or taller, the song docks along the bottom, under the lyrics.
@@ -1848,7 +1854,7 @@ private fun PipLyrics(
         )
         if (dock) {
             PipDock(
-                state.title, state.artist, viewModel::currentPositionMs, state.durationMs, state.isPlaying,
+                state.title, pipYear.besideArtists(state.artist), viewModel::currentPositionMs, state.durationMs, state.isPlaying,
                 cover = settings.pipDockCover, artwork = state.artwork, artworkUri = state.artworkUri,
                 hasSession = state.sourcePackage != null,
                 credit = viewState.shownFooter?.miniCredit()?.takeIf { settings.pinnedFooter != PinnedFooterMode.Off },

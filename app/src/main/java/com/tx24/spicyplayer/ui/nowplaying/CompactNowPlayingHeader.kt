@@ -155,14 +155,7 @@ fun CompactNowPlayingHeader(
     /** False while the whole header is faded out: its names stop scrolling. */
     visible: () -> Boolean = { true },
 ) {
-    val year = releaseYear?.takeIf { it.position != ReleaseYearPosition.Off }?.let { y ->
-        when {
-            y.year != null -> YearLabel(y.year, y.position == ReleaseYearPosition.Left, shown = true)
-            // `.ArtistYear.pending { visibility: hidden }` with a stand-in year holding its room.
-            y.pending -> YearLabel("0000", y.position == ReleaseYearPosition.Left, shown = false)
-            else -> null
-        }
-    }
+    val year = releaseYear?.label()
     val density = LocalDensity.current
     val artwork = rememberSessionArtwork(info.artwork, info.artworkUri, maxDimension = ARTWORK_MAX_PX, hasSession = info.hasSession)
     val motionQuery = MotionCoverQuery(info.artists, info.album, info.title)
@@ -450,6 +443,23 @@ private data class ShownMetadata(val title: String, val artists: String, val yea
 
 /** The year beside the artists: [before] them or after, [shown] or only holding its room. */
 internal data class YearLabel(val text: String, val before: Boolean, val shown: Boolean)
+
+/** [artists] with the year beside them as one line, for text too small to keep room for it. */
+internal fun ReleaseYear?.besideArtists(artists: String): String {
+    val y = this?.year?.takeIf { position != ReleaseYearPosition.Off } ?: return artists
+    return if (position == ReleaseYearPosition.Left) "$y · $artists" else "$artists · $y"
+}
+
+/** The year as the artists' row shows it, or null where it's off or there's none. */
+internal fun ReleaseYear.label(): YearLabel? {
+    if (position == ReleaseYearPosition.Off) return null
+    return when {
+        year != null -> YearLabel(year, position == ReleaseYearPosition.Left, shown = true)
+        // `.ArtistYear.pending { visibility: hidden }` with a stand-in year holding its room.
+        pending -> YearLabel("0000", position == ReleaseYearPosition.Left, shown = false)
+        else -> null
+    }
+}
 
 /**
  * The artists, with the year before or after them when there is one. The year keeps still, set
