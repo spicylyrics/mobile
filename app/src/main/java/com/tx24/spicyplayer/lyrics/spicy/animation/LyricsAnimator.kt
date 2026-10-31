@@ -147,8 +147,13 @@ class LyricsAnimator(
         const val LINE_TRANSITION_MS = 200
         /** Minimal Lyrics Mode (Mixed.css): scale 0.4s ease-in-out, opacity 0.4s linear. */
         const val MINIMAL_TRANSITION_MS = 400
-        /** Background Vocal Pop-Out: how long a background line takes to tuck away, and to fade as it does. */
-        const val POP_CLOSE_MS = 300
+        /**
+         * Background Vocal Pop-Out: how long a background line takes to open or tuck away. One
+         * length both ways: a line change folds the last one as it opens the next, and the rows
+         * below must see the two cancel, not move up past their place and drift back.
+         */
+        const val POP_MS = 300
+        /** How long a tucking background line takes to fade. */
         const val POP_FADE_MS = 120
         val POP_FADE_EASING = CubicBezierEasing(0f, 0f, 0.58f, 1f)
         /** Folded, a background line is this size. */
@@ -478,7 +483,7 @@ class LyricsAnimator(
         if (presence.targetValue != target) {
             // Quick ease-out glides: the scroll aims at the settled layout, so the room opening
             // up must not lag behind it.
-            coroutineScope.launch { presence.animateTo(target, tween(if (target == 1f) 500 else POP_CLOSE_MS, easing = POP_EASING)) }
+            coroutineScope.launch { presence.animateTo(target, tween(POP_MS, easing = POP_EASING)) }
             if (target == 1f) coroutineScope.launch { fade.snapTo(1f) }
             else coroutineScope.launch { fade.animateTo(0f, tween(POP_FADE_MS, easing = POP_FADE_EASING)) }
         }
