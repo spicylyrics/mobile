@@ -43,24 +43,27 @@ internal data class WidgetFit(val settings: WidgetSettings, val currentLines: In
 
         /**
          * A launcher's reported [widthDp] by [heightDp] in dp. Some report pixels instead: a widget
-         * bigger than the screen ([screenWidthDp] by [screenHeightDp]) is read as pixels and
-         * scaled by [density], or the lyrics would be drawn for that size and shrunk to fit.
+         * far bigger than the screen ([screenWidthDp] by [screenHeightDp]) is read as pixels and
+         * scaled by [density], or the lyrics would be drawn for that size and shrunk to fit. One a
+         * little past the screen is dp from a launcher rounding up: it stops at the screen, as
+         * read as pixels it would be drawn a few words wide.
          */
         fun reportedDp(widthDp: Int?, heightDp: Int?, screenWidthDp: Int, screenHeightDp: Int, density: Float): Pair<Int?, Int?> {
             // A screen too small to be one can't tell pixels from dp, so the size is left as reported.
             if (minOf(screenWidthDp, screenHeightDp) < MIN_SCREEN_DP) return widthDp to heightDp
-            val tooBig = (widthDp ?: 0) > screenWidthDp + SCREEN_SLACK_DP || (heightDp ?: 0) > screenHeightDp + SCREEN_SLACK_DP
-            if (!tooBig || density <= 1f) return widthDp to heightDp
-            return widthDp?.let { (it / density).toInt() } to heightDp?.let { (it / density).toInt() }
+            val tooBig = (widthDp ?: 0) > screenWidthDp * PIXELS_PAST_SCREEN || (heightDp ?: 0) > screenHeightDp * PIXELS_PAST_SCREEN
+            if (tooBig && density > 1f) return widthDp?.let { (it / density).toInt() } to heightDp?.let { (it / density).toInt() }
+            return widthDp?.coerceAtMost(screenWidthDp) to heightDp?.coerceAtMost(screenHeightDp)
         }
 
         /**
          * A size from a launcher that works in dp at the display's default [stableDpi] while the app
-         * runs at [densityDpi] (the user changed the display size): taken back to the app's dp.
-         * One UI Home does this; it reports a widget a third too big at a smaller display size.
+         * runs at a lower [densityDpi] (the user made the display size smaller): taken back to the
+         * app's dp. One UI Home does this; it reports a widget a third too big there. At a larger
+         * display size the same sum would make the widget wider than the screen, so it's left alone.
          */
         fun launcherDp(widthDp: Int?, heightDp: Int?, densityDpi: Int, stableDpi: Int): Pair<Int?, Int?> {
-            if (densityDpi <= 0 || stableDpi <= 0 || densityDpi == stableDpi) return widthDp to heightDp
+            if (densityDpi <= 0 || stableDpi <= 0 || densityDpi >= stableDpi) return widthDp to heightDp
             val ratio = densityDpi.toFloat() / stableDpi
             return widthDp?.let { (it * ratio).roundToInt() } to heightDp?.let { (it * ratio).roundToInt() }
         }
@@ -73,8 +76,8 @@ internal data class WidgetFit(val settings: WidgetSettings, val currentLines: In
         fun screenDp(realDp: Pair<Int, Int>, configDp: Pair<Int, Int>): Pair<Int, Int> =
             if (minOf(realDp.first, realDp.second) >= MIN_SCREEN_DP) realDp else configDp
 
-        /** How far past the screen a reported size may reach before it's taken for pixels. */
-        private const val SCREEN_SLACK_DP = 16
+        /** How many screens big a reported size must be before it's taken for pixels. */
+        private const val PIXELS_PAST_SCREEN = 1.25f
         /** The narrowest a screen can be, in dp; Android needs 320 of any phone. */
         private const val MIN_SCREEN_DP = 240
 

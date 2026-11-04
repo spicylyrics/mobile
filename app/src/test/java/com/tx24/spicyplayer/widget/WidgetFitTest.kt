@@ -73,7 +73,15 @@ class WidgetFitTest {
     fun `a launcher size at the default density or without one is left alone`() {
         assertEquals(380 to 190, WidgetFit.launcherDp(380, 190, 420, 420))
         assertEquals(380 to 190, WidgetFit.launcherDp(380, 190, 420, 0))
-        assertEquals(null to 190, WidgetFit.launcherDp(null, 141, 420, 312))
+        assertEquals(null to 141, WidgetFit.launcherDp(null, 190, 312, 420))
+    }
+
+    @Test
+    fun `a widget a little past the screen at a larger display size stays the size it is`() {
+        // An S25 Edge at its largest display size: 401x213 reported, drawn for 106x56 when read as pixels.
+        val (width, height) = WidgetFit.launcherDp(401, 213, 600, 450)
+        assertEquals(401 to 213, width to height)
+        assertEquals(384 to 213, WidgetFit.reportedDp(width, height, 384, 832, 3.75f))
     }
 
     @Test
