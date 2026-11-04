@@ -13,7 +13,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
@@ -98,9 +97,7 @@ class RemoteLyricsSource @Inject constructor(
     /**
      * [known] holds results from earlier lookups of the same request and receives new ones, so a
      * caller that keeps it (per track) never asks a source twice, e.g. after a policy change.
-     * [onUpdate] gets the best-so-far resolution each time a source lands, except that for the
-     * first [PICK_HOLD_MS] a pick with a source ranked above it still out waits, so a quick lower
-     * source doesn't flash up just before the one that replaces it.
+     * [onUpdate] gets the best-so-far resolution each time a source lands.
      */
     suspend fun resolveLyrics(
         request: LyricsLookupRequest,
@@ -216,8 +213,6 @@ class RemoteLyricsSource @Inject constructor(
         startBlends()
         // Not asked yet counts as still out: a relayed answer can land below sources the lead skipped.
         fun outstanding() = pending + waiting + toAsk.map { it.descriptor.id }.filter { it !in known }
-        val holdOver = launch { delay(PICK_HOLD_MS) }
-        var held = false
         while (!settled(resolution, ranked(), outstanding())) {
             if (!fannedOut && pending.isEmpty()) {
                 // The lead answered without settling the song: ask everyone else.
@@ -226,23 +221,11 @@ class RemoteLyricsSource @Inject constructor(
                 startBlends()
             }
             if (pending.isEmpty()) break
-            val next = when {
-                !fannedOut -> landed.receiveWithin(LEAD_HOLD_MS)
-                held -> select {
-                    landed.onReceive { it }
-                    holdOver.onJoin { null }
-                }
-                else -> landed.receive()
-            }
+            val next = if (fannedOut) landed.receive() else landed.receiveWithin(LEAD_HOLD_MS)
             if (next == null) {
-                if (fannedOut) {
-                    held = false
-                    onUpdate(resolution)
-                } else {
-                    // ponytail: fixed hold for a slow lead; adapt per source if its latency varies a lot
-                    toAsk.drop(1).forEach(::ask)
-                    fannedOut = true
-                }
+                // ponytail: fixed hold for a slow lead; adapt per source if its latency varies a lot
+                toAsk.drop(1).forEach(::ask)
+                fannedOut = true
                 continue
             }
             val (id, outcome) = next
@@ -256,10 +239,8 @@ class RemoteLyricsSource @Inject constructor(
             }
             startBlends()
             resolution = current()
-            held = !holdOver.isCompleted && outranked(resolution, ranked(), outstanding())
-            if (!held) onUpdate(resolution)
+            onUpdate(resolution)
         }
-        holdOver.cancel()
         pending.toList().forEach { id -> jobs[id]?.cancel(); pending -= id }
         waiting.clear()
         current()
@@ -273,17 +254,8 @@ class RemoteLyricsSource @Inject constructor(
     ): Boolean {
         val best = (resolution as? RemoteLyricsResolution.Found)?.selection ?: return false
         if (best.quality != RemoteLyricsQuality.WORD_SYNCED) return false
-        return !outranked(resolution, ranked, pending)
-    }
-
-    /** Whether a source ranked above the current pick is still out. */
-    private fun outranked(
-        resolution: RemoteLyricsResolution,
-        ranked: List<String>,
-        pending: Set<String>,
-    ): Boolean {
-        val best = (resolution as? RemoteLyricsResolution.Found)?.selection ?: return false
-        return ranked.take(ranked.indexOf(best.source.id)).any { it in pending }
+        val rank = ranked.indexOf(best.source.id)
+        return ranked.take(rank).none { it in pending }
     }
 
     private fun select(
@@ -483,8 +455,6 @@ class RemoteLyricsSource @Inject constructor(
 
         /** How long the lead source is asked alone before everyone else is asked too. */
         const val LEAD_HOLD_MS = 1_000L
-        /** How long into a lookup a pick waits for sources ranked above it. */
-        const val PICK_HOLD_MS = 3_000L
         /** Where a blend takes its lines when nothing ranked above it has any. */
         const val LRCLIB_ID = "lrclib"
         const val BLEND_FAMILY = "blend"
