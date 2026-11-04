@@ -42,25 +42,39 @@ class MotionCoverFinder(
     private var memo: MutableMap<String, MemoEntry>? = null
 
     /** The stream's master playlist URL, or null when this record has no animated cover. */
-    suspend fun find(artist: String, album: String, title: String): String? {
+    suspend fun find(artist: String, album: String, title: String): String? =
+        lookup(artist, album, title, wantTall = false)?.url?.ifEmpty { null }
+
+    /** The record's tall (3:4) stream where Apple has one, else its square one. */
+    suspend fun findTall(artist: String, album: String, title: String): String? =
+        lookup(artist, album, title, wantTall = true)?.let { it.tall?.ifEmpty { null } ?: it.url.ifEmpty { null } }
+
+    private suspend fun lookup(artist: String, album: String, title: String, wantTall: Boolean): MemoEntry? {
         val key = key(artist, album, title) ?: return null
-        lock.withLock { memo()[key] }?.let { known ->
-            if (known.url.isNotEmpty()) return known.url
-            if (now() - known.at < MISS_TTL_MS) return null
+        val known = lock.withLock { memo()[key] }
+        if (known != null) {
+            if (known.url.isNotEmpty() && (known.tall != null || !wantTall)) return known
+            if (known.url.isEmpty() && now() - known.at < MISS_TTL_MS) return known
         }
-        val url = try {
+        val found = try {
             search(artist, album, title)
         } catch (error: CancellationException) {
             throw error
         } catch (_: Exception) {
             // A network failure is not a miss: don't remember it.
-            return null
+            return known?.takeIf { it.url.isNotEmpty() }
+        }
+        // Remembered from before tall streams were read: the record keeps its square one.
+        val entry = when {
+            found != null -> MemoEntry(found.first, found.second.orEmpty(), now())
+            known != null && known.url.isNotEmpty() -> MemoEntry(known.url, "", known.at)
+            else -> MemoEntry("", "", now())
         }
         lock.withLock {
-            memo()[key] = MemoEntry(url.orEmpty(), now())
+            memo()[key] = entry
             save()
         }
-        return url
+        return entry
     }
 
     /** Drops a remembered stream that failed to play, so the next ask searches again. */
@@ -71,7 +85,8 @@ class MotionCoverFinder(
         }
     }
 
-    private suspend fun search(artist: String, album: String, title: String): String? {
+    /** The record's square stream and, where it has one, its tall one. */
+    private suspend fun search(artist: String, album: String, title: String): Pair<String, String?>? {
         val name = album.ifBlank { title }
         val single = album.isBlank() || loose(plain(album), plain(title))
         val terms = listOfNotNull(
@@ -97,7 +112,7 @@ class MotionCoverFinder(
             for (url in rankAlbums(stage(), artist, name)) {
                 if (!tried.add(albumId(url))) continue
                 val page = runCatching { get(url) }.getOrNull() ?: continue
-                ambientVideo(page)?.let { return it }
+                ambientVideo(page)?.let { return it to tallVideo(page) }
             }
         }
         return null
@@ -142,7 +157,7 @@ class MotionCoverFinder(
             root.entrySet().forEach { (key, value) ->
                 if (!value.isJsonObject) return@forEach
                 val o = value.asJsonObject
-                val entry = MemoEntry(o.get("url").asString, o.get("at").asLong)
+                val entry = MemoEntry(o.get("url").asString, o.get("tall")?.asString, o.get("at").asLong)
                 // An older search's misses may be records it couldn't find; its hits still stand.
                 if (current || entry.url.isNotEmpty()) loaded[key] = entry
             }
@@ -158,14 +173,19 @@ class MotionCoverFinder(
             val json = JsonObject()
             json.addProperty(VERSION_KEY, MEMO_VERSION)
             memo?.forEach { (key, entry) ->
-                json.add(key, JsonObject().apply { addProperty("url", entry.url); addProperty("at", entry.at) })
+                json.add(key, JsonObject().apply {
+                    addProperty("url", entry.url)
+                    entry.tall?.let { addProperty("tall", it) }
+                    addProperty("at", entry.at)
+                })
             }
             tmp.writeText(json.toString())
             tmp.renameTo(file) || run { file.delete(); tmp.renameTo(file) }
         }
     }
 
-    private class MemoEntry(val url: String, val at: Long)
+    /** [tall]: empty when the record has none, null when it was remembered before they were read. */
+    private class MemoEntry(val url: String, val tall: String?, val at: Long)
 
     data class AlbumHit(val url: String, val name: String, val artist: String, val explicit: Boolean = false)
 
@@ -181,6 +201,7 @@ class MotionCoverFinder(
             "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
         private val AMBIENT_VIDEO = Regex("<amp-ambient-video[^>]+src=\"([^\"]+\\.m3u8)\"")
+        private val TALL_VIDEO = Regex("\"motionDetailTall\":\\{.{0,3000}?\"video\":\"([^\"]+\\.m3u8)\"")
         private val ALBUM_LINK = Regex("music\\.apple\\.com/[a-z]{2}/album/[^/\"?]+/(\\d+)")
         private val EDITION = Regex(
             "\\s*(?:[(\\[][^()\\[\\]]*(?:deluxe|edition|version|remaster|expanded|" +
@@ -257,6 +278,9 @@ class MotionCoverFinder(
         fun albumId(url: String): String = url.substringAfterLast('/')
 
         fun ambientVideo(html: String): String? = AMBIENT_VIDEO.find(html)?.groupValues?.get(1)
+
+        /** The tall stream in the page's data; the page's own player only shows the square one. */
+        fun tallVideo(html: String): String? = TALL_VIDEO.find(html)?.groupValues?.get(1)
 
         private fun encode(s: String) = URLEncoder.encode(s, "UTF-8")
     }

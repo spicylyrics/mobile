@@ -691,6 +691,7 @@ private fun LyricsApp(
     val portraitMotion = rememberMotionCover(
         portraitAllowed && StageArtChoice.wantsAnimated(settings.bigCoverArt, settings.animatedCover, lowPerformance),
         MotionCoverQuery(state.artist, state.album, state.title),
+        tall = true,
     )
     val portraitPicture = if (!portraitAllowed) null else StageArtChoice.pick(
         arts = settings.bigCoverArt,
@@ -699,6 +700,8 @@ private fun LyricsApp(
         canvas = heldCanvasUrl?.let { CanvasLookup.Found(it) }
             ?: if (state.canvasPending) CanvasLookup.Pending else CanvasLookup.None,
         motionUrl = portraitMotion.url.takeIf { portraitMotion.settled },
+        animatedFirst = settings.bigCoverAnimatedFirst,
+        motionPending = !portraitMotion.settled,
     )
     // Held while a new song's animated cover is looked up, so it doesn't drop out between songs.
     var shownPortrait by remember { mutableStateOf<StagePicture?>(null) }
@@ -1165,12 +1168,13 @@ private fun LyricsApp(
                 )
                 var failedBackgroundMotionUrl by remember { mutableStateOf<String?>(null) }
                 // The animated cover the moving background follows: the header's own stream, so
-                // only while that setting is on.
+                // only while that setting is on. Under the big cover it's that stream instead, as
+                // they share one player.
                 val followMotionUrl = rememberMotionCoverUrl(
                     backgroundType == BackgroundType.Default && settings.backgroundFollowsMotion && settings.animatedCover &&
                         !lowPerformance && !settings.staticBackground && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
                     backgroundMotionQuery,
-                )
+                )?.let { (shownPortrait as? StagePicture.Animated)?.url ?: it }
                 // While the stage shows a canvas, or the Canvas background has one, the page's
                 // backdrop is that canvas, blurred; the moving background fades out under it and
                 // holds still once it's hidden.

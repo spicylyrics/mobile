@@ -165,6 +165,8 @@ class AppSettings(private val prefs: SharedPreferences) {
             ?: if (prefs.contains("bigCoverCanvas") && read { prefs.getBoolean("bigCoverCanvas", true) } == false) emptySet()
             else StageArt.DEFAULT
     }) { prefs.edit().putString("bigCoverArts", StageArt.store(it)).apply() }
+    /** The big cover shows a song's animated cover before its Canvas, which fills in for songs without one. */
+    var bigCoverAnimatedFirst by boolean("bigCoverAnimatedFirst", false)
     /** While the stage or the big cover shows a Canvas, the background is that Canvas, blurred. */
     var canvasBackdrop by boolean("canvasBackdrop", true)
     /** The loops that hold their frame while the music is paused; both kinds by default. */

@@ -59,6 +59,8 @@ object StageArtChoice {
      * canvas is still being looked up, nothing later in the list shows, so the animated cover
      * doesn't play first and give way to the canvas a moment later; the still cover holds the
      * stage meanwhile when it's picked. [motionUrl] is the animated cover's stream when there is one.
+     * With [animatedFirst] the animated cover goes before the canvas, which then only shows on songs
+     * without one; while it's [motionPending], the canvas waits the same way.
      */
     fun pick(
         arts: Set<StageArt>,
@@ -66,8 +68,14 @@ object StageArtChoice {
         lowPerformance: Boolean,
         canvas: CanvasLookup,
         motionUrl: String?,
+        animatedFirst: Boolean = false,
+        motionPending: Boolean = false,
     ): StagePicture? {
         val still = StagePicture.Still.takeIf { StageArt.CoverArt in arts }
+        if (animatedFirst && wantsAnimated(arts, animatedCover, lowPerformance)) {
+            if (motionUrl != null) return StagePicture.Animated(motionUrl)
+            if (motionPending) return still
+        }
         if (wantsCanvas(arts, lowPerformance)) {
             when (canvas) {
                 is CanvasLookup.Found -> return StagePicture.Canvas(canvas.url)

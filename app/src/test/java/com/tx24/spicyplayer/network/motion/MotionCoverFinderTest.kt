@@ -8,6 +8,7 @@ import com.tx24.spicyplayer.network.motion.MotionCoverFinder.Companion.loose
 import com.tx24.spicyplayer.network.motion.MotionCoverFinder.Companion.parseAlbums
 import com.tx24.spicyplayer.network.motion.MotionCoverFinder.Companion.plain
 import com.tx24.spicyplayer.network.motion.MotionCoverFinder.Companion.rankAlbums
+import com.tx24.spicyplayer.network.motion.MotionCoverFinder.Companion.tallVideo
 import com.tx24.spicyplayer.ui.nowplaying.leadArtist
 import java.io.File
 import java.io.IOException
@@ -22,6 +23,14 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 
 class MotionCoverFinderTest {
+    @Test
+    fun `the tall stream comes from the page data, past its preview frame`() {
+        val page = """"videoArtwork":{"dictionary":{"motionDetailSquare":{"previewFrame":{"height":3840},"video":"https://a/square.m3u8"}}},""" +
+            """"tallVideoArtwork":{"dictionary":{"motionDetailTall":{"previewFrame":{"height":2732},"video":"https://a/tall.m3u8"}}}"""
+        assertEquals("https://a/tall.m3u8", tallVideo(page))
+        assertNull(tallVideo(""""videoArtwork":{"dictionary":{"motionDetailSquare":{"video":"https://a/square.m3u8"}}}"""))
+    }
+
     @Test
     fun `edition suffixes come off`() {
         assertEquals("Midnights", plain("Midnights (The Til Dawn Edition)"))

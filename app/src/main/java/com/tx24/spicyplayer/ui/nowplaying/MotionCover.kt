@@ -77,17 +77,24 @@ fun rememberMotionCoverUrl(enabled: Boolean, query: MotionCoverQuery): String? =
 data class MotionCoverLookup(val url: String?, val settled: Boolean)
 
 @Composable
-fun rememberMotionCover(enabled: Boolean, query: MotionCoverQuery): MotionCoverLookup {
+fun rememberMotionCover(
+    enabled: Boolean,
+    query: MotionCoverQuery,
+    /** The record's tall stream where it has one, for a stage taller than it is wide. */
+    tall: Boolean = false,
+): MotionCoverLookup {
     val context = LocalContext.current
     val artist = leadArtist(query.artist)
     val key = MotionCoverFinder.key(artist, query.album, query.title)
-    return produceState(MotionCoverLookup(null, settled = true), enabled, key) {
+    return produceState(MotionCoverLookup(null, settled = true), enabled, key, tall) {
         if (!enabled || key == null) {
             value = MotionCoverLookup(null, settled = true)
             return@produceState
         }
         value = value.copy(settled = false)
-        value = MotionCoverLookup(MotionCovers.finder(context).find(artist, query.album, query.title), settled = true)
+        val finder = MotionCovers.finder(context)
+        val url = if (tall) finder.findTall(artist, query.album, query.title) else finder.find(artist, query.album, query.title)
+        value = MotionCoverLookup(url, settled = true)
     }.value
 }
 

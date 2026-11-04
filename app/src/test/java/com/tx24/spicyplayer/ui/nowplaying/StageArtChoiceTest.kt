@@ -22,6 +22,10 @@ class StageArtChoiceTest {
         assertEquals(StagePicture.Canvas(canvas), pick(all, true, false, found, motion))
         assertEquals(StagePicture.Animated(motion), pick(all, true, false, CanvasLookup.None, motion))
         assertEquals(StagePicture.Still, pick(all, true, false, CanvasLookup.None, null))
+        // Animated cover first: the canvas only fills in once the record is known to have none.
+        assertEquals(StagePicture.Animated(motion), pick(all, true, false, found, motion, animatedFirst = true))
+        assertEquals(StagePicture.Still, pick(all, true, false, found, null, animatedFirst = true, motionPending = true))
+        assertEquals(StagePicture.Canvas(canvas), pick(all, true, false, found, null, animatedFirst = true))
     }
 
     @Test

@@ -112,6 +112,7 @@ fun configSnapshot(settings: AppSettings): Map<String, Any> = with(settings) {
         "canvas_background" to canvasBackground,
         "big_cover_canvas" to (StageArt.Canvas in bigCoverArt),
         "big_cover_art" to StageArt.store(bigCoverArt),
+        "big_cover_animated_first" to bigCoverAnimatedFirst,
         "canvas_backdrop" to canvasBackdrop,
         "pause_with_music" to LoopKind.store(pauseWithMusic),
         "timeline_outside_cover" to timelineOutsideCover,

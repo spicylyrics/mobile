@@ -884,6 +884,16 @@ internal fun NowPlayingContent(settings: AppSettings, viewModel: ExternalPlaybac
             },
         )
     }
+    if (StageArt.Canvas in settings.bigCoverArt && StageArt.AnimatedCover in settings.bigCoverArt) {
+        ToggleRow(
+            label = "Animated cover before Canvas",
+            description = "The big cover shows a song's animated cover, and its Canvas only when it has none.",
+            icon = Icons.Rounded.Fullscreen,
+            checked = settings.bigCoverAnimatedFirst,
+            enabled = !settings.lowPerformance,
+            onCheckedChange = { settings.bigCoverAnimatedFirst = it },
+        )
+    }
     MoreOptions("Hiding the header, cover without lyrics, blurred Canvas, pausing, credits") {
         ToggleRow(
             label = "Hide the song header",
