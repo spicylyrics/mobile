@@ -6,7 +6,6 @@ import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import com.tx24.spicyplayer.lyrics.spicy.RenderConfig
 import com.tx24.spicyplayer.lyrics.spicy.models.Line
@@ -158,6 +157,8 @@ class LyricsAnimator(
         val POP_FADE_EASING = CubicBezierEasing(0f, 0f, 0.58f, 1f)
         /** Folded, a background line is this size. */
         const val POP_FOLDED_SCALE = 0.8f
+        /** The Apple Music style's background line is done opening or folding once this close and this slow. */
+        const val PRESENCE_SETTLE = 0.0005f
         val EASE_IN_OUT = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
         const val MINIMAL_SUNG_SCALE = 0.95f
         const val MINIMAL_NOT_SUNG_SCALE = 0.965f
@@ -238,6 +239,7 @@ class LyricsAnimator(
         cachedLineGlow.clear()
         appleFinalStates.clear()
         presenceAnims.clear()
+        presenceSprings.clear()
         popFadeAnims.clear()
         popLeads = null
         appleOrdinalsFor = null
@@ -284,6 +286,7 @@ class LyricsAnimator(
             letterSpringsMap.clear()
             dotSpringsMap.clear()
             presenceAnims.clear()
+            presenceSprings.clear()
             popFadeAnims.clear()
             popLeads = null
         }
@@ -515,6 +518,8 @@ class LyricsAnimator(
     private var appleLeads = IntArray(0)
     private val appleFinalStates = mutableMapOf<Int, List<WordAnimState>>()
     private val presenceAnims = mutableMapOf<Int, Animatable<Float, AnimationVector1D>>()
+    /** Each background line's openness in the Apple Music style, on the scroll's spring. */
+    private val presenceSprings = mutableMapOf<Int, SpringSimulation>()
     private val blurAnims = mutableMapOf<Int, Animatable<Float, AnimationVector1D>>()
     private val litAnims = mutableMapOf<Int, Animatable<Float, AnimationVector1D>>()
 
@@ -547,7 +552,7 @@ class LyricsAnimator(
                 } ?: -1
             }
             appleActiveLine = -1
-            presenceAnims.clear()
+            presenceSprings.clear()
             popFadeAnims.clear()
             blurAnims.clear()
             litAnims.clear()
@@ -593,20 +598,27 @@ class LyricsAnimator(
                 }
             }
 
-            // Background vocals open while they or their lead are sung.
+            // Background vocals open while they or their lead are sung, and stay open until a later
+            // line starts: the last one then folds as the next opens, with the scroll, in one move.
+            val lead = if (line.isBackground) appleLeads[lineIdx] else -1
+            val sung = line.isBackground && (lineState == ElementState.Active || (lead >= 0 && states[lead] == ElementState.Active))
             val presenceTarget = if (!line.isBackground) 1f else {
-                val lead = appleLeads[lineIdx]
-                if (lineState == ElementState.Active || (lead >= 0 && states[lead] == ElementState.Active)) 1f else 0f
+                val wasOpen = presenceSprings[lineIdx]?.goal == 1f
+                val kept = wasOpen && lineState == ElementState.Sung &&
+                    (lead < 0 || states[lead] == ElementState.Sung) && !movedOn(lines, states, lineIdx)
+                if (sung || kept) 1f else 0f
             }
             val presence = if (!line.isBackground) 1f else {
-                val anim = presenceAnims.getOrPut(lineIdx) { Animatable(presenceTarget) }
-                if (anim.targetValue != presenceTarget) {
-                    // Turning back mid-way keeps the spring's speed (Animatable carries it over).
-                    coroutineScope.launch {
-                        anim.animateTo(presenceTarget, spring(dampingRatio = 1f, stiffness = AppleMusicMotion.BACKGROUND_SPRING_STIFFNESS))
-                    }
+                val spring = presenceSprings.getOrPut(lineIdx) {
+                    SpringSimulation(presenceTarget, AppleMusicMotion.SCROLL_FREQUENCY_HZ, AppleMusicMotion.SCROLL_DAMPING)
                 }
-                anim.value
+                spring.setGoal(presenceTarget)
+                val before = spring.current
+                val now = spring.step(deltaTime.coerceAtMost(AppleMusicMotion.SCROLL_MAX_STEP_S))
+                if (abs(now - presenceTarget) < PRESENCE_SETTLE && abs(now - before) < PRESENCE_SETTLE) {
+                    spring.setGoal(presenceTarget, replacePosition = true)
+                    presenceTarget
+                } else now
             }
 
             val wordStates = when {
@@ -627,7 +639,7 @@ class LyricsAnimator(
             // Background vocals stay sharp while their line is sung.
             val blurTarget = when {
                 !config.distanceBlurEnabled || userScrolling || isActive || line.isInterlude -> 0f
-                line.isBackground && presenceTarget == 1f -> 0f
+                sung -> 0f
                 else -> AppleMusicMotion.blurEm(if (signed == 0) -1 else signed) * APPLE_BLUR_CSS_PX_PER_EM *
                     (if (line.isBackground) AppleMusicMotion.BACKGROUND_BLUR_SHARE else 1f)
             }
@@ -662,6 +674,7 @@ class LyricsAnimator(
                 suppressShadows = !config.glowEnabled,
                 state = lineState,
                 presence = presence,
+                presenceGoal = presenceTarget,
                 lit = if (lineState == ElementState.Sung) litAnim.value else 0f,
                 groupScale = if (line.isInterlude) AppleMusicMotion.Dots(line.duration.toFloat()).scale((t - line.startMs).toFloat()) else 1f,
             )

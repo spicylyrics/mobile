@@ -235,7 +235,6 @@ fun LyricsView(
         val refinedCredits = config.refinedCredits
         // The frame loop outlives a settings change, so it reads the latest values.
         val refinedCreditsUpdated by rememberUpdatedState(refinedCredits)
-        val backgroundPopUpdated by rememberUpdatedState(config.backgroundPop)
         val footerLines = remember(footer, pinnedFooter, refinedCredits) {
             footer.lines().let { if (refinedCredits) refinedFooterLines(it) else it }.filterNot { pinnedFooter.pins(it.kind) }
         }
@@ -360,7 +359,14 @@ fun LyricsView(
                     // The same lyrics laid out again (romanized, resized): seen here, on the frame
                     // that first draws the new layouts, so the scroll jumps with them.
                     val relaid = currentLayouts !== lastLayouts
-                    if (relaid) rippleHeights = FloatArray(currentLayouts.size) { currentLayouts[it].height }
+                    if (relaid) {
+                        rippleHeights = FloatArray(currentLayouts.size) { currentLayouts[it].height }
+                        var place = -1
+                        scrollTrail.places = IntArray(currentLayouts.size) { i ->
+                            if (!currentLayouts[i].isBackground) place++
+                            place.coerceAtLeast(0)
+                        }
+                    }
                     if (lastLayouts != null && relaid) scrollManager.onRelayout()
                     lastLayouts = currentLayouts
                     val currentTime = currentTimeProvider()
@@ -437,10 +443,9 @@ fun LyricsView(
                                 settledY += rowHeightUpdated * open
                             } else {
                                 settledYScratch[i] = layout.yOffset + settledY
-                                // Folded background vocals (Apple Music style) give up their room.
-                                // As far as they've got, not where they're headed: the scroll then
-                                // follows the fold as it happens instead of jumping ahead of it.
-                                if (layout.isBackground) settledY -= slotOf(i) * (1f - ((if (backgroundPopUpdated) state?.presenceGoal else state?.presence) ?: 1f))
+                                // Folded background vocals give up their room. Where they're headed,
+                                // not how far they've got: the scroll moves once, with the fold.
+                                if (layout.isBackground) settledY -= slotOf(i) * (1f - (state?.presenceGoal ?: 1f))
                             }
 
                             if (layout.isInterlude) {

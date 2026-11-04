@@ -77,6 +77,16 @@ class ScrollTrailTest {
     }
 
     @Test
+    fun `background vocals move with their lead in the stagger`() {
+        val trail = ScrollTrail()
+        // Lead, its background vocal, then two more leads.
+        trail.places = intArrayOf(0, 0, 1, 2)
+        assertEquals(0L, trail.delayNanos(1))
+        assertEquals(50_000_000L, trail.delayNanos(2))
+        assertEquals(100_000_000L, trail.delayNanos(3))
+    }
+
+    @Test
     fun `a line no frame knows keeps its current shift`() {
         val trail = ScrollTrail()
         trail.record(0L, 0f, floatArrayOf(0f))

@@ -191,12 +191,9 @@ object AppleMusicMotion {
     /** Background vocals' text size against the lead's. */
     const val BACKGROUND_SIZE = 0.7f
 
-    /**
-     * Background vocals open under their line while it's sung, and fold away after, on a
-     * critically damped spring (settling in about 0.8s): it keeps its speed when it turns back
-     * halfway, so vocals that come and go quickly never jerk.
-     */
-    const val BACKGROUND_SPRING_STIFFNESS = 60f
+    // Background vocals open under their line and fold away on the scroll's own spring
+    // (SCROLL_FREQUENCY_HZ, SCROLL_DAMPING), stepped with it. The rows below then move once:
+    // a slower open would let the scroll carry them past their place and push them back after.
 
     /**
      * Background vocals' opacity for how far open they are: they show only once their room has
@@ -218,6 +215,8 @@ object AppleMusicMotion {
     /** The scroll's spring: mass 1, stiffness 100, damping 18 (ω 10 rad/s, damping ratio 0.9). */
     const val SCROLL_FREQUENCY_HZ = 1.5915494f // 10 / 2π
     const val SCROLL_DAMPING = 0.9f
+    /** A long frame steps the scroll's spring at most this far, so a stall doesn't finish a move in one jump. */
+    const val SCROLL_MAX_STEP_S = 0.05f
 
     // ── Interlude dots ──────────────────────────────────────────────────────────────
 

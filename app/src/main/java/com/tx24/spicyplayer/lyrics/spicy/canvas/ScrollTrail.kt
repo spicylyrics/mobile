@@ -44,6 +44,9 @@ internal class ScrollTrail {
     /** When the line scrolled to last changed; until the scroll there has settled, it sets the direction. */
     private var referenceChangedNanos: Long? = null
 
+    /** Each line's place in the stagger: background vocals move with their lead, not a step after it. */
+    var places = IntArray(0)
+
     fun record(timeNanos: Long, y: Float, lineShifts: FloatArray) {
         if (referenceChanged) {
             referenceChanged = false
@@ -100,7 +103,9 @@ internal class ScrollTrail {
 
     /** How long after the view [lineIndex] moves. */
     fun delayNanos(lineIndex: Int): Long {
-        val steps = if (direction < 0) lineIndex - reference else reference - lineIndex
+        val line = places.getOrElse(lineIndex) { lineIndex }
+        val target = places.getOrElse(reference) { reference }
+        val steps = if (direction < 0) line - target else target - line
         return steps.coerceIn(0, AppleMusicMotion.STAGGER_STEPS) * (AppleMusicMotion.STAGGER_S * 1e9f).toLong()
     }
 

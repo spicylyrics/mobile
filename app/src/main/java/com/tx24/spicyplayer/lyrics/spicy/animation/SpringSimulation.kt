@@ -109,4 +109,5 @@ class SpringSimulation(
     }
 
     val current: Float get() = p
+    val goal: Float get() = g
 }

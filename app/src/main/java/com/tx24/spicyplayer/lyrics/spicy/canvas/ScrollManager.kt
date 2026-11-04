@@ -335,6 +335,6 @@ internal class ScrollManager(
         const val SMOOTH_SCROLL_SETTLE_PX = 0.25f
         const val SMOOTH_SCROLL_SETTLE_SPEED = 0.05f
         /** A long frame steps the spring at most this far, so a stall doesn't finish the move in one jump. */
-        const val MAX_SPRING_STEP_S = 0.05f
+        const val MAX_SPRING_STEP_S = AppleMusicMotion.SCROLL_MAX_STEP_S
     }
 }
