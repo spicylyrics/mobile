@@ -6,6 +6,8 @@ import java.time.Instant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -660,6 +662,25 @@ class RemoteLyricsSourceTest {
         assertEquals("kugou", result.selection.source.id)
         // Only the catalogues that file songs under native names are asked twice.
         assertEquals(listOf("kugou:New Genesis", "kugou:新時代", "lrclib:New Genesis"), asked.sorted())
+    }
+
+    @Test
+    fun `a pick waits a moment for a source ranked above it, then shows`() = runBlocking {
+        val source = source(
+            hanging("top", 10),
+            provider("quick", 100, null, ProviderResult.Hit(wordTtml("quick"))),
+        )
+        val shown = mutableListOf<String>()
+        val lookup = launch {
+            source.resolveLyrics(request) { update ->
+                (update as? RemoteLyricsResolution.Found)?.let { shown += it.selection.source.id }
+            }
+        }
+        delay(RemoteLyricsSource.PICK_HOLD_MS - 1_000)
+        assertEquals(emptyList<String>(), shown)
+        delay(1_500)
+        assertEquals(listOf("quick"), shown)
+        lookup.cancel()
     }
 
     private fun source(vararg providers: RemoteLyricsProvider) = RemoteLyricsSource(
